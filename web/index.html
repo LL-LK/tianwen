@@ -1,0 +1,482 @@
+# 天问-AGI Web 界面
+
+> 一个简单的 HTML 界面，用于体验智能体的交互能力
+
+## 界面预览
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     天问-AGI 智能体                            │
+│                      Tianwen-AGI v2.1                           │
+├──────────────────────────────────────────────────────────────────┤
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                    引擎状态面板                          │  │
+│  │  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐        │  │
+│  │  │  认知  │  │  规划  │  │  执行  │  │  推理  │        │  │
+│  │  │   ✓   │  │   ✓   │  │   ✓   │  │   ✓   │        │  │
+│  │  └────────┘  └────────┘  └────────┘  └────────┘        │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                    对话区域                                │  │
+│  │                                                          │  │
+│  │  👤 用户: 写一个JavaScript快速排序算法                    │  │
+│  │                                                          │  │
+│  │  🤖 天问: (显示处理过程和结果)                           │  │
+│  │                                                          │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ [输入框]                                    [发送] [清除] │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                    快捷测试用例                           │  │
+│  │  [代码生成] [架构设计] [安全审查] [情感交互] [数据分析]  │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## HTML 实现代码
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天问-AGI 智能体</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+        }
+
+        .engine-panel {
+            background: rgba(255,255,255,0.95);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-around;
+        }
+
+        .engine-item {
+            text-align: center;
+        }
+
+        .engine-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .engine-icon.active {
+            background: #22c55e;
+            color: white;
+        }
+
+        .engine-icon.inactive {
+            background: #e5e7eb;
+            color: #9ca3af;
+        }
+
+        .chat-box {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            min-height: 400px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .message {
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            border-radius: 12px;
+        }
+
+        .message.user {
+            background: #3b82f6;
+            color: white;
+            margin-left: 40px;
+        }
+
+        .message.bot {
+            background: #f3f4f6;
+            color: #1f2937;
+            margin-right: 40px;
+        }
+
+        .message .role {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .message pre {
+            background: #1f2937;
+            color: #e5e7eb;
+            padding: 12px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .input-area input {
+            flex: 1;
+            padding: 14px 18px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+        }
+
+        .input-area button {
+            padding: 14px 24px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .input-area button:hover {
+            transform: scale(1.05);
+        }
+
+        .input-area .send-btn {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .input-area .clear-btn {
+            background: #e5e7eb;
+            color: #4b5563;
+        }
+
+        .quick-actions {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .quick-actions h3 {
+            margin-bottom: 12px;
+            color: #4b5563;
+        }
+
+        .quick-actions .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .quick-actions button {
+            padding: 10px 16px;
+            border: 1px solid #e5e7eb;
+            background: white;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quick-actions button:hover {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+
+        .processing-indicator {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 天问-AGI</h1>
+            <p>通用认知智能体 v2.1.0 | 40+专业技能 | 持续进化</p>
+        </div>
+
+        <div class="engine-panel">
+            <div class="engine-item">
+                <div class="engine-icon active">🧠</div>
+                <div>认知引擎</div>
+            </div>
+            <div class="engine-item">
+                <div class="engine-icon active">📋</div>
+                <div>规划引擎</div>
+            </div>
+            <div class="engine-item">
+                <div class="engine-icon active">⚙️</div>
+                <div>执行引擎</div>
+            </div>
+            <div class="engine-item">
+                <div class="engine-icon active">🧩</div>
+                <div>推理引擎</div>
+            </div>
+        </div>
+
+        <div class="chat-box" id="chatBox">
+            <div class="message bot">
+                <div class="role">🤖 天问-AGI</div>
+                <div>你好！我是天问-AGI，一个通用认知智能体。<br><br>
+                我可以帮你完成：<br>
+                • 代码编写与优化<br>
+                • 架构设计与分析<br>
+                • 安全审查与加固<br>
+                • 数据分析与可视化<br>
+                • 项目规划与管理<br>
+                • 情感理解与交互<br><br>
+                请输入你的需求，或者点击下方快捷按钮体验！</div>
+            </div>
+        </div>
+
+        <div class="processing-indicator" id="processing">
+            <div class="spinner"></div>
+            <div>智能体思考中...</div>
+        </div>
+
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="输入你的需求..." onkeypress="handleKeyPress(event)">
+            <button class="send-btn" onclick="sendMessage()">发送</button>
+            <button class="clear-btn" onclick="clearChat()">清除</button>
+        </div>
+
+        <div class="quick-actions">
+            <h3>⚡ 快捷测试用例</h3>
+            <div class="btn-group">
+                <button onclick="quickTest('代码生成')">💻 代码生成</button>
+                <button onclick="quickTest('架构设计')">🏗️ 架构设计</button>
+                <button onclick="quickTest('安全审查')">🔒 安全审查</button>
+                <button onclick="quickTest('情感交互')">💬 情感交互</button>
+                <button onclick="quickTest('数据分析')">📊 数据分析</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const quickTests = {
+            '代码生成': '写一个JavaScript快速排序算法',
+            '架构设计': '设计一个高并发的秒杀系统架构',
+            '安全审查': '检查这段登录代码的安全性：直接拼接SQL和明文密码比较',
+            '情感交互': '我最近项目压力很大，感觉很焦虑怎么办',
+            '数据分析': '分析这份销售数据：1月100万，2月80万，3月120万，4月90万'
+        };
+
+        function quickTest(type) {
+            document.getElementById('userInput').value = quickTests[type];
+            sendMessage();
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+            if (!message) return;
+
+            const chatBox = document.getElementById('chatBox');
+            const processing = document.getElementById('processing');
+
+            // 显示用户消息
+            chatBox.innerHTML += `
+                <div class="message user">
+                    <div class="role">👤 你</div>
+                    <div>${message}</div>
+                </div>
+            `;
+
+            input.value = '';
+            processing.style.display = 'block';
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            // 模拟处理
+            setTimeout(() => {
+                processing.style.display = 'none';
+                const response = generateResponse(message);
+                chatBox.innerHTML += `
+                    <div class="message bot">
+                        <div class="role">🤖 天问-AGI</div>
+                        <div>${response}</div>
+                    </div>
+                `;
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }, 1500);
+        }
+
+        function generateResponse(message) {
+            const responses = {
+                '代码生成': `
+                    <strong>✅ 代码生成完成</strong><br><br>
+                    <pre>function quickSort(arr) {
+  if (arr.length <= 1) return arr;
+  const pivot = arr[Math.floor(arr.length / 2)];
+  const left = arr.filter(x => x < pivot);
+  const middle = arr.filter(x => x === pivot);
+  const right = arr.filter(x => x > pivot);
+  return [...quickSort(left), ...middle, ...quickSort(right)];
+}</pre>
+                    <strong>复杂度分析：</strong><br>
+                    • 时间复杂度: O(n log n)<br>
+                    • 空间复杂度: O(n)
+                `,
+                '架构设计': `
+                    <strong>🏗️ 秒杀系统架构设计</strong><br><br>
+                    <strong>技术方案：</strong><br>
+                    • CDN加速 → 就近访问<br>
+                    • 分布式缓存 → Redis库存预热<br>
+                    • 消息队列 → 异步下单，削峰填谷<br>
+                    • 限流策略 → 接口/用户/IP限流<br><br>
+                    <strong>预估指标：</strong><br>
+                    • QPS: 10万+<br>
+                    • 响应时间: < 100ms<br>
+                    • 可用性: 99.99%
+                `,
+                '安全审查': `
+                    <strong>🔒 安全审查报告</strong><br><br>
+                    <strong>🔴 发现 2 个严重漏洞：</strong><br><br>
+                    <strong>1. SQL注入风险</strong><br>
+                    问题：直接拼接用户输入到SQL<br>
+                    建议：使用参数化查询<br><br>
+                    <strong>2. 密码明文比较</strong><br>
+                    问题：直接比较密码字符串<br>
+                    建议：使用 bcrypt.compare()
+                `,
+                '情感交互': `
+                    <strong>💚 我理解你的感受</strong><br><br>
+                    项目压力确实会让人感到焦虑，这是很正常的反应。<br><br>
+                    <strong>建议：</strong><br>
+                    1. 适当休息，给大脑放松的时间<br>
+                    2. 把大任务拆分成小步骤<br>
+                    3. 和团队沟通，寻求支持<br>
+                    4. 保持规律作息<br><br>
+                    记住，你不是一个人在战斗！💪
+                `,
+                '数据分析': `
+                    <strong>📊 销售数据分析报告</strong><br><br>
+                    <strong>数据概览：</strong><br>
+                    • 总销售额: 390万<br>
+                    • 月均: 97.5万<br>
+                    • 最高: 3月(120万)<br><br>
+                    <strong>趋势分析：</strong><br>
+                    2月下降20%，3月强势反弹增长50%<br>
+                    4月又有所回落<br><br>
+                    <strong>建议：</strong><br>
+                    • 3月策略值得复盘<br>
+                    • 关注4月下降原因
+                `
+            };
+
+            return responses['代码生成'] || responses[Object.keys(quickTests).find(k => message.includes(k))] || `
+                <strong>✅ 请求已收到</strong><br><br>
+                正在分析你的需求...<br>
+                任务类型: 通用任务<br>
+                预计处理时间: 根据复杂度而定
+            `;
+        }
+
+        function clearChat() {
+            document.getElementById('chatBox').innerHTML = `
+                <div class="message bot">
+                    <div class="role">🤖 天问-AGI</div>
+                    <div>对话已清除！请输入新的需求。</div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
+```
+
+---
+
+## 使用方法
+
+1. 将上述代码保存为 `index.html`
+2. 在浏览器中打开
+3. 体验智能体交互
+
+---
+
+## 功能说明
+
+| 功能 | 说明 |
+|-----|------|
+| 引擎状态面板 | 显示四大核心引擎状态 |
+| 对话区域 | 显示用户和智能体的对话 |
+| 发送按钮 | 发送消息并获取响应 |
+| 清除按钮 | 清空对话历史 |
+| 快捷测试 | 一键体验预设测试用例 |
+
+---
+
+## 后续优化方向
+
+- [ ] 后端 API 集成，真正调用智能体能力
+- [ ] 实时处理过程可视化
+- [ ] 历史记录保存
+- [ ] 用户认证系统
+- [ ] 技能选择面板
