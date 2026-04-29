@@ -1,47 +1,3 @@
-# 天问-AGI Web 界面
-
-> 一个简单的 HTML 界面，用于体验智能体的交互能力
-
-## 界面预览
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                     天问-AGI 智能体                            │
-│                      Tianwen-AGI v2.1                           │
-├──────────────────────────────────────────────────────────────────┤
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                    引擎状态面板                          │  │
-│  │  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐        │  │
-│  │  │  认知  │  │  规划  │  │  执行  │  │  推理  │        │  │
-│  │  │   ✓   │  │   ✓   │  │   ✓   │  │   ✓   │        │  │
-│  │  └────────┘  └────────┘  └────────┘  └────────┘        │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                    对话区域                                │  │
-│  │                                                          │  │
-│  │  👤 用户: 写一个JavaScript快速排序算法                    │  │
-│  │                                                          │  │
-│  │  🤖 天问: (显示处理过程和结果)                           │  │
-│  │                                                          │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │ [输入框]                                    [发送] [清除] │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                    快捷测试用例                           │  │
-│  │  [代码生成] [架构设计] [安全审查] [情感交互] [数据分析]  │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## HTML 实现代码
-
-```html
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -116,6 +72,17 @@
             color: #9ca3af;
         }
 
+        .engine-icon.processing {
+            background: #f59e0b;
+            color: white;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
         .chat-box {
             background: white;
             border-radius: 12px;
@@ -156,6 +123,31 @@
             border-radius: 8px;
             overflow-x: auto;
             margin: 8px 0;
+            font-size: 13px;
+        }
+
+        .cognitive-info {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+
+        .cognitive-info h4 {
+            color: #1e40af;
+            margin-bottom: 8px;
+        }
+
+        .cognitive-info .tag {
+            display: inline-block;
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin: 2px;
+            font-size: 12px;
         }
 
         .input-area {
@@ -247,45 +239,47 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        .error-msg {
+            color: #ef4444;
+            background: #fee2e2;
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin: 8px 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>🧠 天问-AGI</h1>
-            <p>通用认知智能体 v2.1.0 | 40+专业技能 | 持续进化</p>
+            <p>通用认知智能体 v2.2.0 | Agent Runtime | 持续进化</p>
         </div>
 
         <div class="engine-panel">
             <div class="engine-item">
-                <div class="engine-icon active">🧠</div>
+                <div class="engine-icon active" id="cognitiveIcon">🧠</div>
                 <div>认知引擎</div>
             </div>
             <div class="engine-item">
-                <div class="engine-icon active">📋</div>
+                <div class="engine-icon active" id="planningIcon">📋</div>
                 <div>规划引擎</div>
             </div>
             <div class="engine-item">
-                <div class="engine-icon active">⚙️</div>
+                <div class="engine-icon active" id="executionIcon">⚙️</div>
                 <div>执行引擎</div>
             </div>
             <div class="engine-item">
-                <div class="engine-icon active">🧩</div>
-                <div>推理引擎</div>
+                <div class="engine-icon active" id="evolutionIcon">🧩</div>
+                <div>进化系统</div>
             </div>
         </div>
 
         <div class="chat-box" id="chatBox">
             <div class="message bot">
                 <div class="role">🤖 天问-AGI</div>
-                <div>你好！我是天问-AGI，一个通用认知智能体。<br><br>
-                我可以帮你完成：<br>
-                • 代码编写与优化<br>
-                • 架构设计与分析<br>
-                • 安全审查与加固<br>
-                • 数据分析与可视化<br>
-                • 项目规划与管理<br>
-                • 情感理解与交互<br><br>
+                <div>你好！我是天问-AGI v2.2.0，一个带有实际运行时的通用认知智能体。<br><br>
+                我现在可以真正执行任务了！<br><br>
                 请输入你的需求，或者点击下方快捷按钮体验！</div>
             </div>
         </div>
@@ -306,19 +300,22 @@
             <div class="btn-group">
                 <button onclick="quickTest('代码生成')">💻 代码生成</button>
                 <button onclick="quickTest('架构设计')">🏗️ 架构设计</button>
+                <button onclick="quickTest('后端开发')">🔧 后端开发</button>
                 <button onclick="quickTest('安全审查')">🔒 安全审查</button>
-                <button onclick="quickTest('情感交互')">💬 情感交互</button>
                 <button onclick="quickTest('数据分析')">📊 数据分析</button>
             </div>
         </div>
     </div>
 
     <script>
+        const API_BASE = 'http://localhost:5000/api';
+        let sessionId = null;
+
         const quickTests = {
             '代码生成': '写一个JavaScript快速排序算法',
             '架构设计': '设计一个高并发的秒杀系统架构',
+            '后端开发': '创建一个用户管理的REST API',
             '安全审查': '检查这段登录代码的安全性：直接拼接SQL和明文密码比较',
-            '情感交互': '我最近项目压力很大，感觉很焦虑怎么办',
             '数据分析': '分析这份销售数据：1月100万，2月80万，3月120万，4月90万'
         };
 
@@ -333,7 +330,19 @@
             }
         }
 
-        function sendMessage() {
+        function setEngineProcessing(isProcessing) {
+            const icons = ['cognitiveIcon', 'planningIcon', 'executionIcon', 'evolutionIcon'];
+            icons.forEach(id => {
+                const icon = document.getElementById(id);
+                if (isProcessing) {
+                    icon.className = 'engine-icon processing';
+                } else {
+                    icon.className = 'engine-icon active';
+                }
+            });
+        }
+
+        async function sendMessage() {
             const input = document.getElementById('userInput');
             const message = input.value.trim();
             if (!message) return;
@@ -345,97 +354,91 @@
             chatBox.innerHTML += `
                 <div class="message user">
                     <div class="role">👤 你</div>
-                    <div>${message}</div>
+                    <div>${escapeHtml(message)}</div>
                 </div>
             `;
 
             input.value = '';
             processing.style.display = 'block';
+            setEngineProcessing(true);
             chatBox.scrollTop = chatBox.scrollHeight;
 
-            // 模拟处理
-            setTimeout(() => {
-                processing.style.display = 'none';
-                const response = generateResponse(message);
+            try {
+                const response = await fetch(`${API_BASE}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message, session_id: sessionId })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                sessionId = data.session_id;
+
+                // 显示认知信息
+                let cognitiveHtml = '';
+                if (data.cognitive) {
+                    cognitiveHtml = `
+                        <div class="cognitive-info">
+                            <h4>🧠 认知分析</h4>
+                            <div>意图: <span class="tag">${data.cognitive.intent}</span></div>
+                            <div>技能: ${data.cognitive.skills.map(s => `<span class="tag">${s}</span>`).join('')}</div>
+                            <div>复杂度: <span class="tag">${data.cognitive.complexity}</span></div>
+                        </div>
+                    `;
+                }
+
+                // 显示执行结果
+                let planHtml = '';
+                if (data.plan && data.plan.subtasks) {
+                    const subtaskRows = data.plan.subtasks.map(t => {
+                        const statusIcon = t.status === 'completed' ? '✅' : t.status === 'failed' ? '❌' : '⏳';
+                        return `<tr><td>${t.id}</td><td>${t.skill}</td><td>${statusIcon} ${t.status}</td></tr>`;
+                    }).join('');
+
+                    planHtml = `
+                        <div class="cognitive-info" style="background: #f0fdf4; border-color: #bbf7d0;">
+                            <h4>📋 执行计划</h4>
+                            <table style="width: 100%; font-size: 12px;">
+                                <tr><th>ID</th><th>技能</th><th>状态</th></tr>
+                                ${subtaskRows}
+                            </table>
+                            <div style="margin-top: 8px;">预估时间: ${data.plan.estimated_time || 'N/A'}</div>
+                        </div>
+                    `;
+                }
+
                 chatBox.innerHTML += `
                     <div class="message bot">
                         <div class="role">🤖 天问-AGI</div>
-                        <div>${response}</div>
+                        ${cognitiveHtml}
+                        ${planHtml}
+                        <pre>${escapeHtml(data.output || JSON.stringify(data, null, 2))}</pre>
                     </div>
                 `;
+
+            } catch (error) {
+                chatBox.innerHTML += `
+                    <div class="message bot">
+                        <div class="role">🤖 天问-AGI</div>
+                        <div class="error-msg">请求失败: ${error.message}</div>
+                        <div>提示: 请确保后端服务正在运行 (python server.py)</div>
+                    </div>
+                `;
+            } finally {
+                processing.style.display = 'none';
+                setEngineProcessing(false);
                 chatBox.scrollTop = chatBox.scrollHeight;
-            }, 1500);
+            }
         }
 
-        function generateResponse(message) {
-            const responses = {
-                '代码生成': `
-                    <strong>✅ 代码生成完成</strong><br><br>
-                    <pre>function quickSort(arr) {
-  if (arr.length <= 1) return arr;
-  const pivot = arr[Math.floor(arr.length / 2)];
-  const left = arr.filter(x => x < pivot);
-  const middle = arr.filter(x => x === pivot);
-  const right = arr.filter(x => x > pivot);
-  return [...quickSort(left), ...middle, ...quickSort(right)];
-}</pre>
-                    <strong>复杂度分析：</strong><br>
-                    • 时间复杂度: O(n log n)<br>
-                    • 空间复杂度: O(n)
-                `,
-                '架构设计': `
-                    <strong>🏗️ 秒杀系统架构设计</strong><br><br>
-                    <strong>技术方案：</strong><br>
-                    • CDN加速 → 就近访问<br>
-                    • 分布式缓存 → Redis库存预热<br>
-                    • 消息队列 → 异步下单，削峰填谷<br>
-                    • 限流策略 → 接口/用户/IP限流<br><br>
-                    <strong>预估指标：</strong><br>
-                    • QPS: 10万+<br>
-                    • 响应时间: < 100ms<br>
-                    • 可用性: 99.99%
-                `,
-                '安全审查': `
-                    <strong>🔒 安全审查报告</strong><br><br>
-                    <strong>🔴 发现 2 个严重漏洞：</strong><br><br>
-                    <strong>1. SQL注入风险</strong><br>
-                    问题：直接拼接用户输入到SQL<br>
-                    建议：使用参数化查询<br><br>
-                    <strong>2. 密码明文比较</strong><br>
-                    问题：直接比较密码字符串<br>
-                    建议：使用 bcrypt.compare()
-                `,
-                '情感交互': `
-                    <strong>💚 我理解你的感受</strong><br><br>
-                    项目压力确实会让人感到焦虑，这是很正常的反应。<br><br>
-                    <strong>建议：</strong><br>
-                    1. 适当休息，给大脑放松的时间<br>
-                    2. 把大任务拆分成小步骤<br>
-                    3. 和团队沟通，寻求支持<br>
-                    4. 保持规律作息<br><br>
-                    记住，你不是一个人在战斗！💪
-                `,
-                '数据分析': `
-                    <strong>📊 销售数据分析报告</strong><br><br>
-                    <strong>数据概览：</strong><br>
-                    • 总销售额: 390万<br>
-                    • 月均: 97.5万<br>
-                    • 最高: 3月(120万)<br><br>
-                    <strong>趋势分析：</strong><br>
-                    2月下降20%，3月强势反弹增长50%<br>
-                    4月又有所回落<br><br>
-                    <strong>建议：</strong><br>
-                    • 3月策略值得复盘<br>
-                    • 关注4月下降原因
-                `
-            };
-
-            return responses['代码生成'] || responses[Object.keys(quickTests).find(k => message.includes(k))] || `
-                <strong>✅ 请求已收到</strong><br><br>
-                正在分析你的需求...<br>
-                任务类型: 通用任务<br>
-                预计处理时间: 根据复杂度而定
-            `;
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         function clearChat() {
@@ -445,38 +448,20 @@
                     <div>对话已清除！请输入新的需求。</div>
                 </div>
             `;
+            sessionId = null;
         }
+
+        // 页面加载时检查后端连接
+        window.onload = async () => {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                if (response.ok) {
+                    console.log('✅ Backend connected');
+                }
+            } catch (e) {
+                console.log('⚠️ Backend not connected. Run: cd runtime && pip install -r requirements.txt && python server.py');
+            }
+        };
     </script>
 </body>
 </html>
-```
-
----
-
-## 使用方法
-
-1. 将上述代码保存为 `index.html`
-2. 在浏览器中打开
-3. 体验智能体交互
-
----
-
-## 功能说明
-
-| 功能 | 说明 |
-|-----|------|
-| 引擎状态面板 | 显示四大核心引擎状态 |
-| 对话区域 | 显示用户和智能体的对话 |
-| 发送按钮 | 发送消息并获取响应 |
-| 清除按钮 | 清空对话历史 |
-| 快捷测试 | 一键体验预设测试用例 |
-
----
-
-## 后续优化方向
-
-- [ ] 后端 API 集成，真正调用智能体能力
-- [ ] 实时处理过程可视化
-- [ ] 历史记录保存
-- [ ] 用户认证系统
-- [ ] 技能选择面板
