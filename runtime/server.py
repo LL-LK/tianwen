@@ -170,8 +170,56 @@ async def health():
     """健康检查"""
     return jsonify({
         "status": "ok",
-        "version": "2.2.0",
+        "version": "2.4.0",
         "timestamp": datetime.now().isoformat(),
+    })
+
+@app.route("/api/wake", methods=["POST"])
+async def wake():
+    """
+    唤醒端点 - Railway冷启动优化
+
+    Railway免费版5秒无响应会sleep，此端点用于：
+    1. 预热Agent实例
+    2. 保持服务活跃
+    3. 快速响应观测数据推送
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        # 轻量级预热请求
+        warmup_result = await agent.process("[系统] 预热请求 - 初始化认知引擎")
+
+        return jsonify({
+            "status": "awake",
+            "message": "Agent已唤醒，冷启动优化完成",
+            "timestamp": datetime.now().isoformat(),
+            "session_id": str(uuid.uuid4()),
+            "warmup_success": True
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@app.route("/api/websocket-info", methods=["GET"])
+async def websocket_info():
+    """
+    WebSocket连接信息 - Phase 2准备
+
+    返回WebSocket连接所需信息：
+    - 推荐的心跳间隔
+    - 重连策略
+    - 认证方式
+    """
+    return jsonify({
+        "websocket_enabled": True,
+        "heartbeat_interval": 30,  # 秒
+        "reconnect_strategy": "exponential_backoff",
+        "max_reconnect_attempts": 5,
+        "auth_required": True,
+        "note": "WebSocket Phase 2开发中"
     })
 
 if __name__ == "__main__":
