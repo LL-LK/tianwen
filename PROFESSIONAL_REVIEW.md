@@ -240,14 +240,27 @@ class VectorMemory:
 
 ## 五、竞争对手对比
 
-| 特性 | 天问-AGI | DeerFlow | AutoGPT | AgentGPT |
-|------|----------|----------|---------|----------|
-| 技能数量 | 40 | ~10 | ~20 | ~15 |
-| 文档完整性 | 极详细 | 一般 | 一般 | 一般 |
-| 实际执行 | 无 | 有 | 有 | 有 |
-| Sandbox隔离 | 无 | 有 | 部分 | 无 |
-| 记忆系统 | MD文件 | 向量数据库 | 有限 | 有限 |
-| 开源程度 | 全开源 | Apache | MIT | MIT |
+| 特性 | 天问-AGI | DeerFlow | AutoGPT | AgentGPT | AstroIR |
+|------|----------|----------|---------|----------|---------|
+| 技能数量 | 40 | ~10 | ~20 | ~15 | N/A |
+| 文档完整性 | 极详细 | 一般 | 一般 | 一般 | 一般 |
+| 实际执行 | 无 | 有 | 有 | 有 | 部分 |
+| Sandbox隔离 | 无 | 有 | 部分 | 无 | 无 |
+| 记忆系统 | MD文件 | 向量数据库 | 有限 | 有限 | 无 |
+| 开源程度 | 全开源 | Apache | MIT | MIT | MIT |
+| 天文专业性 | 完整闭环 | 通用 | 通用 | 通用 | 感知层专项 |
+
+### 补充: AstroIR 参考
+
+| 项目 | 信息 |
+|-----|------|
+| 名称 | AstroIR |
+| 开发方 | Ziyang-Li-AILab |
+| 定位 | 天文基础模型 |
+| 论文 | "AstroIR: A Astronomy Foundation Model for Dawn of Starbase-10K" |
+| GitHub | https://github.com/Ziyang-Li-AILab/AstroIR |
+
+**与天问关系**: AstroIR 专注天文感知层（星体分类/光谱分析），天问专注认知层，两者可垂直整合。
 
 ---
 

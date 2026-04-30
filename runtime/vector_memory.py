@@ -2,6 +2,12 @@
 Hermes-AGI Vector Memory System
 向量记忆系统 - 支持语义搜索和相似任务检索
 使用ChromaDB作为向量数据库
+
+增强功能:
+- 集成sentence-transformers进行语义嵌入
+- 支持论文/文献的向量表示和搜索
+- 与literature_researcher.py无缝集成
+- RAG能力增强
 """
 
 import os
@@ -12,6 +18,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from sentence_transformers import SentenceTransformer
 import hashlib
+import numpy as np
 
 # 简单的向量数据库实现（不依赖ChromaDB）
 class SimpleVectorStore:
@@ -103,6 +110,49 @@ class Experience:
     @staticmethod
     def from_dict(data: Dict) -> 'Experience':
         return Experience(**data)
+
+# ============ 论文数据模型（兼容literature_researcher.py）============
+
+@dataclass
+class Paper:
+    """论文对象 - 与literature_researcher.py中的Paper兼容"""
+    id: str
+    title: str
+    authors: List[str]
+    abstract: str
+    categories: List[str]
+    published_date: str
+    updated_date: str
+    citations: int = 0
+    pdf_url: str = ""
+    arxiv_url: str = ""
+    relevance_score: float = 0.0
+    related_ids: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "authors": self.authors,
+            "abstract": self.abstract,
+            "categories": self.categories,
+            "published_date": self.published_date,
+            "updated_date": self.updated_date,
+            "citations": self.citations,
+            "pdf_url": self.pdf_url,
+            "arxiv_url": self.arxiv_url,
+            "relevance_score": self.relevance_score,
+            "related_ids": self.related_ids,
+        }
+
+    @staticmethod
+    def from_dict(data: Dict) -> 'Paper':
+        return Paper(**data)
+
+    def to_search_text(self) -> str:
+        """转换为搜索文本"""
+        authors_str = ", ".join(self.authors[:3]) + (" et al." if len(self.authors) > 3 else "")
+        return f"{self.title} {authors_str} {self.abstract}"
 
 # ============ 向量记忆系统 ============
 
@@ -241,6 +291,325 @@ class VectorMemory:
             "total_patterns": self.patterns_store.count(),
         }
 
+# ============ 增强型向量记忆系统（RAG增强）============
+
+class EnhancedVectorMemory:
+    """
+    增强型向量记忆系统
+
+    专为RAG和文献检索设计的功能:
+    - 论文向量化存储和语义搜索
+    - 支持批量添加论文
+    - 与literature_researcher.py无缝集成
+    - 异步API设计
+    """
+
+    # 默认嵌入模型
+    DEFAULT_MODEL = 'all-MiniLM-L6-v2'
+    # 向量维度 (all-MiniLM-L6-v2 输出384维)
+    DIMENSION = 384
+
+    def __init__(self, memory_dir: str = "./paper_memory", model_name: str = None):
+        """
+        初始化增强型向量记忆
+
+        Args:
+            memory_dir: 论文向量存储目录
+            model_name: sentence-transformers模型名称，默认all-MiniLM-L6-v2
+        """
+        self.memory_dir = Path(memory_dir)
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
+
+        # 初始化嵌入模型
+        self.model_name = model_name or self.DEFAULT_MODEL
+        self.embedder = SentenceTransformer(self.model_name)
+
+        # 论文向量存储
+        self.papers_store = SimpleVectorStore(dimension=self.DIMENSION)
+
+        # 元数据索引 (paper_id -> metadata)
+        self.metadata_index: Dict[str, Dict] = {}
+
+        # 加载已有数据
+        self._load_papers_store()
+
+    def _get_embedding(self, text: str) -> np.ndarray:
+        """获取文本嵌入向量"""
+        return self.embedder.encode(text)
+
+    def _paper_to_search_text(self, paper: Paper) -> str:
+        """将论文转换为搜索文本"""
+        authors_str = ", ".join(paper.authors[:3])
+        if len(paper.authors) > 3:
+            authors_str += " et al."
+        return f"{paper.title} {authors_str} {paper.abstract}"
+
+    def _load_papers_store(self):
+        """加载论文向量存储"""
+        papers_file = self.memory_dir / "papers_vectors.json"
+
+        if papers_file.exists():
+            try:
+                self.papers_store.load(str(papers_file))
+
+                # 重建元数据索引
+                for metadata in self.papers_store.metadata:
+                    if "paper_id" in metadata:
+                        self.metadata_index[metadata["paper_id"]] = metadata
+
+                print(f"[EnhancedVectorMemory] Loaded {self.papers_store.count()} paper embeddings")
+            except Exception as e:
+                print(f"[EnhancedVectorMemory] Failed to load papers: {e}")
+
+    def _save_papers_store(self):
+        """保存论文向量存储"""
+        papers_file = self.memory_dir / "papers_vectors.json"
+        self.papers_store.save(str(papers_file))
+
+    # ============ 核心API ============
+
+    async def add_paper_embedding(self, paper: Paper) -> None:
+        """
+        为论文生成并存储向量
+
+        Args:
+            paper: Paper对象，包含title, authors, abstract等
+
+        Returns:
+            None
+        """
+        # 生成搜索文本
+        search_text = self._paper_to_search_text(paper)
+
+        # 生成嵌入向量
+        embedding = self._get_embedding(search_text)
+
+        # 构建元数据
+        metadata = {
+            "paper_id": paper.id,
+            "title": paper.title,
+            "authors": paper.authors,
+            "abstract": paper.abstract,
+            "categories": paper.categories,
+            "published_date": paper.published_date,
+            "citations": paper.citations,
+            "arxiv_url": paper.arxiv_url,
+            "pdf_url": paper.pdf_url,
+            "relevance_score": paper.relevance_score,
+            "indexed_at": datetime.now().isoformat(),
+        }
+
+        # 添加到向量存储
+        self.papers_store.add(
+            text=search_text,
+            embedding=embedding.tolist(),
+            metadata=metadata
+        )
+
+        # 更新索引
+        self.metadata_index[paper.id] = metadata
+
+        # 保存
+        self._save_papers_store()
+
+        print(f"[EnhancedVectorMemory] Added embedding for paper: {paper.title[:50]}...")
+
+    async def add_papers_batch(self, papers: List[Paper]) -> int:
+        """
+        批量添加论文向量
+
+        Args:
+            papers: Paper对象列表
+
+        Returns:
+            成功添加的数量
+        """
+        added_count = 0
+
+        for paper in papers:
+            try:
+                await self.add_paper_embedding(paper)
+                added_count += 1
+            except Exception as e:
+                print(f"[EnhancedVectorMemory] Failed to add paper {paper.id}: {e}")
+
+        return added_count
+
+    async def search_similar_papers(self, query: str, top_k: int = 5) -> List[Paper]:
+        """
+        语义搜索相似论文
+
+        Args:
+            query: 查询文本（可以是问题、关键词或描述）
+            top_k: 返回结果数量
+
+        Returns:
+            Paper对象列表，按相似度降序排列
+        """
+        # 生成查询向量
+        query_embedding = self._get_embedding(query)
+
+        # 搜索
+        results = self.papers_store.search(query_embedding.tolist(), k=top_k)
+
+        # 转换为Paper对象
+        papers = []
+        for result in results:
+            try:
+                metadata = result["metadata"]
+                paper = Paper(
+                    id=metadata.get("paper_id", ""),
+                    title=metadata.get("title", ""),
+                    authors=metadata.get("authors", []),
+                    abstract=metadata.get("abstract", ""),
+                    categories=metadata.get("categories", []),
+                    published_date=metadata.get("published_date", ""),
+                    updated_date=metadata.get("updated_date", ""),
+                    citations=metadata.get("citations", 0),
+                    pdf_url=metadata.get("pdf_url", ""),
+                    arxiv_url=metadata.get("arxiv_url", ""),
+                    relevance_score=result["score"],
+                )
+                papers.append(paper)
+            except Exception as e:
+                print(f"[EnhancedVectorMemory] Failed to parse paper result: {e}")
+
+        return papers
+
+    async def search_by_embedding(self, embedding: np.ndarray, top_k: int = 5) -> List[Paper]:
+        """
+        基于已有向量搜索相似论文
+
+        Args:
+            embedding: 查询向量（numpy数组）
+            top_k: 返回结果数量
+
+        Returns:
+            Paper对象列表，按相似度降序排列
+        """
+        # 确保embedding是列表
+        if isinstance(embedding, np.ndarray):
+            embedding = embedding.tolist()
+
+        # 搜索
+        results = self.papers_store.search(embedding, k=top_k)
+
+        # 转换为Paper对象
+        papers = []
+        for result in results:
+            try:
+                metadata = result["metadata"]
+                paper = Paper(
+                    id=metadata.get("paper_id", ""),
+                    title=metadata.get("title", ""),
+                    authors=metadata.get("authors", []),
+                    abstract=metadata.get("abstract", ""),
+                    categories=metadata.get("categories", []),
+                    published_date=metadata.get("published_date", ""),
+                    updated_date=metadata.get("updated_date", ""),
+                    citations=metadata.get("citations", 0),
+                    pdf_url=metadata.get("pdf_url", ""),
+                    arxiv_url=metadata.get("arxiv_url", ""),
+                    relevance_score=result["score"],
+                )
+                papers.append(paper)
+            except Exception as e:
+                print(f"[EnhancedVectorMemory] Failed to parse paper result: {e}")
+
+        return papers
+
+    async def get_paper_by_id(self, paper_id: str) -> Optional[Paper]:
+        """
+        根据ID获取论文
+
+        Args:
+            paper_id: 论文ID
+
+        Returns:
+            Paper对象或None
+        """
+        if paper_id not in self.metadata_index:
+            return None
+
+        metadata = self.metadata_index[paper_id]
+        return Paper(
+            id=metadata.get("paper_id", ""),
+            title=metadata.get("title", ""),
+            authors=metadata.get("authors", []),
+            abstract=metadata.get("abstract", ""),
+            categories=metadata.get("categories", []),
+            published_date=metadata.get("published_date", ""),
+            updated_date=metadata.get("updated_date", ""),
+            citations=metadata.get("citations", 0),
+            pdf_url=metadata.get("pdf_url", ""),
+            arxiv_url=metadata.get("arxiv_url", ""),
+            relevance_score=metadata.get("relevance_score", 0.0),
+        )
+
+    async def get_paper_count(self) -> int:
+        """获取已索引的论文数量"""
+        return self.papers_store.count()
+
+    def get_stats(self) -> Dict:
+        """获取统计信息"""
+        return {
+            "total_papers": self.papers_store.count(),
+            "model": self.model_name,
+            "dimension": self.DIMENSION,
+            "memory_dir": str(self.memory_dir),
+        }
+
+    # ============ 与literature_researcher集成 ============
+
+    async def index_research_state(self, research_state) -> int:
+        """
+        从LiteratureResearcher的ResearchState索引论文
+
+        Args:
+            research_state: LiteratureResearcher.research()返回的ResearchState对象
+
+        Returns:
+            索引的论文数量
+        """
+        return await self.add_papers_batch(research_state.papers)
+
+    async def search_and_rank(
+        self,
+        query: str,
+        papers: List[Paper],
+        top_k: int = 5
+    ) -> List[Tuple[Paper, float]]:
+        """
+        在给定论文集中搜索并排序
+
+        Args:
+            query: 查询文本
+            papers: 候选论文列表（通常来自LiteratureResearcher.research()）
+            top_k: 返回数量
+
+        Returns:
+            (Paper, score)元组列表，按分数降序
+        """
+        # 为所有论文生成向量（如果尚未生成）
+        if not self.papers_store.count():
+            await self.add_papers_batch(papers)
+
+        # 语义搜索
+        results = await self.search_similar_papers(query, top_k=top_k * 2)
+
+        # 与候选集交叉，过滤并重新排序
+        paper_ids = {p.id for p in papers}
+        ranked: List[Tuple[Paper, float]] = []
+
+        for paper in results:
+            if paper.id in paper_ids:
+                ranked.append((paper, paper.relevance_score))
+
+        # 按分数排序
+        ranked.sort(key=lambda x: x[1], reverse=True)
+
+        return ranked[:top_k]
+
 # ============ 集成到Agent ============
 
 class MemoryIntegratedAgent:
@@ -275,64 +644,153 @@ class MemoryIntegratedAgent:
 
         return result
 
+# ============ 便捷函数 ============
+
+def create_enhanced_memory(memory_dir: str = "./paper_memory") -> EnhancedVectorMemory:
+    """创建增强型向量记忆实例"""
+    return EnhancedVectorMemory(memory_dir=memory_dir)
+
+
 # ============ 示例用法 ============
 
-async def demo():
-    """演示向量记忆"""
-    print("=" * 50)
-    print("Hermes-AGI Vector Memory Demo")
-    print("=" * 50)
+async def demo_enhanced():
+    """演示增强型向量记忆"""
+    print("=" * 60)
+    print("EnhancedVectorMemory RAG Demo")
+    print("=" * 60)
 
-    memory = VectorMemory(memory_dir="./demo_memory")
+    # 创建增强型向量记忆
+    memory = EnhancedVectorMemory(memory_dir="./demo_paper_memory")
 
-    # 添加示例经验
-    print("\n添加示例经验...")
+    # 创建示例论文
+    sample_papers = [
+        Paper(
+            id="2024.12345",
+            title="Deep Learning for Galaxy Classification",
+            authors=["Zhang Wei", "Li Ming", "Wang Fang"],
+            abstract="We propose a novel deep learning approach for automated galaxy morphology classification. Our method achieves 95% accuracy on the Galaxy Zoo dataset.",
+            categories=["astro-ph.GA", "cs.CV"],
+            published_date="2024-01-15",
+            updated_date="2024-01-20",
+            citations=45,
+            arxiv_url="https://arxiv.org/abs/2024.12345"
+        ),
+        Paper(
+            id="2024.23456",
+            title="Transformer-based Star catalogs Classification",
+            authors=["Chen Jian", "Liu Yang"],
+            abstract="This paper presents a transformer architecture for stellar classification from photometric data. We demonstrate improved performance over traditional CNN methods.",
+            categories=["astro-ph.SR", "cs.LG"],
+            published_date="2024-02-10",
+            updated_date="2024-02-15",
+            citations=32,
+            arxiv_url="https://arxiv.org/abs/2024.23456"
+        ),
+        Paper(
+            id="2024.34567",
+            title="Graph Neural Networks for Exoplanet Detection",
+            authors=["Wang Lei", "Zhou Jing", "Huang Yun"],
+            abstract="We introduce a GNN-based method for detecting exoplanet candidates from transit light curves. Our approach shows robustness to noise and missing data.",
+            categories=["astro-ph.EP", "cs.AI"],
+            published_date="2024-03-05",
+            updated_date="2024-03-10",
+            citations=28,
+            arxiv_url="https://arxiv.org/abs/2024.34567"
+        ),
+    ]
 
-    memory.record_success(
-        task="创建用户登录的后端API",
-        solution="使用JWT认证，实现refresh token机制，密码使用bcrypt加密",
-        skills=["Backend", "Security"],
-        intent="Execute.Develop.Backend.API",
-        complexity="medium"
+    # 添加论文
+    print("\n📚 Indexing sample papers...")
+    count = await memory.add_papers_batch(sample_papers)
+    print(f"   Indexed {count} papers")
+
+    # 语义搜索
+    print("\n🔍 Search: 'machine learning for astronomical objects'")
+    results = await memory.search_similar_papers(
+        "machine learning for astronomical objects",
+        top_k=3
     )
+    for i, paper in enumerate(results, 1):
+        print(f"\n   [{i}] {paper.title}")
+        print(f"       Score: {paper.relevance_score:.3f}")
+        print(f"       Authors: {', '.join(paper.authors[:2])}")
+        print(f"       Abstract: {paper.abstract[:80]}...")
 
-    memory.record_success(
-        task="设计电商系统架构",
-        solution="采用微服务架构，使用Redis做缓存，MySQL做主存储",
-        skills=["Architecture", "Database"],
-        intent="Execute.Analyze.Architecture",
-        complexity="high"
-    )
-
-    memory.record_failure(
-        task="处理高并发秒杀",
-        error="库存超卖问题，使用分布式锁解决",
-        skills=["Backend", "Database"],
-        intent="Execute.Develop.Backend.API"
-    )
-
-    # 搜索相似经验
-    print("\n搜索相似经验: '用户认证和授权'")
-    results = memory.search_similar_experiences("用户认证和授权", k=2)
-    for r in results:
-        print(f"\n  相似度: {r['score']:.3f}")
-        print(f"  任务: {r['metadata'].get('task_description', 'N/A')}")
-        print(f"  解决方案: {r['metadata'].get('solution', 'N/A')[:100]}...")
-
-    # 搜索模式
-    print("\n搜索模式: '微服务'")
-    results = memory.search_patterns("微服务", k=2)
-    for r in results:
-        print(f"  - {r['metadata'].get('type', 'N/A')}: {r['score']:.3f}")
+    # 基于向量搜索
+    print("\n🔍 Search by embedding...")
+    query_emb = memory._get_embedding("deep learning for star classification")
+    results = await memory.search_by_embedding(query_emb, top_k=2)
+    for paper in results:
+        print(f"   - {paper.title} (score: {paper.relevance_score:.3f})")
 
     # 统计
-    print(f"\n统计: {memory.get_stats()}")
+    print(f"\n📊 Stats: {memory.get_stats()}")
 
     # 清理演示目录
     import shutil
-    if Path("./demo_memory").exists():
-        shutil.rmtree("./demo_memory")
+    if Path("./demo_paper_memory").exists():
+        shutil.rmtree("./demo_paper_memory")
+
+
+async def demo_integration():
+    """演示与LiteratureResearcher集成"""
+    print("\n" + "=" * 60)
+    print("Integration with LiteratureResearcher Demo")
+    print("=" * 60)
+
+    # 这个演示展示了如何将两个模块结合使用
+    from runtime.literature_researcher import LiteratureResearcher, Paper as LRPaper
+
+    researcher = LiteratureResearcher()
+    memory = EnhancedVectorMemory(memory_dir="./demo_integration_memory")
+
+    # 模拟从researcher获取论文
+    print("\n📥 Simulating LiteratureResearcher workflow...")
+
+    # 创建兼容的Paper对象
+    lr_papers = [
+        LRPaper(
+            id=f"sim-{i}",
+            title=f"Research Paper on Topic {i}",
+            authors=[f"Author {j}" for j in range(3)],
+            abstract=f"This is an abstract for research paper number {i}...",
+            categories=["cs.AI"],
+            published_date="2024-01-01",
+            updated_date="2024-01-02",
+        )
+        for i in range(5)
+    ]
+
+    # 转换为EnhancedVectorMemory使用的Paper
+    papers = [
+        Paper(
+            id=p.id,
+            title=p.title,
+            authors=p.authors,
+            abstract=p.abstract,
+            categories=p.categories,
+            published_date=p.published_date,
+            updated_date=p.updated_date,
+            citations=p.citations,
+            arxiv_url=p.arxiv_url,
+        )
+        for p in lr_papers
+    ]
+
+    # 索引
+    await memory.add_papers_batch(papers)
+
+    # 搜索
+    results = await memory.search_similar_papers("artificial intelligence research", top_k=3)
+    print(f"\n🔍 Found {len(results)} relevant papers")
+
+    # 清理
+    import shutil
+    if Path("./demo_integration_memory").exists():
+        shutil.rmtree("./demo_integration_memory")
+
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(demo())
+    asyncio.run(demo_enhanced())
+    asyncio.run(demo_integration())
