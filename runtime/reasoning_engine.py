@@ -195,6 +195,16 @@ class ModelConfig:
             model_type="openai_compatible"
         )
 
+    @classmethod
+    def minimax_api(cls, api_key: str, model: str = "MiniMax-Text-01"):
+        """MiniMax API配置 - OpenAI兼容格式"""
+        return cls(
+            name=model,
+            endpoint="https://api.minimax.chat/v1",
+            api_key=api_key,
+            model_type="openai_compatible"
+        )
+
 
 @dataclass
 class ReasoningResult:

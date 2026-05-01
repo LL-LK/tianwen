@@ -33,13 +33,13 @@ agent = HermesAGI()
 dashboard = CycleStatisticsDashboard()
 
 
-async def call_longcat(message: str) -> dict:
-    """调用LongCat API"""
-    api_key = os.environ.get("LONGCAT_API_KEY")
+async def call_minimax(message: str) -> dict:
+    """调用MiniMax API"""
+    api_key = os.environ.get("MINIMAX_API_KEY")
     if not api_key:
-        return {"error": "LongCat API key not configured", "content": None}
+        return {"error": "MiniMax API key not configured", "content": None}
 
-    config = ModelConfig.longcat_api(api_key)
+    config = ModelConfig.minimax_api(api_key)
     client = httpx.AsyncClient(timeout=60.0)
 
     try:
@@ -151,8 +151,8 @@ async def chat():
     })
 
     try:
-        # 调用LongCat API
-        llm_result = await call_longcat(message)
+        # 调用MiniMax API
+        llm_result = await call_minimax(message)
 
         if llm_result.get("error"):
             # 如果API调用失败，返回简化响应
