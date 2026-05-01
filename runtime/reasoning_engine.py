@@ -185,6 +185,16 @@ class ModelConfig:
         """Ollama本地部署配置"""
         return cls(name=model, endpoint=endpoint, model_type="ollama")
 
+    @classmethod
+    def longcat_api(cls, api_key: str, model: str = "LongCat-Flash-Thinking"):
+        """LongCat API配置 - OpenAI兼容格式"""
+        return cls(
+            name=model,
+            endpoint="https://api.longcat.chat/openai/v1",
+            api_key=api_key,
+            model_type="openai_compatible"
+        )
+
 
 @dataclass
 class ReasoningResult:
