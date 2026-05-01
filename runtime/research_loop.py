@@ -1,10 +1,16 @@
 """
-天问-AGI 自动化研究闭环 v1.0
-ResearchLoop - 自动执行"文献调研→假说生成→验证→学习"全流程
+天问-AGI 自动化研究闭环 v2.0 (观测闭环增强版)
+ResearchLoop - 自动执行"文献调研→假说生成→验证→学习→观测"全流程
+
+v2.0 新增功能 (v3.6.0):
+- AstroPipeline 三阶段天体检测管道
+- EnhancedObservationScheduler 增强调度器
+- KeplerExoplanetClient 系外行星数据+凌星检测
 
 实现 Hermes 建议的 P0 优先级：
 - 自动化触发机制 (after_task 钩子)
 - 完整闭环验证演示
+- 观测闭环集成
 
 用法:
     loop = ResearchLoop()
@@ -14,14 +20,36 @@ ResearchLoop - 自动执行"文献调研→假说生成→验证→学习"全流
 import asyncio
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
+
+# v3.6.0 新增模块导入
+try:
+    from astro_pipeline import AstroPipeline, process_astro_image
+    ASTRO_PIPELINE_AVAILABLE = True
+except ImportError:
+    ASTRO_PIPELINE_AVAILABLE = False
+    AstroPipeline = None
+
+try:
+    from enhanced_observation_scheduler import EnhancedObservationScheduler, GeographicLocation
+    SCHEDULER_AVAILABLE = True
+except ImportError:
+    SCHEDULER_AVAILABLE = False
+    EnhancedObservationScheduler = None
+
+try:
+    from kepler_exoplanet_client import KeplerExoplanetClient, TransitSignal
+    KEPLER_CLIENT_AVAILABLE = True
+except ImportError:
+    KEPLER_CLIENT_AVAILABLE = False
+    KeplerExoplanetClient = None
 
 
 @dataclass
 class CycleResult:
-    """完整闭环结果"""
+    """完整闭环结果 (v2.0)"""
     topic: str
     cycle_id: str
     started_at: str
@@ -32,6 +60,10 @@ class CycleResult:
     discoveries: List[str] = field(default_factory=list)
     lessons_learned: List[str] = field(default_factory=list)
     success: bool = False
+    # v3.6.0 新增字段
+    detection_results: List[Dict] = field(default_factory=list)  # AstroPipeline检测结果
+    scheduled_observations: List[Dict] = field(default_factory=list)  # 调度观察结果
+    transit_signals: List[Any] = field(default_factory=list)  # 凌星信号
 
 
 class AfterTaskHook:
@@ -169,14 +201,16 @@ class AfterTaskHook:
 
 class ResearchLoop:
     """
-    自动化研究闭环 - 完整流程自动执行
+    自动化研究闭环 - 完整流程自动执行 (v2.0)
 
     工作流程:
     1. 文献调研 (literature_researcher)
     2. 假说生成 (hypothesis_generator)
     3. 假说验证 (hypothesis_tester)
     4. 追踪记录 (discovery_tracker)
-    5. 指导观测 (research_observatory_linker)
+    5. 天体检测 (AstroPipeline) [v3.6.0新增]
+    6. 观测调度 (EnhancedObservationScheduler) [v3.6.0新增]
+    7. 系外行星分析 (KeplerExoplanetClient) [v3.6.0新增]
     """
 
     def __init__(
@@ -185,7 +219,8 @@ class ResearchLoop:
         hypothesis_generator=None,
         hypothesis_tester=None,
         discovery_tracker=None,
-        linker=None
+        linker=None,
+        observation_location: Optional[GeographicLocation] = None
     ):
         self.literature_researcher = literature_researcher
         self.hypothesis_generator = hypothesis_generator
@@ -195,6 +230,20 @@ class ResearchLoop:
         self.hook = AfterTaskHook(self)
         self.auto_verify = True  # 自动验证开关
         self.cycle_history: List[CycleResult] = []
+
+        # v3.6.0 新增观测闭环模块
+        self.astro_pipeline = AstroPipeline() if ASTRO_PIPELINE_AVAILABLE else None
+        self.scheduler = EnhancedObservationScheduler() if SCHEDULER_AVAILABLE else None
+        self.kepler_client = KeplerExoplanetClient() if KEPLER_CLIENT_AVAILABLE else None
+        self.observation_location = observation_location  # 观测站位置
+
+        # 闭环统计 [v3.6.0新增]
+        self.cycle_statistics = {
+            "total_images_processed": 0,
+            "total_transit_signals_detected": 0,
+            "total_observations_scheduled": 0,
+            "discovery_to_observation_rate": 0.0  # 发现→观测转化率
+        }
 
     async def run_full_cycle(self, topic: str, targets: Optional[List[str]] = None) -> CycleResult:
         """
@@ -273,8 +322,78 @@ class ResearchLoop:
                 stats = await self.discovery_tracker.get_statistics()
                 print(f"  → 追踪统计: {stats}")
 
-            # ========== 步骤5: 指导观测 ==========
-            print(f"\n[Step 5/5] 指导观测")
+            # ========== [v3.6.0 新增] 步骤4.5: 天体检测 ==========
+            if self.astro_pipeline and targets:
+                print(f"\n[Step 4.5/7] 天体检测 (AstroPipeline)")
+                detection_results = []
+                for target in targets[:3]:  # 限制检测数量
+                    try:
+                        # 如果target是图像数据，直接分析
+                        # 如果是目标名称，需要先获取图像（这里用模拟数据演示）
+                        if isinstance(target, str) and target.endswith(('.fits', '.jpg', '.png')):
+                            detection = await self.astro_pipeline.analyze(target)
+                            detection_results.append(detection)
+                            print(f"  → {target}: 检测到 {len(detection.get('sources', []))} 个点源")
+                        else:
+                            print(f"  → {target}: 跳过（非图像文件）")
+                    except Exception as e:
+                        print(f"  → {target}: 检测失败 - {e}")
+                result.detection_results = detection_results
+                self.cycle_statistics["total_images_processed"] += len(detection_results)
+
+            # ========== [v3.6.0 新增] 步骤5: 观测调度 ==========
+            if self.scheduler and targets:
+                print(f"\n[Step 5/7] 观测调度 (EnhancedObservationScheduler)")
+                scheduled_observations = []
+                for target in targets[:3]:
+                    try:
+                        if hasattr(target, 'ra') and hasattr(target, 'dec'):
+                            # 如果是带有RA/Dec的目标对象
+                            from enhanced_observation_scheduler import VisibilityWindow, Constraints
+                            windows = await self.scheduler.compute_target_visibility(
+                                location=self.observation_location,
+                                target_ra=target.ra,
+                                target_dec=target.dec,
+                                period=(datetime.now(), datetime.now() + timedelta(days=7)),
+                                constraints=Constraints()
+                            )
+                            score = await self.scheduler.score_observation_candidate(
+                                target_ra=target.ra,
+                                target_dec=target.dec,
+                                time=datetime.now(),
+                                location=self.observation_location,
+                                moon_phase=0.3,
+                                cloud_coverage=0.2
+                            )
+                            scheduled_observations.append({
+                                "target": str(target),
+                                "visibility_windows": len(windows),
+                                "score": score
+                            })
+                            print(f"  → {target}: 评分 {score:.1f}, 可见窗口 {len(windows)}")
+                    except Exception as e:
+                        print(f"  → {target}: 调度失败 - {e}")
+                result.scheduled_observations = scheduled_observations
+                self.cycle_statistics["total_observations_scheduled"] += len(scheduled_observations)
+
+            # ========== [v3.6.0 新增] 步骤6: 系外行星凌星检测 ==========
+            if self.kepler_client and targets:
+                print(f"\n[Step 6/7] 系外行星凌星检测 (KeplerExoplanetClient)")
+                transit_signals = []
+                for target in targets[:3]:
+                    if isinstance(target, str) and ('kepler' in target.lower() or ' exoplanet' in target.lower()):
+                        try:
+                            time, flux = await self.kepler_client.get_lightcurve(target, "Kepler")
+                            signals = await self.kepler_client.detect_transit_signal(time, flux)
+                            transit_signals.extend(signals)
+                            print(f"  → {target}: 检测到 {len(signals)} 个凌星信号")
+                        except Exception as e:
+                            print(f"  → {target}: 凌星检测失败 - {e}")
+                result.transit_signals = transit_signals
+                self.cycle_statistics["total_transit_signals_detected"] += len(transit_signals)
+
+            # ========== 步骤7: 原指导观测 (保留兼容性) ==========
+            print(f"\n[Step 7/7] 指导观测")
             if self.linker and targets:
                 linked_plan = await self.linker.link(topic, targets)
                 result.discoveries = linked_plan.gap_filled_targets

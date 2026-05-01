@@ -188,6 +188,21 @@ class SkillRegistry:
                 ],
                 dependencies=["Backend", "Frontend"]
             ),
+            SkillInterface(
+                name="AstroPipeline",
+                description="天文图像分析管道 - 点源检测、恒星/星系分类、目标检测",
+                version="1.0",
+                input_schema=[
+                    SkillInput("image_data", "object", "天文图像数据", True),
+                ],
+                output_schema=[
+                    SkillOutput("sources", "list", "检测到的点源列表"),
+                    SkillOutput("detections", "list", "检测结果(STAR/GALAXY/QSO/nebula/galaxy)"),
+                    SkillOutput("summary", "dict", "分析摘要"),
+                ],
+                dependencies=[],
+                next_skills=[]
+            ),
         ]
 
         for skill in builtin_skills:
