@@ -34,7 +34,6 @@ COPY --from=builder /app/venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
 # Copy only necessary files (multi-stage optimization)
-COPY --from=builder /app/venv /app/venv
 COPY runtime/requirements.txt /app/
 COPY runtime/server.py /app/runtime/
 COPY runtime/main.py /app/runtime/
