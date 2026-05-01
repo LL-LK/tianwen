@@ -1,6 +1,7 @@
 """
-Hermes-AGI Agent Runtime
+Hermes-AGI Agent Runtime v2.0
 运行时主入口 - 整合认知、规划、执行引擎
+优化: 添加重试机制、错误分类、健康监控、真实after_task进化
 """
 
 import re
@@ -9,6 +10,15 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
+
+# 导入记忆系统
+try:
+    from memory_persistence import PersistentMemory, Experience
+    MEMORY_AVAILABLE = True
+except ImportError:
+    MEMORY_AVAILABLE = False
+    PersistentMemory = None
+    Experience = None
 
 # ============ 核心数据结构 ============
 
@@ -66,6 +76,154 @@ class ExecutionResult:
     plan: ExecutionPlan
     metrics: Dict[str, Any] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
+
+# ============ 错误分类器 ============
+
+class ErrorType(Enum):
+    TRANSIENT = "transient"      # 临时错误，可重试
+    PERMANENT = "permanent"      # 永久错误，不重试
+    UNKNOWN = "unknown"          # 未知错误
+
+class ErrorClassifier:
+    """错误分类器 - 区分可重试和不可重试错误"""
+
+    TRANSIENT_PATTERNS = [
+        "timeout", "timed out",
+        "connection refused",
+        "network error", "network failure",
+        "rate limit", "too many requests",
+        "service unavailable",
+        "temporary failure"
+    ]
+
+    PERMANENT_PATTERNS = [
+        "syntax error", "parse error",
+        "invalid parameter", "invalid argument",
+        "permission denied", "unauthorized",
+        "not found", "does not exist",
+        "type error", "attribute error"
+    ]
+
+    def classify(self, error: str) -> ErrorType:
+        """分类错误类型"""
+        error_lower = error.lower()
+        if any(p in error_lower for p in self.TRANSIENT_PATTERNS):
+            return ErrorType.TRANSIENT
+        if any(p in error_lower for p in self.PERMANENT_PATTERNS):
+            return ErrorType.PERMANENT
+        return ErrorType.UNKNOWN
+
+    def is_retryable(self, error: str) -> bool:
+        """判断错误是否可重试"""
+        return self.classify(error) in (ErrorType.TRANSIENT, ErrorType.UNKNOWN)
+
+# ============ 重试引擎 ============
+
+class RetryableError(Exception):
+    """可重试的错误"""
+    pass
+
+class MaxRetriesExceeded(Exception):
+    """超过最大重试次数"""
+    pass
+
+class RetryEngine:
+    """指数退避重试引擎"""
+
+    def __init__(self, max_retries: int = 3, base_delay: float = 1.0, max_delay: float = 30.0):
+        self.max_retries = max_retries
+        self.base_delay = base_delay
+        self.max_delay = max_delay
+        self.classifier = ErrorClassifier()
+        self.total_retries = 0
+
+    async def execute_with_retry(self, func, *args, **kwargs):
+        """带重试的执行"""
+        last_error = None
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                result = await func(*args, **kwargs)
+                if attempt > 0:
+                    self.total_retries += 1
+                return result
+
+            except Exception as e:
+                error_msg = str(e)
+                last_error = e
+
+                if not self.classifier.is_retryable(error_msg):
+                    # 永久错误，不重试
+                    raise
+
+                if attempt < self.max_retries:
+                    # 计算延迟（指数退避）
+                    delay = min(self.base_delay * (2 ** attempt), self.max_delay)
+                    print(f"[Retry] 尝试 {attempt + 1} 失败，{delay:.1f}秒后重试: {error_msg[:100]}")
+                    import asyncio
+                    await asyncio.sleep(delay)
+                else:
+                    break
+
+        raise MaxRetriesExceeded(last_error)
+
+    def get_retry_stats(self) -> Dict:
+        return {"total_retries": self.total_retries}
+
+# ============ 健康监控器 ============
+
+class HealthMonitor:
+    """运行时健康监控"""
+
+    def __init__(self):
+        self.metrics = {
+            "total_tasks": 0,
+            "successful_tasks": 0,
+            "failed_tasks": 0,
+            "retried_tasks": 0,
+            "total_execution_time": 0.0
+        }
+        self.task_durations: List[float] = []
+
+    def record_task_start(self):
+        self.metrics["total_tasks"] += 1
+
+    def record_task_success(self, duration: float):
+        self.metrics["successful_tasks"] += 1
+        self.metrics["total_execution_time"] += duration
+        self.task_durations.append(duration)
+        # 只保留最近100个duration
+        if len(self.task_durations) > 100:
+            self.task_durations = self.task_durations[-100:]
+
+    def record_task_failure(self):
+        self.metrics["failed_tasks"] += 1
+
+    def record_retry(self):
+        self.metrics["retried_tasks"] += 1
+
+    def get_health_score(self) -> float:
+        """计算健康分数 (0-1)"""
+        total = self.metrics["total_tasks"]
+        if total == 0:
+            return 1.0
+
+        success_rate = self.metrics["successful_tasks"] / total
+        retry_rate = self.metrics["retried_tasks"] / total if total > 0 else 0
+
+        # 健康分数 = 成功率 * (1 - 重试惩罚)
+        return success_rate * (1 - retry_rate * 0.3)
+
+    def get_stats(self) -> Dict:
+        avg_time = 0
+        if self.task_durations:
+            avg_time = sum(self.task_durations) / len(self.task_durations)
+
+        return {
+            **self.metrics,
+            "health_score": self.get_health_score(),
+            "avg_execution_time": avg_time
+        }
 
 # ============ 认知引擎 ============
 
