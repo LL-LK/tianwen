@@ -87,7 +87,7 @@ async def index():
 
 @app.route("/api/chat", methods=["POST"])
 async def chat():
-    """处理对话请求"""
+    """处理对话请求 - 简化版（不调用LLM）"""
     data = await request.get_json()
     message = data.get("message", "")
     session_id = data.get("session_id")
@@ -115,46 +115,36 @@ async def chat():
     })
 
     try:
-        # 处理消息 - 由于HermesAGI是同步的，我们需要用run_in_executor
-        loop = asyncio.get_event_loop()
-        result = await agent.process(message)
+        # 简化响应 - 不调用LLM
+        response_text = f"收到消息: {message[:50]}..."
 
         # 准备响应
         response_data = {
             "session_id": session_id,
             "cognitive": {
-                "intent": result.task_model.type.value,
-                "entities": [
-                    {"type": e.type, "value": e.value, "confidence": e.confidence}
-                    for e in result.task_model.entities
-                ],
-                "skills": result.task_model.required_skills,
-                "complexity": result.task_model.complexity,
+                "intent": "chat",
+                "entities": [],
+                "skills": [],
+                "complexity": "low",
             },
             "plan": {
-                "task_id": result.plan.task_id,
-                "subtasks": [
-                    {
-                        "id": t.id,
-                        "name": t.name,
-                        "skill": t.skill,
-                        "status": t.status.value,
-                        "result": t.result,
-                    }
-                    for t in result.plan.subtasks
-                ],
-                "estimated_time": result.plan.estimated_time,
-                "risks": result.plan.risks,
+                "task_id": str(uuid.uuid4()),
+                "subtasks": [],
+                "estimated_time": "0s",
+                "risks": [],
             },
-            "output": result.output,
-            "metrics": result.metrics,
-            "status": result.status.value,
+            "output": response_text,
+            "metrics": {
+                "tokens_used": 0,
+                "latency_ms": 0,
+            },
+            "status": "simplified",
         }
 
         # 记录助手消息
         session["messages"].append({
             "role": "assistant",
-            "content": result.output,
+            "content": response_text,
             "timestamp": datetime.now().isoformat(),
             "data": response_data,
         })
