@@ -424,14 +424,62 @@ class EnhancedVectorMemory:
         Returns:
             成功添加的数量
         """
-        added_count = 0
+        if not papers:
+            return 0
 
-        for paper in papers:
+        # 批量生成搜索文本
+        search_texts = [self._paper_to_search_text(paper) for paper in papers]
+
+        # 批量生成嵌入向量 (更高效)
+        try:
+            embeddings = self.embedder.encode(search_texts)
+            if len(embeddings.shape) == 1:
+                embeddings = embeddings.reshape(1, -1)
+        except Exception as e:
+            print(f"[EnhancedVectorMemory] Batch embedding error: {e}")
+            # Fallback to sequential processing
+            added_count = 0
+            for paper in papers:
+                try:
+                    await self.add_paper_embedding(paper)
+                    added_count += 1
+                except Exception as ex:
+                    print(f"[EnhancedVectorMemory] Failed to add paper {paper.id}: {ex}")
+            return added_count
+
+        # 批量添加到向量存储
+        added_count = 0
+        for i, paper in enumerate(papers):
             try:
-                await self.add_paper_embedding(paper)
+                metadata = {
+                    "paper_id": paper.id,
+                    "title": paper.title,
+                    "authors": paper.authors,
+                    "abstract": paper.abstract,
+                    "categories": paper.categories,
+                    "published_date": paper.published_date,
+                    "citations": paper.citations,
+                    "arxiv_url": paper.arxiv_url,
+                    "pdf_url": paper.pdf_url,
+                    "relevance_score": paper.relevance_score,
+                    "indexed_at": datetime.now().isoformat(),
+                }
+
+                self.papers_store.add(
+                    text=search_texts[i],
+                    embedding=embeddings[i].tolist(),
+                    metadata=metadata
+                )
+
+                self.metadata_index[paper.id] = metadata
                 added_count += 1
+
             except Exception as e:
                 print(f"[EnhancedVectorMemory] Failed to add paper {paper.id}: {e}")
+
+        # 保存
+        self._save_papers_store()
+        print(f"[EnhancedVectorMemory] Batch added {added_count} papers")
 
         return added_count
 

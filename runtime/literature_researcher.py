@@ -388,6 +388,57 @@ class ChromaDBVectorStore(VectorStoreInterface):
             "collection_name": self.collection_name,
         }
 
+    def save(self, filepath: str) -> bool:
+        """
+        保存向量存储到文件
+
+        Args:
+            filepath: 保存路径
+
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            data = {
+                "vectors": self.vectors,
+                "metadata": self.metadata,
+                "texts": self.texts,
+                "dimension": self.dimension,
+                "collection_name": self.collection_name,
+            }
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False)
+            print(f"[ChromaDBVectorStore] Saved {len(self.vectors)} vectors to {filepath}")
+            return True
+        except Exception as e:
+            print(f"[ChromaDBVectorStore] Save error: {e}")
+            return False
+
+    def load(self, filepath: str) -> bool:
+        """
+        从文件加载向量存储
+
+        Args:
+            filepath: 文件路径
+
+        Returns:
+            bool: 是否成功
+        """
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            self.vectors = data.get("vectors", [])
+            self.metadata = data.get("metadata", [])
+            self.texts = data.get("texts", [])
+            self.dimension = data.get("dimension", 384)
+            self.collection_name = data.get("collection_name", self.collection_name)
+            print(f"[ChromaDBVectorStore] Loaded {len(self.vectors)} vectors from {filepath}")
+            return True
+        except Exception as e:
+            print(f"[ChromaDBVectorStore] Load error: {e}")
+            return False
+
+
 # ============ arXiv API 客户端 ============
 
 class ArxivAPI:
