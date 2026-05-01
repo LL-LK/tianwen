@@ -39,7 +39,13 @@ DEBUG = os.environ.get("DEBUG", "false").lower() in ("true", "1", "yes")
 API_KEY = os.environ.get("API_KEY", "")
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "")
 
-app = Quart(__name__, template_folder="../web", static_folder="../web")
+# Quart配置
+quart_config = {
+    "PROVIDE_AUTOMATIC_OPTIONS": True,
+    "TEMPLATES_AUTO_RELOAD": True,
+}
+
+app = Quart(__name__, template_folder="../web", static_folder="../web", **quart_config)
 
 # CORS配置：仅允许配置的域名
 if CORS_ORIGINS:
