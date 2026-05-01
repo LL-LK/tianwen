@@ -215,14 +215,52 @@ P2 (优化):
 
 - Issue #29: [Research] Embodied AI in Astronomical Observatories
 
-### B. 相关文件
+### B. v3.8.0 实现进度
 
-- observation_executor.py - 望远镜控制执行器
-- enhanced_observation_scheduler.py - TSI调度算法
-- astro_pipeline.py - 天体检测管道
-- realtime_data_processor.py - 实时数据流处理
+| 组件 | 文件 | 状态 | 说明 |
+|------|------|------|------|
+| SeestarMCPClient | runtime/seestar_mcp_client.py | ✅ 完成 (764行) | MCP协议+ZWO Seestar控制 |
+| EmbodiedObservationWorkflow | runtime/embodied_observation_workflow.py | ✅ 完成 (659行) | 完整观测闭环工作流 |
+| 集成测试 | runtime/tests/test_embodied_observation_integration.py | ✅ 完成 | 端到端测试覆盖 |
+
+### C. v3.8.0 架构图
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    天问-AGI v3.8.0 具身观测架构                       │
+└─────────────────────────────────────────────────────────────────────┘
+
+[astro_pipeline] ──► [embodied_observation_workflow] ──► [seestar_mcp_client]
+     │                          │                          │
+     ▼                          ▼                          ▼
+三阶段天体检测              具身观测工作流              MCP协议控制
+• 点源检测 (photutils)      • 图像获取                  • goto_target
+• 分类 (ResNet-50)          • 图像分析                  • start_imaging
+• 扩展目标 (YOLOv11s)        • 目标选择                  • safety_check
+                            • 安全检查                  • analyze_and_slew
+                            • 指向                      
+                            • 成像                      
+                            • 完成                      
+```
+
+### D. 关键技术实现
+
+**MCP协议集成**:
+```python
+class SeestarMCPClient:
+    async def analyze_and_slew(self, image_path: str) -> Dict:
+        # 图像→AI分析→目标选择→自动指向
+```
+
+**具身工作流**:
+```python
+class EmbodiedObservationWorkflow:
+    async def run_full_observation_cycle(self, image_input, observation_targets):
+        # 完整端到端具身观测闭环
+```
 
 ---
 
 *本文档由 Tianwen-AGI 自动生成*
 *生成时间: 2026-05-01 13:45 CST*
+*更新: 2026-05-01 14:15 CST (v3.8.0实现完成)*
