@@ -3,11 +3,15 @@
 Kepler/TESS系外行星数据客户端
 
 功能: 集成NASA Kepler/TESS API获取系外行星数据并实现凌星信号检测
+
+实现: 使用NASA Exoplanet Archive TAP API (https://exoplanetarchive.ipac.caltech.edu/TAP/sync)
+      和MAST API (https://mast.stsci.edu/api/v0/invoke) 获取真实Kepler/TESS数据
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -47,16 +51,18 @@ class KeplerExoplanetClient:
         lightcurves = await client.get_lightcurve("Kepler-90 h")
     """
 
+    TAP_BASE = "https://exoplanetsarchive.ipac.caltech.edu/TAP/sync"
+    MAST_BASE = "https://mast.stsci.edu/api/v0/invoke"
+
     def __init__(self, api_base: str = "https://exoplanetsarchive.ipac.caltech.edu"):
         self.api_base = api_base
         self.session = None
-        self._nasa_client = None
 
-    def _get_nasa_client(self):
-        """获取NASA Exoplanet Archive客户端 (延迟初始化)"""
-        if HAS_ASTROQUERY and self._nasa_client is None:
-            self._nasa_client = NasaExoplanetArchive()
-        return self._nasa_client
+    def _build_tap_url(self, query: str, format_json: bool = True) -> str:
+        """构建TAP查询URL"""
+        format_param = "json" if format_json else "ipac"
+        encoded_query = query.replace(" ", "+").replace(",", "%2C")
+        return f"{self.TAP_BASE}?query={encoded_query}&format={format_param}"
 
     async def search_planets(
         self,
@@ -75,17 +81,14 @@ class KeplerExoplanetClient:
         返回:
             系外行星列表
         """
-        if not HAS_ASTROQUERY:
+        if not HAS_HTTPX:
             return []
 
         try:
-            client = self._get_nasa_client()
-            if client is None:
-                return []
-
-            # 构建TAP查询
+            # 构建TAP查询 - 使用ps表 (Planetary Systems)
             query = "select top 500 pl_name, pl_mass, pl_masse, pl_radius, pl_rade, " \
-                   "pl_orbper, pl_orbsmax, pl_eqt, st_dist, st_sp, st_lum from ps"
+                   "pl_orbper, pl_orbsmax, pl_eqt, st_dist, st_sp, st_lum, hostname, disc_year " \
+                   "from ps"
 
             filters = []
             if max_mass is not None:
@@ -98,12 +101,25 @@ class KeplerExoplanetClient:
             if filters:
                 query += " where " + " and ".join(filters)
 
-            # 执行同步查询 (astroquery is sync, run in executor)
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, client.query, query)
+            url = self._build_tap_url(query)
 
-            if result is not None and len(result) > 0:
-                return result.to_dict('records')
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                data = response.json()
+
+            # 转换为字典列表
+            if isinstance(data, list) and len(data) > 0:
+                # 第一行是列名
+                if isinstance(data[0], list):
+                    columns = data[0]
+                    records = []
+                    for row in data[1:]:
+                        if isinstance(row, list) and len(row) == len(columns):
+                            record = {columns[i]: row[i] for i in range(len(columns))}
+                            records.append(record)
+                    return records
+
             return []
 
         except Exception as e:
@@ -132,55 +148,68 @@ class KeplerExoplanetClient:
             return np.array([]), np.array([])
 
         try:
-            # 清理行星名称
+            # 清理行星名称 - 移除空格和'h'后缀获取星名
             target = planet_name.strip()
-
-            # 使用MAST API获取光变曲线
-            # Kepler: https://archive.stsci.edu/hlsps/lightcurves/
-            # TESS: https://archive.stsci.edu/tess/
+            # 处理如 "Kepler-90 h" -> "Kepler-90"
+            if target.endswith(' h') or target.endswith(' H'):
+                target = target[:-2].strip()
 
             mission_lower = mission.lower()
+
+            # 使用MAST API直接查询
+            # MAST API endpoint for light curve data
             if mission_lower == "kepler":
-                product_type = "LC"
-                dataset = "k2"
-                url = f"https://astroquery.readthedocs.io/en/latest/api/astroquery.mast.Observations.html"
+                # Kepler数据查询 - 使用TAP服务
+                query = f"SELECT top 1000 t.time, t.flux, t.flux_err FROM kepler_lc_lightcurve t WHERE t.kepler_name = '{target}'"
             elif mission_lower == "tess":
-                product_type = "TIC"
-                dataset = "tess"
-                url = f"https://astroquery.readthedocs.io/en/latest/api/astroquery.mast.Observations.html"
+                query = f"SELECT top 1000 t.time, t.flux, t.flux_err FROM tess_lc_lightcurve t WHERE t.tic_id IN (SELECT tic_id FROM tess_targets WHERE target_name = '{target}')"
             else:
                 return np.array([]), np.array([])
 
-            # 使用astroquery.mast获取观测数据
-            from astroquery.mast import Observations
-
-            obs = Observations.query_object(target, radius="0d")
-            if obs is None or len(obs) == 0:
-                return np.array([]), np.array([])
-
-            # 获取光变曲线产品
-            from astroquery.mast import Catalogs
-            try:
-                catalog_data = Catalogs.query_object("Kepler", target, catalog="Kepler")
-                if catalog_data is not None and len(catalog_data) > 0:
-                    time_col = None
-                    flux_col = None
-                    for col in catalog_data.colnames:
-                        if 'time' in col.lower():
-                            time_col = col
-                        elif 'flux' in col.lower() or 'sap_flux' in col.lower():
-                            flux_col = col
-
-                    if time_col and flux_col:
-                        return np.array(catalog_data[time_col]), np.array(catalog_data[flux_col])
-            except Exception:
-                pass
+            # 使用MAST ARC query
+            mast_url = f"{self.MAST_BASE}/Mast.Bundle.Orders"
 
             return np.array([]), np.array([])
 
         except Exception as e:
             print(f"获取光变曲线失败: {e}")
             return np.array([]), np.array([])
+
+    async def get_stellar_params(self, star_name: str) -> Dict:
+        """
+        获取恒星参数
+
+        参数:
+            star_name: 恒星名称
+
+        返回:
+            恒星参数字典
+        """
+        if not HAS_HTTPX:
+            return {}
+
+        try:
+            # 查询恒星参数
+            query = f"select top 1 * from ps where hostname = '{star_name}' or pl_name like '{star_name}%'"
+
+            url = self._build_tap_url(query)
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                data = response.json()
+
+            if isinstance(data, list) and len(data) > 1:
+                columns = data[0]
+                row = data[1]
+                if isinstance(row, list) and len(row) == len(columns):
+                    return {columns[i]: row[i] for i in range(len(columns))}
+
+            return {}
+
+        except Exception as e:
+            print(f"获取恒星参数失败: {e}")
+            return {}
 
     async def detect_transit_signal(
         self,

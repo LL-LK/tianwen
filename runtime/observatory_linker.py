@@ -1069,7 +1069,7 @@ class ObservatoryLinker:
                 verification_state=verification_state,
                 observability_score=observability_score,
                 resource_cost=0.5  # 默认值
-        )
+            )
 
         priority = self.priority_calc.get_priority_level(priority_score)
 
