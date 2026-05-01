@@ -10,11 +10,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy requirements file first
+COPY runtime/requirements.txt /app/
+
 # Install Python dependencies in user space
 RUN python -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /app/runtime-requirements.txt
+    pip install --no-cache-dir -r /app/requirements.txt
 
 # =============================================================================
 # Stage 2: Runtime - Minimal image with runtime user
@@ -39,7 +42,7 @@ COPY runtime/*.py /app/runtime/
 COPY web /app/web
 
 # Install runtime dependencies only
-RUN pip install --no-cache-dir -r /app/runtime-requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Switch to non-root user
 USER pyapp
