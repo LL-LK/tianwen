@@ -6,3 +6,6 @@ aiofiles>=23.0.0
 
 # Vector search - ChromaDB (per Hermes recommendation)
 chromadb>=0.4.0
+
+# PDF parsing - pdfplumber for table and text extraction
+pdfplumber>=0.10.0

@@ -5,6 +5,8 @@ Hermes-AGI Web API Server
 
 import asyncio
 import sys
+import psutil
+import os
 from pathlib import Path
 
 # 添加runtime路径
@@ -167,12 +169,64 @@ async def evolution_stats():
 
 @app.route("/api/health", methods=["GET"])
 async def health():
-    """健康检查"""
-    return jsonify({
+    """健康检查 - 包含运行时依赖检查"""
+    health_data = {
         "status": "ok",
         "version": "2.2.0",
         "timestamp": datetime.now().isoformat(),
-    })
+        "system": {
+            "memory": {
+                "total_mb": psutil.virtual_memory().total / (1024 * 1024),
+                "available_mb": psutil.virtual_memory().available / (1024 * 1024),
+                "percent": psutil.virtual_memory().percent,
+            },
+            "cpu": {
+                "count": psutil.cpu_count(),
+                "percent": psutil.cpu_percent(interval=0.1),
+            },
+            "process": {
+                "pid": os.getpid(),
+                "threads": psutil.Process().num_threads(),
+                "memory_mb": psutil.Process().memory_info().rss / (1024 * 1024),
+            }
+        },
+        "dependencies": {
+            "agent_initialized": agent is not None,
+            "cognitive_engine": agent.cognitive is not None if agent else False,
+            "planning_engine": agent.planning is not None if agent else False,
+            "execution_engine": agent.execution is not None if agent else False,
+            "evolution_system": agent.evolution is not None if agent else False,
+        },
+        "sessions": {
+            "active_count": len(sessions),
+        }
+    }
+
+    # 检查数据库连接 (内存数据库，无需外部依赖)
+    health_data["database"] = {
+        "type": "in-memory",
+        "status": "connected",
+        "sessions_count": len(sessions),
+    }
+
+    # 检查外部API可达性 (模拟检查)
+    health_data["external_apis"] = {
+        "status": "not_configured",
+        "message": "无外部API依赖",
+    }
+
+    # 汇总状态
+    overall_healthy = True
+    if health_data["system"]["memory"]["percent"] > 90:
+        overall_healthy = False
+    if health_data["system"]["cpu"]["percent"] > 95:
+        overall_healthy = False
+    if not all(health_data["dependencies"].values()):
+        overall_healthy = False
+
+    health_data["status"] = "ok" if overall_healthy else "degraded"
+
+    return jsonify(health_data)
 
 if __name__ == "__main__":
     print("=" * 50)

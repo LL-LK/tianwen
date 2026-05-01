@@ -107,6 +107,147 @@
 
 ---
 
+## 数据挖掘模块 (DataMiner)
+
+### 概述
+
+`DataMiner` 是天问-AGI 的自动化数据挖掘引擎，从天文数据中发现模式、提取特征、检测异常。
+
+### 核心功能
+
+#### 1. 特征提取
+
+| 数据类型 | 提取特征 |
+|---------|---------|
+| **光变曲线** | 统计特征、FFT频域特征、周期特征（Lomb-Scargle）、趋势特征、峰谷特征 |
+| **光谱** | 谱线特征（发射/吸收线计数）、等效宽度、谱指数、连续谱估计 |
+
+#### 2. 模式发现
+
+- **聚类分析**: K-means + 轮廓系数优化，发现相似天体群
+- **PCA降维**: 主成分分析，识别主要变异来源
+- **周期性检测**: 类 autostar 的凌星信号发现
+
+#### 3. 关联分析
+
+- 两两变量相关性（Pearson/Spearman/Kendall）
+- 多波段关联分析
+
+#### 4. 异常检测
+
+- **Isolation Forest**: 基于机器学习的异常检测
+- **DBSCAN**: 基于密度的异常点识别
+- **统计方法**: Z-score 检测
+
+### 与 HypothesisTester 集成
+
+```python
+from data_miner import DataMiner
+from hypothesis_tester import HypothesisTester
+
+# 初始化
+miner = DataMiner()
+tester = HypothesisTester()
+miner.hypothesis_tester = tester
+
+# 执行挖掘 + 验证
+mining_report, test_reports = await miner.mine_and_test(
+    data,
+    source_type="light_curve",
+    observation_data=obs_data
+)
+```
+
+### 架构设计（借鉴）
+
+| 项目 | 借鉴点 |
+|------|-------|
+| **CosmosNet** | ResNet/EfficientNet 的特征提取 pipeline 设计 |
+| **autostar** | AI Agent 优化的周期检测、凌星信号发现 |
+| **Scikit-learn** | 标准化、聚类、PCA 等 ML 流程 |
+
+---
+
+## 天文观测指导模块 (ObservatoryLinker)
+
+### 概述
+
+`ObservatoryLinker` 是天问-AGI 的观测指导核心模块，将假说验证结果转化为可执行的观测计划。基于 Issue #15 的 P0 需求设计，实现了 LSST/ATLAS 风格的调度算法。
+
+### 核心功能
+
+#### 1. 假说→观测转化
+
+| 输入 | 处理 | 输出 |
+|------|------|------|
+| hypothesis_id | 验证状态查询 + 优先级计算 | ObservationPlan |
+
+#### 2. 优先级算法
+
+结合 LSST 特征驱动调度 + ATLAS 威胁评分机制：
+
+```
+Priority = f(科学价值, 验证紧迫性, 可观测性, 资源效率, 成本风险)
+```
+
+| 因素 | 权重 | 说明 |
+|------|------|------|
+| scientific_impact | 30% | 科学影响力 |
+| verification_urgency | 25% | 验证紧迫性 |
+| observability | 20% | 可观测性 |
+| resource_efficiency | 15% | 资源效率 |
+| cost_risk | 10% | 成本风险 |
+
+#### 3. 数据接口
+
+- **SIMBAD**: 天体识别、星表数据、多波段flux
+- **MPC**: 小行星轨道根数、NEO查询、威胁评估
+
+### 与 DiscoveryTracker 集成
+
+```python
+from observatory_linker import ObservatoryLinker
+from discovery_tracker import DiscoveryTracker
+
+# 初始化
+linker = ObservatoryLinker()
+tracker = DiscoveryTracker()
+
+# 获取待验证假说
+hypotheses = await tracker.get_unverified_hypotheses()
+
+# 生成观测计划
+plan = await linker.generate_observation_plan(
+    [h.id for h in hypotheses]
+)
+```
+
+### 观测计划结构
+
+```python
+@dataclass
+class ObservationPlan:
+    id: str
+    requests: List[ObservationRequest]  # 优先级排序的观测请求
+    estimated_duration: float           # 总时长(分钟)
+    priority_distribution: Dict         # 优先级分布统计
+    target_distribution: Dict          # 目标类型分布
+```
+
+### 调度算法研究
+
+| 系统 | 调度策略 | 天问实现 |
+|------|---------|---------|
+| **LSST** | 特征驱动调度 | PriorityCalculator 权重配置 |
+| **ATLAS** | 威胁评分实时响应 | verification_state 乘数调整 |
+| **TSI** | 可见性时间线 | 结合 observation_scheduler |
+
+---
+
 ## 触发条件
 
 当用户请求数据分析、数据处理、数据可视化、统计分析、机器学习建模，或需要从数据中提取业务洞察时，自动应用此技能。
+
+当需要从天文数据中挖掘模式、检测异常、发现周期信号时，使用 DataMiner 模块。
+
+当需要将假说验证结果转化为观测计划、指导望远镜调度时，使用 ObservatoryLinker 模块。

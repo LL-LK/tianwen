@@ -17,12 +17,21 @@ import asyncio
 import json
 import re
 import math
+import os
+import tempfile
 from typing import Dict, List, Any, Optional, Tuple, Set, Union
 from dataclasses import dataclass, field
 from datetime import datetime
 from urllib.parse import urlencode
 import urllib.request
 import urllib.error
+
+# PDF解析 - pdfplumber用于表格和文本提取
+try:
+    import pdfplumber
+    PDFPLUMBER_AVAILABLE = True
+except ImportError:
+    PDFPLUMBER_AVAILABLE = False
 
 # ============ 数据模型 ============
 
@@ -171,26 +180,37 @@ class VectorStoreInterface:
 
 class ChromaDBVectorStore(VectorStoreInterface):
     """
-    ChromaDB向量存储实现 - 预留RAG增强接口
+    向量存储实现 - 基于余弦相似度的内存向量存储
 
-    使用ChromaDB存储论文嵌入，支持:
-    - 论文语义相似度检索
+    使用与SimpleVectorStore相同的实现逻辑,支持:
+    - 论文嵌入存储和语义检索
     - 基于问题的相关论文推荐
     - 论文聚类和去重
     """
 
     def __init__(self, collection_name: str = "papers", persist_directory: str = None):
         """
-        初始化ChromaDB向量存储
+        初始化向量存储
 
         Args:
-            collection_name: 集合名称
-            persist_directory: 持久化目录
+            collection_name: 集合名称 (预留兼容性)
+            persist_directory: 持久化目录 (预留兼容性)
         """
         self.collection_name = collection_name
         self.persist_directory = persist_directory
-        self._client = None
-        self._collection = None
+        self.dimension = 384  # all-MiniLM-L6-v2 输出维度
+        self.vectors: List[List[float]] = []
+        self.metadata: List[Dict] = []
+        self.texts: List[str] = []
+
+    def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
+        """计算余弦相似度"""
+        dot_product = sum(x * y for x, y in zip(a, b))
+        norm_a = sum(x * x for x in a) ** 0.5
+        norm_b = sum(x * x for x in b) ** 0.5
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return dot_product / (norm_a * norm_b)
 
     async def add_papers(self, papers: List[Paper]) -> bool:
         """
@@ -202,11 +222,84 @@ class ChromaDBVectorStore(VectorStoreInterface):
         Returns:
             bool: 是否成功
         """
-        # TODO: 实现ChromaDB集成
-        # 1. 生成论文嵌入 (使用sentence-transformers)
-        # 2. 存储到ChromaDB集合
-        # 3. 关联论文元数据
-        raise NotImplementedError("ChromaDB integration pending")
+        try:
+            # 导入sentence-transformers进行嵌入
+            from sentence_transformers import SentenceTransformer
+
+            embedder = SentenceTransformer('all-MiniLM-L6-v2')
+
+            for paper in papers:
+                # 生成搜索文本
+                authors_str = ", ".join(paper.authors[:3])
+                if len(paper.authors) > 3:
+                    authors_str += " et al."
+                search_text = f"{paper.title} {authors_str} {paper.abstract}"
+
+                # 生成嵌入向量
+                embedding = embedder.encode(search_text).tolist()
+
+                # 构建元数据
+                meta = {
+                    "paper_id": paper.id,
+                    "title": paper.title,
+                    "authors": paper.authors,
+                    "abstract": paper.abstract,
+                    "categories": paper.categories,
+                    "published_date": paper.published_date,
+                    "updated_date": paper.updated_date,
+                    "citations": paper.citations,
+                    "arxiv_url": paper.arxiv_url,
+                    "pdf_url": paper.pdf_url,
+                    "source": paper.source,
+                }
+
+                # 添加到向量存储
+                self.vectors.append(embedding)
+                self.texts.append(search_text)
+                self.metadata.append(meta)
+
+            print(f"[ChromaDBVectorStore] Added {len(papers)} papers to vector store")
+            return True
+
+        except ImportError:
+            print("[ChromaDBVectorStore] sentence-transformers not installed, using fallback")
+            return await self._add_papers_fallback(papers)
+        except Exception as e:
+            print(f"[ChromaDBVectorStore] Error adding papers: {e}")
+            return False
+
+    async def _add_papers_fallback(self, papers: List[Paper]) -> bool:
+        """无嵌入模型时的简单实现"""
+        for paper in papers:
+            authors_str = ", ".join(paper.authors[:3])
+            if len(paper.authors) > 3:
+                authors_str += " et al."
+            search_text = f"{paper.title} {authors_str} {paper.abstract}"
+
+            # 使用简单的词袋向量作为fallback
+            words = search_text.lower().split()
+            vector = [1.0 if w in words else 0.0 for _ in range(min(384, len(words) * 10))]
+            while len(vector) < 384:
+                vector.append(0.0)
+
+            meta = {
+                "paper_id": paper.id,
+                "title": paper.title,
+                "authors": paper.authors,
+                "abstract": paper.abstract,
+                "categories": paper.categories,
+                "published_date": paper.published_date,
+                "updated_date": paper.updated_date,
+                "citations": paper.citations,
+                "arxiv_url": paper.arxiv_url,
+                "source": paper.source,
+            }
+
+            self.vectors.append(vector[:384])
+            self.texts.append(search_text)
+            self.metadata.append(meta)
+
+        return True
 
     async def search_similar(self, query: str, top_k: int = 5) -> List[Paper]:
         """
@@ -219,19 +312,81 @@ class ChromaDBVectorStore(VectorStoreInterface):
         Returns:
             List[Paper]: 相似论文列表
         """
-        # TODO: 实现语义检索
-        # 1. 将查询文本转为嵌入
-        # 2. 在ChromaDB中检索相似向量
-        # 3. 返回对应论文
-        raise NotImplementedError("ChromaDB search pending")
+        if not self.vectors:
+            return []
+
+        try:
+            from sentence_transformers import SentenceTransformer
+            embedder = SentenceTransformer('all-MiniLM-L6-v2')
+            query_embedding = embedder.encode(query).tolist()
+        except ImportError:
+            # fallback: 使用简单的词匹配
+            query_words = set(query.lower().split())
+            query_embedding = [1.0 if w in query_words else 0.0 for _ in range(384)]
+
+        # 计算相似度
+        scores = []
+        for i, vec in enumerate(self.vectors):
+            score = self._cosine_similarity(query_embedding, vec)
+            scores.append((i, score))
+
+        # 按分数排序
+        scores.sort(key=lambda x: x[1], reverse=True)
+
+        # 构建结果
+        results = []
+        for idx, score in scores[:top_k]:
+            meta = self.metadata[idx]
+            paper = Paper(
+                id=meta.get("paper_id", ""),
+                title=meta.get("title", ""),
+                authors=meta.get("authors", []),
+                abstract=meta.get("abstract", ""),
+                categories=meta.get("categories", []),
+                published_date=meta.get("published_date", ""),
+                updated_date=meta.get("updated_date", ""),
+                citations=meta.get("citations", 0),
+                pdf_url=meta.get("pdf_url", ""),
+                arxiv_url=meta.get("arxiv_url", ""),
+                source=meta.get("source", "unknown"),
+            )
+            paper.relevance_score = float(score)
+            results.append(paper)
+
+        return results
 
     async def delete_paper(self, paper_id: str) -> bool:
-        """删除论文"""
-        raise NotImplementedError("ChromaDB delete pending")
+        """
+        删除论文
+
+        Args:
+            paper_id: 论文ID
+
+        Returns:
+            bool: 是否成功
+        """
+        for i, meta in enumerate(self.metadata):
+            if meta.get("paper_id") == paper_id:
+                del self.vectors[i]
+                del self.texts[i]
+                del self.metadata[i]
+                print(f"[ChromaDBVectorStore] Deleted paper {paper_id}")
+                return True
+
+        return False
 
     async def get_collection_stats(self) -> Dict[str, Any]:
-        """获取集合统计信息"""
-        raise NotImplementedError("ChromaDB stats pending")
+        """
+        获取集合统计信息
+
+        Returns:
+            Dict: 统计信息
+        """
+        return {
+            "total_papers": len(self.vectors),
+            "dimension": self.dimension,
+            "collection_name": self.collection_name,
+        }
 
 # ============ arXiv API 客户端 ============
 
@@ -973,6 +1128,357 @@ class SemanticScholarClient:
         except Exception as e:
             print(f"[SemanticScholar] Parse error: {e}")
             return None
+
+
+# ============ PDF解析器 (基于pdfplumber) ============
+
+class PDFParser:
+    """
+    PDF解析器 - 提取论文PDF中的文本、表格和图表数据
+
+    使用pdfplumber库进行PDF解析，支持:
+    - 全文文本提取
+    - 表格检测和提取
+    - 页面级图像提取 (作为参考)
+    - 论文摘要自动生成
+
+    Note:
+        需要安装 pdfplumber: pip install pdfplumber
+    """
+
+    def __init__(self, cache_dir: str = None):
+        """
+        初始化PDF解析器
+
+        Args:
+            cache_dir: PDF缓存目录，默认为系统临时目录
+        """
+        self.cache_dir = cache_dir or tempfile.gettempdir()
+        self.pdfplumber_available = PDFPLUMBER_AVAILABLE
+
+    async def download_pdf(self, url: str, paper_id: str = None) -> Optional[str]:
+        """
+        下载PDF到本地缓存
+
+        Args:
+            url: PDF URL
+            paper_id: 论文ID (用于命名文件)
+
+        Returns:
+            str: 本地PDF文件路径，失败返回None
+        """
+        if not url:
+            return None
+
+        paper_id = paper_id or hash(url)
+        local_path = os.path.join(self.cache_dir, f"{paper_id}.pdf")
+
+        # 已下载则跳过
+        if os.path.exists(local_path):
+            return local_path
+
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={'User-Agent': 'Tianwen-AGI/1.0'}
+            )
+            with urllib.request.urlopen(req, timeout=120) as response:
+                pdf_data = response.read()
+
+            with open(local_path, 'wb') as f:
+                f.write(pdf_data)
+
+            print(f"[PDFParser] Downloaded: {local_path}")
+            return local_path
+
+        except Exception as e:
+            print(f"[PDFParser] Download error: {e}")
+            return None
+
+    async def parse_pdf(self, pdf_path: str,
+                        extract_tables: bool = True,
+                        extract_images: bool = False) -> Dict[str, Any]:
+        """
+        解析PDF文件
+
+        Args:
+            pdf_path: PDF文件路径
+            extract_tables: 是否提取表格
+            extract_images: 是否提取图像信息
+
+        Returns:
+            Dict: 包含text, tables, images, page_count等
+        """
+        if not self.pdfplumber_available:
+            return {
+                "error": "pdfplumber not installed. Run: pip install pdfplumber",
+                "text": "",
+                "tables": [],
+                "images": []
+            }
+
+        if not os.path.exists(pdf_path):
+            return {"error": f"PDF not found: {pdf_path}", "text": "", "tables": [], "images": []}
+
+        result = {
+            "text": "",
+            "tables": [],
+            "images": [],
+            "page_count": 0,
+            "metadata": {}
+        }
+
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                result["page_count"] = len(pdf.pages)
+                result["metadata"] = pdf.metadata or {}
+
+                all_text = []
+                for page_num, page in enumerate(pdf.pages, 1):
+                    # 提取文本
+                    page_text = page.extract_text() or ""
+                    if page_text:
+                        all_text.append(f"[Page {page_num}]\n{page_text}")
+
+                    # 提取表格
+                    if extract_tables:
+                        tables = page.extract_tables()
+                        for table_idx, table in enumerate(tables):
+                            if table:
+                                result["tables"].append({
+                                    "page": page_num,
+                                    "table_index": table_idx,
+                                    "data": table
+                                })
+
+                    # 提取图像信息
+                    if extract_images:
+                        images = page.images
+                        if images:
+                            result["images"].append({
+                                "page": page_num,
+                                "count": len(images)
+                            })
+
+                result["text"] = "\n\n".join(all_text)
+
+        except Exception as e:
+            result["error"] = str(e)
+
+        return result
+
+    async def extract_full_text(self, pdf_url: str = None,
+                                 pdf_path: str = None,
+                                 paper_id: str = None) -> str:
+        """
+        从PDF提取完整文本
+
+        Args:
+            pdf_url: PDF URL (会下载)
+            pdf_path: 本地PDF路径 (优先使用)
+            paper_id: 论文ID
+
+        Returns:
+            str: 提取的文本
+        """
+        # 确定PDF路径
+        target_path = pdf_path
+        if not target_path and pdf_url:
+            target_path = await self.download_pdf(pdf_url, paper_id)
+
+        if not target_path:
+            return ""
+
+        parsed = await self.parse_pdf(target_path, extract_tables=False, extract_images=False)
+        return parsed.get("text", "")
+
+    async def extract_tables(self, pdf_url: str = None,
+                             pdf_path: str = None,
+                             paper_id: str = None) -> List[Dict]:
+        """
+        从PDF提取所有表格
+
+        Args:
+            pdf_url: PDF URL (会下载)
+            pdf_path: 本地PDF路径 (优先使用)
+            paper_id: 论文ID
+
+        Returns:
+            List[Dict]: 表格列表，每个包含page, table_index, data
+        """
+        target_path = pdf_path
+        if not target_path and pdf_url:
+            target_path = await self.download_pdf(pdf_url, paper_id)
+
+        if not target_path:
+            return []
+
+        parsed = await self.parse_pdf(target_path, extract_tables=True, extract_images=False)
+        return parsed.get("tables", [])
+
+    def generate_summary_from_text(self, text: str, max_length: int = 2000) -> str:
+        """
+        根据提取的文本生成摘要
+
+        通过提取前几段和最后几段来生成伪摘要，
+        适合没有原始摘要的PDF论文。
+
+        Args:
+            text: PDF文本
+            max_length: 最大摘要长度
+
+        Returns:
+            str: 生成的摘要
+        """
+        if not text:
+            return ""
+
+        # 按段落分割
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+        if not paragraphs:
+            paragraphs = [text]
+
+        # 取开头和结尾的段落
+        n = min(3, len(paragraphs))
+        intro = paragraphs[:n]
+        conclusion = paragraphs[-n:] if len(paragraphs) > n * 2 else []
+
+        # 构建摘要
+        summary_parts = intro
+        if conclusion and conclusion != intro:
+            summary_parts.append("...")
+            summary_parts.extend(conclusion)
+
+        summary = " ".join(summary_parts)
+
+        # 截断
+        if len(summary) > max_length:
+            summary = summary[:max_length] + "..."
+
+        return summary
+
+    async def get_full_content(self, paper: "Paper") -> Dict[str, Any]:
+        """
+        获取论文的完整PDF内容
+
+        Args:
+            paper: Paper对象
+
+        Returns:
+            Dict: 包含text, tables, summary, metadata
+        """
+        result = {
+            "paper_id": paper.id,
+            "title": paper.title,
+            "text": "",
+            "tables": [],
+            "summary": "",
+            "metadata": {},
+            "pdf_url": paper.pdf_url
+        }
+
+        if not paper.pdf_url:
+            # 尝试从arxiv_url构建PDF URL
+            if paper.arxiv_url and "arxiv.org" in paper.arxiv_url:
+                arxiv_id = paper.arxiv_url.split("/")[-1]
+                result["pdf_url"] = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+
+        if not result["pdf_url"]:
+            return result
+
+        # 提取文本
+        text = await self.extract_full_text(
+            pdf_url=result["pdf_url"],
+            paper_id=paper.id
+        )
+        result["text"] = text
+
+        # 生成摘要
+        if text:
+            result["summary"] = self.generate_summary_from_text(text)
+
+        # 提取表格
+        tables = await self.extract_tables(
+            pdf_url=result["pdf_url"],
+            paper_id=paper.id
+        )
+        result["tables"] = tables
+
+        return result
+
+
+class PaperPDFAnalyzer:
+    """
+    论文PDF分析器 - 整合PDF解析和文献调研
+
+    提供对论文PDF的完整分析能力:
+    - 下载并解析PDF
+    - 提取文本和表格
+    - 自动生成摘要
+    - 提取关键信息 (方法、数据、结果)
+    """
+
+    def __init__(self, cache_dir: str = None):
+        """
+        初始化分析器
+
+        Args:
+            cache_dir: PDF缓存目录
+        """
+        self.parser = PDFParser(cache_dir=cache_dir)
+
+    async def analyze_paper(self, paper: "Paper") -> Dict[str, Any]:
+        """
+        分析单篇论文
+
+        Args:
+            paper: Paper对象
+
+        Returns:
+            Dict: 分析结果
+        """
+        content = await self.parser.get_full_content(paper)
+
+        return {
+            "paper_id": paper.id,
+            "title": paper.title,
+            "authors": paper.authors,
+            "published_date": paper.published_date,
+            "pdf_url": content["pdf_url"],
+            "full_text": content["text"],
+            "generated_summary": content["summary"],
+            "tables": content["tables"],
+            "table_count": len(content["tables"]),
+            "page_count": content["metadata"].get("page_count", 0),
+            "has_pdf": bool(content["text"])
+        }
+
+    async def analyze_papers(self, papers: List["Paper"],
+                             max_papers: int = 10) -> List[Dict[str, Any]]:
+        """
+        批量分析论文
+
+        Args:
+            papers: 论文列表
+            max_papers: 最大分析数量
+
+        Returns:
+            List[Dict]: 分析结果列表
+        """
+        results = []
+        for paper in papers[:max_papers]:
+            try:
+                analysis = await self.analyze_paper(paper)
+                results.append(analysis)
+            except Exception as e:
+                print(f"[PaperPDFAnalyzer] Error analyzing {paper.id}: {e}")
+                results.append({
+                    "paper_id": paper.id,
+                    "title": paper.title,
+                    "error": str(e)
+                })
+
+        return results
 
 
 # ============ 文献调研器 v2.1 ============

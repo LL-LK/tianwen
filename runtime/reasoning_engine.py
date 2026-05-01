@@ -1,25 +1,135 @@
 """
-天问-AGI 推理引擎模块 v1.0
+天问-AGI 推理引擎模块 v1.1
 ReasoningEngine - 多模型推理能力集成
 
 功能:
 - Qwen3-32B thinking/non-thinking双模式
 - DeepSeek-R1 API集成
 - 复杂度自动选择
+- LRU内存缓存（减少重复API调用）
 - 与literature_researcher.py无缝集成
 
 使用方法:
+    # 默认启用缓存
     engine = ReasoningEngine()
     result = await engine.think("复杂问题", complexity="high")
+
+    # 禁用缓存
+    engine = ReasoningEngine(cache_enabled=False)
+    result = await engine.think("问题", use_cache=False)
 """
 
 import asyncio
 import json
 import re
+import hashlib
+import time
 from typing import Dict, List, Any, Optional, Literal
 from dataclasses import dataclass, field
 from enum import Enum
+from collections import OrderedDict
 import httpx
+
+
+class LRUCache:
+    """
+    LRU (Least Recently Used) 内存缓存
+
+    特性:
+    - 基于输入hash的缓存键
+    - LRU淘汰策略
+    - 可配置缓存大小和TTL
+    """
+
+    def __init__(self, max_size: int = 100, ttl_seconds: int = 3600):
+        """
+        初始化LRU缓存
+
+        Args:
+            max_size: 最大缓存条目数
+            ttl_seconds: 缓存有效期（秒），默认1小时
+        """
+        self.max_size = max_size
+        self.ttl_seconds = ttl_seconds
+        self._cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
+
+    def _make_key(self, prompt: str, complexity: str = "", force_model: str = "") -> str:
+        """
+        生成缓存键
+
+        Args:
+            prompt: 输入提示
+            complexity: 复杂度等级
+            force_model: 强制模型
+
+        Returns:
+            str: SHA256哈希键
+        """
+        key_data = f"{prompt}|{complexity}|{force_model}"
+        return hashlib.sha256(key_data.encode()).hexdigest()
+
+    def get(self, prompt: str, complexity: str = "", force_model: str = "") -> Optional[Any]:
+        """
+        获取缓存
+
+        Args:
+            prompt: 输入提示
+            complexity: 复杂度等级
+            force_model: 强制模型
+
+        Returns:
+            Optional[Any]: 缓存结果或None
+        """
+        key = self._make_key(prompt, complexity, force_model)
+
+        if key not in self._cache:
+            return None
+
+        # 检查TTL
+        cached_result, timestamp = self._cache[key]
+        if time.time() - timestamp > self.ttl_seconds:
+            del self._cache[key]
+            return None
+
+        # 移动到末尾（最新使用）
+        self._cache.move_to_end(key)
+        return cached_result
+
+    def put(self, prompt: str, result: Any, complexity: str = "", force_model: str = ""):
+        """
+        存入缓存
+
+        Args:
+            prompt: 输入提示
+            result: 推理结果
+            complexity: 复杂度等级
+            force_model: 强制模型
+        """
+        key = self._make_key(prompt, complexity, force_model)
+
+        # 如果已存在，更新并移动到末尾
+        if key in self._cache:
+            self._cache.move_to_end(key)
+
+        self._cache[key] = (result, time.time())
+
+        # LRU淘汰：超过最大容量时移除最旧的
+        while len(self._cache) > self.max_size:
+            self._cache.popitem(last=False)
+
+    def clear(self):
+        """清空缓存"""
+        self._cache.clear()
+
+    def get_stats(self) -> Dict[str, Any]:
+        """获取缓存统计"""
+        return {
+            "enabled": True,
+            "max_size": self.max_size,
+            "ttl_seconds": self.ttl_seconds,
+            "current_size": len(self._cache),
+            "hit_rate": getattr(self, '_hit_rate', 0.0)
+        }
 
 
 class Complexity(Enum):
@@ -349,12 +459,31 @@ class ReasoningEngine:
     - MEDIUM: Qwen thinking模式 (逐步推理)
     - HIGH: Qwen thinking模式 (深度推理)
     - EXTREME: DeepSeek-R1 (最强推理)
+
+    支持LRU内存缓存，减少重复API调用
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+        cache_enabled: bool = True,
+        cache_max_size: int = 100,
+        cache_ttl_seconds: int = 3600
+    ):
+        """
+        初始化推理引擎
+
+        Args:
+            cache_enabled: 是否启用缓存，默认True
+            cache_max_size: 缓存最大条目数，默认100
+            cache_ttl_seconds: 缓存有效期（秒），默认3600
+        """
         self.qwen: Optional[QwenAdapter] = None
         self.deepseek: Optional[DeepSeekAdapter] = None
         self._config: Dict[str, ModelConfig] = {}
+
+        # 缓存配置
+        self.cache_enabled = cache_enabled
+        self._cache = LRUCache(max_size=cache_max_size, ttl_seconds=cache_ttl_seconds) if cache_enabled else None
 
     async def configure(
         self,
@@ -414,7 +543,8 @@ class ReasoningEngine:
         self,
         prompt: str,
         complexity: Optional[str] = None,
-        force_model: Optional[str] = None
+        force_model: Optional[str] = None,
+        use_cache: Optional[bool] = None
     ) -> ReasoningResult:
         """
         执行推理 - 主入口
@@ -423,6 +553,7 @@ class ReasoningEngine:
             prompt: 输入提示
             complexity: 强制复杂度 (low/medium/high/extreme)
             force_model: 强制使用模型 (qwen/deepseek)
+            use_cache: 是否使用缓存，默认使用缓存(True)，传入False可禁用
 
         Returns:
             ReasoningResult: 推理结果
@@ -433,35 +564,50 @@ class ReasoningEngine:
         else:
             comp = self._estimate_complexity(prompt)
 
+        # 缓存查找（当use_cache不为False且缓存启用时）
+        effective_use_cache = use_cache if use_cache is not None else self.cache_enabled
+        if effective_use_cache and self._cache:
+            cached_result = self._cache.get(prompt, comp.value, force_model or "")
+            if cached_result:
+                return cached_result
+
         # 强制模型
         if force_model:
             if force_model == "deepseek" and self.deepseek:
-                return await self.deepseek.think(prompt)
+                result = await self.deepseek.think(prompt)
             elif force_model == "qwen" and self.qwen:
-                return await self.qwen.think(prompt, thinking=True)
-
-        # 根据复杂度选择
-        if comp == Complexity.EXTREME:
-            if self.deepseek:
-                return await self.deepseek.think(prompt)
-            elif self.qwen:
-                return await self.qwen.think(prompt, thinking=True)
+                result = await self.qwen.think(prompt, thinking=True)
             else:
-                return ReasoningResult(content="错误: 未配置任何模型")
+                result = ReasoningResult(content="错误: 未配置指定模型")
+        else:
+            # 根据复杂度选择
+            if comp == Complexity.EXTREME:
+                if self.deepseek:
+                    result = await self.deepseek.think(prompt)
+                elif self.qwen:
+                    result = await self.qwen.think(prompt, thinking=True)
+                else:
+                    result = ReasoningResult(content="错误: 未配置任何模型")
 
-        elif comp in (Complexity.HIGH, Complexity.MEDIUM):
-            if self.qwen:
-                return await self.qwen.think(prompt, thinking=True)
-            elif self.deepseek:
-                return await self.deepseek.think(prompt)
-            else:
-                return ReasoningResult(content="错误: 未配置任何模型")
+            elif comp in (Complexity.HIGH, Complexity.MEDIUM):
+                if self.qwen:
+                    result = await self.qwen.think(prompt, thinking=True)
+                elif self.deepseek:
+                    result = await self.deepseek.think(prompt)
+                else:
+                    result = ReasoningResult(content="错误: 未配置任何模型")
 
-        else:  # LOW
-            if self.qwen:
-                return await self.qwen.think(prompt, thinking=False)
-            else:
-                return ReasoningResult(content="错误: 未配置Qwen模型")
+            else:  # LOW
+                if self.qwen:
+                    result = await self.qwen.think(prompt, thinking=False)
+                else:
+                    result = ReasoningResult(content="错误: 未配置Qwen模型")
+
+        # 缓存结果（当use_cache不为False且缓存启用时）
+        if effective_use_cache and self._cache and result:
+            self._cache.put(prompt, result, comp.value, force_model or "")
+
+        return result
 
     async def analyze_paper(
         self,
@@ -555,11 +701,20 @@ Gap {i}:
 
     def get_status(self) -> Dict:
         """获取引擎状态"""
-        return {
+        status = {
             "qwen_configured": self.qwen is not None,
             "deepseek_configured": self.deepseek is not None,
-            "available_models": list(self._config.keys())
+            "available_models": list(self._config.keys()),
+            "cache_enabled": self.cache_enabled
         }
+        if self._cache:
+            status["cache"] = self._cache.get_stats()
+        return status
+
+    def clear_cache(self):
+        """清空推理缓存"""
+        if self._cache:
+            self._cache.clear()
 
 
 # ============ 便捷函数 ============

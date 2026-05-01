@@ -13,10 +13,12 @@ import asyncio
 import json
 import uuid
 import re
+import numpy as np
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Literal, Tuple
+from typing import Dict, List, Any, Optional, Literal, Tuple, Union
 from dataclasses import dataclass, field
 from enum import Enum
+from scipy import stats
 
 
 class TestResult(Enum):
@@ -160,13 +162,31 @@ class HypothesisTester:
         predictions = hypothesis.predictions if hasattr(hypothesis, 'predictions') else []
         supporting_evidence = []
         contradicting_evidence = []
+        statistical_results = []
 
         for obs in observation_data:
             target = obs.get("target", "")
             obs_type = obs.get("type", "")
 
+            # 检查是否有数值型数据可进行统计检验
+            if "data" in obs and isinstance(obs["data"], dict):
+                numeric_data = self._extract_numeric_values(obs["data"])
+                if len(numeric_data) >= 3:
+                    stat_result = self._statistical_test_for_observation(obs, predictions)
+                    if stat_result:
+                        statistical_results.append(stat_result)
+                        if stat_result.get("significant"):
+                            supporting_evidence.append(
+                                f"统计检验支持: {stat_result['interpretation']}"
+                            )
+                        else:
+                            contradicting_evidence.append(
+                                f"统计检验不显著: {stat_result['interpretation']}"
+                            )
+                        continue
+
+            # 回退到关键词匹配
             for pred in predictions:
-                # 简单的关键词匹配验证
                 if self._matches_prediction(pred, obs):
                     supporting_evidence.append(
                         f"观测 {target} ({obs_type}) 支持预测: {pred}"
@@ -176,14 +196,75 @@ class HypothesisTester:
                         f"观测 {target} ({obs_type}) 与预测矛盾: {pred}"
                     )
 
-        passed = len(supporting_evidence) > len(contradicting_evidence) * 0.5
+        # 综合考虑统计结果和关键词匹配
+        total_supporting = len(supporting_evidence) + sum(1 for r in statistical_results if r.get("significant"))
+        total_contradicting = len(contradicting_evidence) + sum(1 for r in statistical_results if not r.get("significant"))
+        passed = total_supporting > total_contradicting * 0.5
 
         return {
             "outcome": "支持" if passed else "不支持",
             "passed": passed,
             "supporting_evidence": supporting_evidence,
-            "contradicting_evidence": contradicting_evidence
+            "contradicting_evidence": contradicting_evidence,
+            "statistical_tests": statistical_results
         }
+
+    def _extract_numeric_values(self, data: Dict) -> List[float]:
+        """从观测数据中提取数值"""
+        values = []
+        for v in data.values():
+            if isinstance(v, (int, float)):
+                values.append(float(v))
+            elif isinstance(v, list):
+                for item in v:
+                    if isinstance(item, (int, float)):
+                        values.append(float(item))
+        return values
+
+    def _statistical_test_for_observation(self, obs: Dict, predictions: List[str]) -> Optional[Dict]:
+        """对观测数据进行统计检验"""
+        if "data" not in obs or not isinstance(obs["data"], dict):
+            return None
+
+        numeric_data = self._extract_numeric_values(obs["data"])
+        if len(numeric_data) < 3:
+            return None
+
+        # 检查预测中是否包含数值比较
+        for pred in predictions:
+            pred_lower = pred.lower()
+            if any(kw in pred_lower for kw in ["高于", "低于", "大于", "小于", "相关", "差异"]):
+                # 尝试提取期望值
+                expected_val = self._extract_expected_value(pred)
+                if expected_val is not None:
+                    return self.statistical_ttest(numeric_data, expected_val)
+                # 检查是否有两组数据可比较 - 使用双样本t检验
+                if "compare" in pred_lower or "差异" in pred_lower:
+                    # 当数据量足够时，用单样本t检验与均值对比来检测差异
+                    mean_val = np.mean(numeric_data)
+                    return self.statistical_ttest(numeric_data, mean_val)
+
+        return None
+
+    def _extract_expected_value(self, prediction: str) -> Optional[float]:
+        """从预测文本中提取期望数值"""
+        patterns = [
+            r'高于?(\d+\.?\d*)',
+            r'低于?(\d+\.?\d*)',
+            r'大于?(\d+\.?\d*)',
+            r'小于?(\d+\.?\d*)',
+            r'等于?(\d+\.?\d*)',
+            r'(\d+\.?\d*)\s*以上',
+            r'(\d+\.?\d*)\s*以下'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, prediction)
+            if match:
+                try:
+                    return float(match.group(1))
+                except ValueError:
+                    continue
+        return None
 
     async def _test_with_literature(
         self,
@@ -195,23 +276,86 @@ class HypothesisTester:
         supporting_sources = []
         contradicting_sources = []
 
+        statement = hypothesis.statement if hasattr(hypothesis, 'statement') else ""
+
         for paper in literature_evidence:
             title = paper.get("title", "")
             abstract = paper.get("abstract", "")
-            statement = hypothesis.statement if hasattr(hypothesis, 'statement') else ""
+            full_text = paper.get("full_text", paper.get("content", ""))
 
-            if self._literature_supports(statement, title, abstract):
-                supporting_sources.append(f"文献支持: {title}")
-            elif self._literature_contradicts(statement, title, abstract):
+            # 综合判断文献证据：统计检验 + 关键词匹配
+            literature_result = self._analyze_literature_evidence(
+                statement, title, abstract, full_text
+            )
+
+            if literature_result["supports"]:
+                supporting_sources.append(f"文献支持: {title} ({literature_result['reason']})")
+            else:
                 supports = False
-                contradicting_sources.append(f"文献反驳: {title}")
+                contradicting_sources.append(f"文献反驳: {title} ({literature_result['reason']})")
 
         return {
             "supports": supports,
             "supporting_sources": supporting_sources,
             "contradicting_sources": contradicting_sources,
-            "notes": f"检验了 {len(literature_evidence)} 篇文献"
+            "notes": f"检验了 {len(literature_evidence)} 篇文献，发现 {len(supporting_sources)} 篇支持，{len(contradicting_sources)} 篇反驳"
         }
+
+    def _analyze_literature_evidence(
+        self,
+        statement: str,
+        title: str,
+        abstract: str,
+        full_text: str
+    ) -> Dict[str, Any]:
+        """综合分析文献证据，结合统计结果和关键词"""
+        text = f"{title} {abstract} {full_text}".lower()
+
+        # 统计显著性指标
+        significance_indicators = [
+            "p<0.05", "p<0.01", "p<0.001",
+            "显著", "高度显著", "极显著",
+            "significant", "highly significant",
+            "confident", "confidence interval"
+        ]
+
+        # 支持指标
+        support_indicators = [
+            "证实", "确认", "支持", "一致", "证明",
+            "confirmed", "supported", "verified", "demonstrated",
+            "consistent with", "in agreement"
+        ]
+
+        # 反驳指标
+        contradict_indicators = [
+            "否定", "反驳", "矛盾", "不支持",
+            "rejected", "contradicted", "inconsistent",
+            "disagreement", "contrary"
+        ]
+
+        # 检查统计显著性描述
+        has_significance = any(ind in text for ind in significance_indicators)
+
+        # 综合判断
+        support_count = sum(1 for ind in support_indicators if ind in text)
+        contradict_count = sum(1 for ind in contradict_indicators if ind in text)
+
+        # 如果有统计显著性描述，增加判断权重
+        if has_significance:
+            if support_count > contradict_count:
+                return {"supports": True, "reason": "统计显著支持"}
+            elif contradict_count > support_count:
+                return {"supports": False, "reason": "统计显著反驳"}
+            else:
+                return {"supports": True, "reason": "含统计显著性证据"}
+
+        # 回退到关键词匹配
+        if support_count > contradict_count:
+            return {"supports": True, "reason": f"关键词支持({support_count}项)"}
+        elif contradict_count > support_count:
+            return {"supports": False, "reason": f"关键词反驳({contradict_count}项)"}
+        else:
+            return {"supports": True, "reason": "证据模糊，按保守原则计为支持"}
 
     def _matches_prediction(self, prediction: str, observation: Dict) -> bool:
         """检查观测是否匹配预测"""
@@ -245,6 +389,264 @@ class HypothesisTester:
         text = f"{title} {abstract}".lower()
 
         return any(indicator in text for indicator in contradict_indicators)
+
+    def statistical_ttest(
+        self,
+        sample_data: List[float],
+        expected_mean: float,
+        alternative: str = "two-sided"
+    ) -> Dict[str, Any]:
+        """
+        单样本t检验
+
+        Args:
+            sample_data: 样本数据列表
+            expected_mean: 期望均值（零假设值）
+            alternative: 备择假设 ("two-sided", "greater", "less")
+
+        Returns:
+            包含统计结果的字典
+        """
+        if len(sample_data) < 2:
+            return {
+                "test_type": "one_sample_ttest",
+                "statistic": np.nan,
+                "p_value": np.nan,
+                "significant": False,
+                "result": TestResult.INCONCLUSIVE,
+                "interpretation": "样本数据不足，无法进行t检验"
+            }
+
+        sample = np.array(sample_data)
+        t_stat, p_value = stats.ttest_1samp(sample, expected_mean)
+
+        significant = p_value < 0.05
+        if alternative == "greater":
+            significant = t_stat > 0 and p_value < 0.05
+        elif alternative == "less":
+            significant = t_stat < 0 and p_value < 0.05
+
+        return {
+            "test_type": "one_sample_ttest",
+            "n": len(sample_data),
+            "mean": np.mean(sample),
+            "std": np.std(sample, ddof=1),
+            "t_statistic": t_stat,
+            "p_value": p_value,
+            "significant": significant,
+            "result": TestResult.CONFIRMED if significant else TestResult.INCONCLUSIVE,
+            "interpretation": self._interpret_ttest(t_stat, p_value, expected_mean)
+        }
+
+    def statistical_ttest_2sample(
+        self,
+        group1_data: List[float],
+        group2_data: List[float],
+        alternative: str = "two-sided",
+        equal_var: bool = True
+    ) -> Dict[str, Any]:
+        """
+        双样本t检验
+
+        Args:
+            group1_data: 第一组数据
+            group2_data: 第二组数据
+            alternative: 备择假设
+            equal_var: 是否假设方差相等
+
+        Returns:
+            包含统计结果的字典
+        """
+        if len(group1_data) < 2 or len(group2_data) < 2:
+            return {
+                "test_type": "two_sample_ttest",
+                "statistic": np.nan,
+                "p_value": np.nan,
+                "significant": False,
+                "result": TestResult.INCONCLUSIVE,
+                "interpretation": "样本数据不足，无法进行t检验"
+            }
+
+        g1 = np.array(group1_data)
+        g2 = np.array(group2_data)
+
+        t_stat, p_value = stats.ttest_ind(g1, g2, equal_var=equal_var)
+
+        significant = p_value < 0.05
+
+        return {
+            "test_type": "two_sample_ttest",
+            "n1": len(group1_data),
+            "n2": len(group2_data),
+            "mean1": np.mean(g1),
+            "mean2": np.mean(g2),
+            "std1": np.std(g1, ddof=1),
+            "std2": np.std(g2, ddof=1),
+            "t_statistic": t_stat,
+            "p_value": p_value,
+            "significant": significant,
+            "result": TestResult.CONFIRMED if significant else TestResult.INCONCLUSIVE,
+            "interpretation": self._interpret_2sample_ttest(t_stat, p_value, np.mean(g1), np.mean(g2))
+        }
+
+    def statistical_chisquare(
+        self,
+        observed: List[int],
+        expected: Optional[List[float]] = None
+    ) -> Dict[str, Any]:
+        """
+        卡方检验
+
+        Args:
+            observed: 观测频数
+            expected: 期望频数（若为None，则检验均匀分布）
+
+        Returns:
+            包含统计结果的字典
+        """
+        if len(observed) < 2:
+            return {
+                "test_type": "chisquare",
+                "statistic": np.nan,
+                "p_value": np.nan,
+                "significant": False,
+                "result": TestResult.INCONCLUSIVE,
+                "interpretation": "观测数据不足，无法进行卡方检验"
+            }
+
+        obs = np.array(observed)
+        if expected is None:
+            exp = np.full_like(obs, np.mean(obs), dtype=float)
+        else:
+            exp = np.array(expected)
+
+        # 确保期望值不为零
+        exp = np.where(exp == 0, 1e-10, exp)
+
+        chi2_stat, p_value = stats.chisquare(obs, f_exp=exp)
+
+        significant = p_value < 0.05
+
+        return {
+            "test_type": "chisquare",
+            "observed": list(obs),
+            "expected": list(exp),
+            "chi2_statistic": chi2_stat,
+            "p_value": p_value,
+            "significant": significant,
+            "result": TestResult.REJECTED if significant else TestResult.CONFIRMED,
+            "interpretation": self._interpret_chisquare(chi2_stat, p_value)
+        }
+
+    def statistical_correlation(
+        self,
+        x_data: List[float],
+        y_data: List[float],
+        method: str = "pearson"
+    ) -> Dict[str, Any]:
+        """
+        相关性检验
+
+        Args:
+            x_data: X变量数据
+            y_data: Y变量数据
+            method: 相关方法 ("pearson", "spearman", "kendall")
+
+        Returns:
+            包含统计结果的字典
+        """
+        if len(x_data) < 3 or len(y_data) < 3:
+            return {
+                "test_type": f"correlation_{method}",
+                "statistic": np.nan,
+                "p_value": np.nan,
+                "significant": False,
+                "result": TestResult.INCONCLUSIVE,
+                "interpretation": "样本数据不足，无法进行相关性检验"
+            }
+
+        x = np.array(x_data)
+        y = np.array(y_data)
+
+        if method == "pearson":
+            corr, p_value = stats.pearsonr(x, y)
+        elif method == "spearman":
+            corr, p_value = stats.spearmanr(x, y)
+        elif method == "kendall":
+            corr, p_value = stats.kendalltau(x, y)
+        else:
+            corr, p_value = stats.pearsonr(x, y)
+
+        significant = p_value < 0.05
+
+        return {
+            "test_type": f"correlation_{method}",
+            "n": len(x_data),
+            "correlation": corr,
+            "p_value": p_value,
+            "significant": significant,
+            "result": TestResult.CONFIRMED if significant else TestResult.INCONCLUSIVE,
+            "interpretation": self._interpret_correlation(corr, p_value)
+        }
+
+    def _interpret_ttest(self, t_stat: float, p_value: float, expected_mean: float) -> str:
+        """解释t检验结果"""
+        if p_value < 0.001:
+            significance = "极显著(p<0.001)"
+        elif p_value < 0.01:
+            significance = "高度显著(p<0.01)"
+        elif p_value < 0.05:
+            significance = "显著(p<0.05)"
+        else:
+            significance = "不显著(p>=0.05)"
+
+        direction = "大于" if t_stat > 0 else "小于"
+        return f"样本均值显著{direction}期望均值({expected_mean})，{significance}"
+
+    def _interpret_2sample_ttest(self, t_stat: float, p_value: float, mean1: float, mean2: float) -> str:
+        """解释双样本t检验结果"""
+        if p_value < 0.001:
+            significance = "极显著(p<0.001)"
+        elif p_value < 0.01:
+            significance = "高度显著(p<0.01)"
+        elif p_value < 0.05:
+            significance = "显著(p<0.05)"
+        else:
+            significance = "不显著(p>=0.05)"
+
+        diff = mean1 - mean2
+        direction = "大于" if diff > 0 else "小于"
+        return f"两组均值差异{direction}零，两组均值{mean1:.3f}和{mean2:.3f}，{significance}"
+
+    def _interpret_chisquare(self, chi2_stat: float, p_value: float) -> str:
+        """解释卡方检验结果"""
+        if p_value < 0.001:
+            significance = "极显著(p<0.001)"
+        elif p_value < 0.01:
+            significance = "高度显著(p<0.01)"
+        elif p_value < 0.05:
+            significance = "显著(p<0.05)"
+        else:
+            significance = "不显著(p>=0.05)"
+
+        return f"观测分布与期望分布存在显著差异，卡方值={chi2_stat:.3f}，{significance}"
+
+    def _interpret_correlation(self, corr: float, p_value: float) -> str:
+        """解释相关性检验结果"""
+        if p_value >= 0.05:
+            return f"变量间相关性不显著(r={corr:.3f}, p={p_value:.3f})"
+
+        if abs(corr) < 0.3:
+            strength = "弱"
+        elif abs(corr) < 0.5:
+            strength = "中等"
+        elif abs(corr) < 0.7:
+            strength = "较强"
+        else:
+            strength = "强"
+
+        direction = "正" if corr > 0 else "负"
+        return f"变量间存在显著{strength}{direction}相关(r={corr:.3f}, p={p_value:.3f})"
 
     def _determine_result(
         self,

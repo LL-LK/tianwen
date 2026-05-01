@@ -12,11 +12,124 @@ DiscoveryTracker - 追踪假说验证结果，形成完整研究闭环
 
 import json
 import uuid
+import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Literal, Tuple
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 import os
+
+
+class Neo4jConnectionError(Exception):
+    """Neo4j连接失败异常"""
+    pass
+
+
+class Neo4jOperationError(Exception):
+    """Neo4j操作失败异常"""
+    pass
+
+
+class ConnectionPool:
+    """
+    Neo4j连接池管理
+    支持连接复用、健康检查和重试机制
+    """
+
+    def __init__(self, uri: str, username: str, password: str,
+                 max_retries: int = 3, retry_delay: float = 1.0):
+        self.uri = uri.rstrip("/")
+        self.username = username
+        self.password = password
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self._connected = False
+        self._last_check = 0
+        self._check_interval = 30  # 30秒检查间隔
+
+    def _get_headers(self) -> Dict:
+        import base64
+        auth = base64.b64encode(f"{self.username}:{self.password}".encode()).decode()
+        return {
+            "Authorization": f"Basic {auth}",
+            "Content-Type": "application/json"
+        }
+
+    def is_healthy(self) -> bool:
+        """检查连接是否健康"""
+        now = time.time()
+        if now - self._last_check < self._check_interval and self._connected:
+            return self._connected
+
+        try:
+            import urllib.request
+
+            url = f"{self.uri}/db/neo4j.tx/commit"
+            data = json.dumps({
+                "statements": [{"statement": "RETURN 1", "parameters": {}}]
+            }).encode()
+
+            req = urllib.request.Request(
+                url, data=data,
+                headers=self._get_headers(),
+                method="POST"
+            )
+
+            with urllib.request.urlopen(req, timeout=5) as response:
+                self._connected = response.status == 200
+                self._last_check = now
+                return self._connected
+
+        except Exception:
+            self._connected = False
+            self._last_check = now
+            return False
+
+    def execute_with_retry(self, data: Dict) -> bool:
+        """
+        执行请求并支持重试机制
+        返回: 是否成功
+        抛出: Neo4jConnectionError - 连接失败
+              Neo4jOperationError - 操作失败
+        """
+        last_error = None
+
+        for attempt in range(self.max_retries):
+            try:
+                import urllib.request
+                import urllib.error
+
+                url = f"{self.uri}/db/neo4j.tx/commit"
+                encoded_data = json.dumps(data).encode()
+
+                req = urllib.request.Request(
+                    url, data=encoded_data,
+                    headers=self._get_headers(),
+                    method="POST"
+                )
+
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    if response.status == 200:
+                        return True
+
+                last_error = f"HTTP {response.status}"
+
+            except urllib.error.URLError as e:
+                last_error = f"URLError: {str(e)}"
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay * (attempt + 1))
+            except Exception as e:
+                last_error = f"Exception: {str(e)}"
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay * (attempt + 1))
+
+        raise Neo4jConnectionError(
+            f"Neo4j操作失败，已重试{self.max_retries}次。最后错误: {last_error}"
+        )
+
+    def mark_failed(self):
+        """标记连接失败"""
+        self._connected = False
 
 
 class NodeType(Enum):
@@ -99,15 +212,25 @@ class Neo4jStore:
     """
     Neo4j 图数据库存储层
     使用网络请求访问 Neo4j REST API
+    支持连接池和重试机制
     """
 
-    def __init__(self, uri: str = None, username: str = "neo4j", password: str = None):
+    def __init__(self, uri: str = None, username: str = "neo4j", password: str = None,
+                 max_retries: int = 3):
         self.uri = uri or os.environ.get("NEO4J_URI", "http://localhost:7474")
         self.username = username
         self.password = password or os.environ.get("NEO4J_PASSWORD", "password")
         self.base_url = self.uri.rstrip("/")
         self.nodes: List[GraphNode] = []
         self.relations: List[GraphRelation] = []
+        self.max_retries = max_retries
+        # 连接池实例
+        self._pool = ConnectionPool(
+            uri=self.base_url,
+            username=self.username,
+            password=self.password,
+            max_retries=max_retries
+        )
 
     def _get_headers(self) -> Dict:
         import base64
@@ -118,77 +241,54 @@ class Neo4jStore:
         }
 
     async def create_node(self, node: GraphNode) -> bool:
-        """创建节点"""
+        """创建节点，带重试机制，失败时抛出异常"""
+        data = {
+            "statements": [{
+                "statement": """
+                    CREATE (n:GOTChallenge {id: $id, type: $type, properties: $props, created_at: $created_at})
+                    RETURN n.id
+                """,
+                "parameters": {
+                    "id": node.id,
+                    "type": node.type.value,
+                    "props": node.properties,
+                    "created_at": node.created_at
+                }
+            }]
+        }
+
         try:
-            import urllib.request
-            import urllib.error
-
-            url = f"{self.base_url}/db/neo4j.tx/commit"
-            data = json.dumps({
-                "statements": [{
-                    "statement": """
-                        CREATE (n:GOTChallenge {id: $id, type: $type, properties: $props, created_at: $created_at})
-                        RETURN n.id
-                    """,
-                    "parameters": {
-                        "id": node.id,
-                        "type": node.type.value,
-                        "props": node.properties,
-                        "created_at": node.created_at
-                    }
-                }]
-            }).encode()
-
-            req = urllib.request.Request(
-                url, data=data,
-                headers=self._get_headers(),
-                method="POST"
-            )
-
-            with urllib.request.urlopen(req, timeout=10) as response:
-                pass
-
-        except Exception:
-            pass
+            self._pool.execute_with_retry(data)
+        except Neo4jConnectionError as e:
+            raise Neo4jConnectionError(f"创建节点失败: {e}")
 
         self.nodes.append(node)
         return True
 
     async def create_relation(self, relation: GraphRelation) -> bool:
-        """创建关系"""
+        """创建关系，带重试机制，失败时抛出异常"""
+        data = {
+            "statements": [{
+                "statement": """
+                    MATCH (a), (b)
+                    WHERE a.id = $source AND b.id = $target
+                    CREATE (a)-[r:REL {type: $type, properties: $props, created_at: $created_at}]->(b)
+                    RETURN r.id
+                """,
+                "parameters": {
+                    "source": relation.source_id,
+                    "target": relation.target_id,
+                    "type": relation.type.value,
+                    "props": relation.properties,
+                    "created_at": relation.created_at
+                }
+            }]
+        }
+
         try:
-            import urllib.request
-
-            url = f"{self.base_url}/db/neo4j.tx/commit"
-            data = json.dumps({
-                "statements": [{
-                    "statement": """
-                        MATCH (a), (b)
-                        WHERE a.id = $source AND b.id = $target
-                        CREATE (a)-[r:REL {type: $type, properties: $props, created_at: $created_at}]->(b)
-                        RETURN r.id
-                    """,
-                    "parameters": {
-                        "source": relation.source_id,
-                        "target": relation.target_id,
-                        "type": relation.type.value,
-                        "props": relation.properties,
-                        "created_at": relation.created_at
-                    }
-                }]
-            }).encode()
-
-            req = urllib.request.Request(
-                url, data=data,
-                headers=self._get_headers(),
-                method="POST"
-            )
-
-            with urllib.request.urlopen(req, timeout=10) as response:
-                pass
-
-        except Exception:
-            pass
+            self._pool.execute_with_retry(data)
+        except Neo4jConnectionError as e:
+            raise Neo4jConnectionError(f"创建关系失败: {e}")
 
         self.relations.append(relation)
         return True
@@ -456,6 +556,113 @@ class DiscoveryTracker:
             "rejected": rejected,
             "success_rate": confirmed / total_verifications if total_verifications > 0 else 0,
             "pending": total_hypotheses - total_verifications
+        }
+
+    async def get_cycle_statistics(self) -> Dict[str, Any]:
+        """
+        获取闭环成功率统计面板
+
+        量化研究闭环效率，提供多维度统计指标，帮助针对性优化研究流程。
+
+        Returns:
+            Dict containing:
+            - total_hypotheses: 假说总数
+            - total_verifications: 验证记录总数
+            - cycle_completed: 完成闭环的假说数（已确认或已反驳）
+            - cycle_pending: 待验证假说数
+            - confirmed: 验证通过数
+            - rejected: 验证反驳数
+            - revised: 验证后修订数
+            - inconclusive: 结果不确定数
+            - cycle_completion_rate: 闭环完成率 (完成数/总数)
+            - hypothesis_pass_rate: 假说通过率 (确认数/已验证数)
+            - cycle_success_rate: 闭环成功率 (确认数/完成闭环数)
+            - revision_rate: 修订率 (修订数/已验证数)
+            - avg_verification_per_hypothesis: 每假说平均验证次数
+            - pending_hypotheses: 待验证假说详情
+            - recent_cycles: 最近完成的闭环（最近5个）
+        """
+        # 基本统计
+        all_hypotheses = [n for n in self.neo4j.nodes if n.type == NodeType.HYPOTHESIS]
+        total_hypotheses = len(all_hypotheses)
+
+        verification_records = self.verification_records
+        total_verifications = len(verification_records)
+
+        # 按结果分类
+        confirmed = [r for r in verification_records if r.outcome == VerificationOutcome.CONFIRMED]
+        rejected = [r for r in verification_records if r.outcome == VerificationOutcome.REJECTED]
+        revised = [r for r in verification_records if r.outcome == VerificationOutcome.REVISED]
+        inconclusive = [r for r in verification_records if r.outcome == VerificationOutcome.INCONCLUSIVE]
+
+        confirmed_count = len(confirmed)
+        rejected_count = len(rejected)
+        revised_count = len(revised)
+        inconclusive_count = len(inconclusive)
+
+        # 闭环完成 = 确认或反驳（有了明确结论）
+        cycle_completed = confirmed_count + rejected_count
+        cycle_pending = total_verifications - cycle_completed
+
+        # 计算各指标
+        cycle_completion_rate = cycle_completed / total_verifications if total_verifications > 0 else 0.0
+        hypothesis_pass_rate = confirmed_count / total_verifications if total_verifications > 0 else 0.0
+        cycle_success_rate = confirmed_count / cycle_completed if cycle_completed > 0 else 0.0
+        revision_rate = revised_count / total_verifications if total_verifications > 0 else 0.0
+
+        # 每假说平均验证次数
+        hypo_verification_counts: Dict[str, int] = {}
+        for rec in verification_records:
+            hypo_id = rec.hypothesis_id
+            hypo_verification_counts[hypo_id] = hypo_verification_counts.get(hypo_id, 0) + 1
+
+        total_hypo_with_verification = len(hypo_verification_counts)
+        avg_verification_per_hypothesis = (
+            sum(hypo_verification_counts.values()) / total_hypo_with_verification
+            if total_hypo_with_verification > 0 else 0.0
+        )
+
+        # 待验证假说详情
+        verified_hypo_ids = set(r.hypothesis_id for r in verification_records)
+        pending_hypotheses = []
+        for hypo in all_hypotheses:
+            if hypo.id not in verified_hypo_ids:
+                pending_hypotheses.append({
+                    "id": hypo.id,
+                    "statement": hypo.properties.get("statement", ""),
+                    "created_at": hypo.created_at
+                })
+
+        # 最近完成的闭环（按时间排序）
+        recent_cycles = []
+        for rec in sorted(verification_records, key=lambda x: x.created_at, reverse=True):
+            if rec.outcome in (VerificationOutcome.CONFIRMED, VerificationOutcome.REJECTED):
+                recent_cycles.append({
+                    "hypothesis_id": rec.hypothesis_id,
+                    "outcome": rec.outcome.value,
+                    "method": rec.method,
+                    "evidence_count": len(rec.evidence),
+                    "created_at": rec.created_at
+                })
+                if len(recent_cycles) >= 5:
+                    break
+
+        return {
+            "total_hypotheses": total_hypotheses,
+            "total_verifications": total_verifications,
+            "cycle_completed": cycle_completed,
+            "cycle_pending": cycle_pending,
+            "confirmed": confirmed_count,
+            "rejected": rejected_count,
+            "revised": revised_count,
+            "inconclusive": inconclusive_count,
+            "cycle_completion_rate": round(cycle_completion_rate, 4),
+            "hypothesis_pass_rate": round(hypothesis_pass_rate, 4),
+            "cycle_success_rate": round(cycle_success_rate, 4),
+            "revision_rate": round(revision_rate, 4),
+            "avg_verification_per_hypothesis": round(avg_verification_per_hypothesis, 2),
+            "pending_hypotheses": pending_hypotheses,
+            "recent_cycles": recent_cycles
         }
 
     async def find_similar_hypotheses(self, statement: str,
