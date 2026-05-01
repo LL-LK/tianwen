@@ -75,7 +75,7 @@ class DiscoveredPattern:
     confidence_interval: Optional[Tuple[float, float]] = None  # (lower, upper)
     cross_validation_score: Optional[float] = None  # 0-1
 
-    metadata: Dict[str, Any]
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
