@@ -550,8 +550,42 @@ class AstroPipeline:
 
     def __init__(self):
         self.stage1_detector = StageIDetector()
-        self.stage2_classifier = StageIIClassifier()
-        self.stage3_detector = StageIIIDetector()
+        self.stage2_classifier = StageIIClassifier(weights_path="runtime/models/resnet50_astro_classifier.pth")
+        self.stage3_detector = StageIIIDetector(weights_path="runtime/models/yolo11s_astro_detection.pt")
+        self._load_models()
+
+    def _load_models(self):
+        """加载模型权重"""
+        import os
+
+        resnet_path = self.stage2_classifier.weights_path
+        yolo_path = self.stage3_detector.weights_path
+
+        # 尝试加载ResNet-50
+        if os.path.exists(resnet_path):
+            try:
+                import torch
+                self.stage2_classifier.model = torch.load(resnet_path, map_location='cpu')
+                print(f"ResNet-50权重加载成功: {resnet_path}")
+            except Exception as e:
+                print(f"ResNet-50权重加载失败，使用模拟模式: {e}")
+                self.stage2_classifier.model = None
+        else:
+            print(f"ResNet-50权重文件不存在: {resnet_path}")
+            self.stage2_classifier.model = None
+
+        # 尝试加载YOLOv11s
+        if os.path.exists(yolo_path):
+            try:
+                from ultralytics import YOLO
+                self.stage3_detector.model = YOLO(yolo_path)
+                print(f"YOLOv11s权重加载成功: {yolo_path}")
+            except Exception as e:
+                print(f"YOLOv11s权重加载失败，使用模拟模式: {e}")
+                self.stage3_detector.model = None
+        else:
+            print(f"YOLOv11s权重文件不存在: {yolo_path}")
+            self.stage3_detector.model = None
 
     async def initialize(self):
         """初始化管道，加载模型权重"""
