@@ -86,10 +86,11 @@ async def call_minimax(message: str) -> dict:
     """调用MiniMax API"""
     group_id = os.environ.get("MINIMAX_GROUP_ID")
     api_key = os.environ.get("MINIMAX_API_KEY")
+    model = os.environ.get("MINIMAX_MODEL", "MiniMax-Text-01")
     if not api_key or not group_id:
         return {"error": "MiniMax API key or Group ID not configured", "content": None}
 
-    config = ModelConfig.minimax_api(api_key)
+    config = ModelConfig.minimax_api(api_key, model)
     client = httpx.AsyncClient(timeout=60.0)
 
     try:
