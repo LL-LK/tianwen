@@ -73,4 +73,35 @@ Searched for open source projects related to Embodied AI in astronomical observa
 1. **借鉴 ESP32-Robot 架构:** Using HTTP REST API to control robots/telescopes is a proven pattern
 2. **ROS2 集成:** Several projects use ROS2 - could integrate with existing telescope control systems
 3. **Multi-agent架构:** YaoBeiji/llm_robot_control 的 VLA multi-agent 值得参考
-4. **缺口:** 没有找到专门的"Embodied AI + 天文望远镜"项目，这是差异化机会
+---
+
+## Audit Notes (2026-05-01)
+
+### Quality Assessment
+
+| Aspect | Rating | Notes |
+|--------|--------|-------|
+| Search Coverage | Medium | Initial specific queries failed; broader searches compensated but may have missed telescope-specific projects |
+| Data Accuracy | High | All repo data verified via `gh repo view`; stars and descriptions match current state |
+| Completeness | Medium | Did not search "autonomous telescope", "telescope scheduling", "dome control" variants |
+| Gap Analysis | Valid | Claim that no Embodied AI + astronomy projects exist appears correct based on searches |
+
+### Potential Issues Found
+
+1. **Chimera repo stars discrepancy**: Search output showed "public" without star count, but `gh repo view` confirmed 42 stars - correct in final doc
+
+2. **Missing relevant projects**: Should have searched:
+   - `autonomous telescope` 
+   - `dome control robot`
+   - ` observatory scheduling AI`
+
+3. **ESP32-Robot classification**: This is a desktop robot kit, not an astronomy-specific project - slightly misleading in "Physical Embodied Agents" table
+
+### Recommendations for Additional Research
+
+- Search for "Active Optics" projects (用于自适应光学)
+- Search for "Sky survey scheduling" agents
+- Check PyPI for telescope control libraries with AI features
+
+---
+*Last updated: 2026-05-01*
