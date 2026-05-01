@@ -223,17 +223,36 @@ class BrowserSearch:
     async def initialize(self):
         """初始化浏览器"""
         if not PLAYWRIGHT_AVAILABLE:
-            raise RuntimeError("Playwright not installed. Run: pip install playwright && playwright install")
+            raise RuntimeError(
+                "Playwright not installed. Run:\n"
+                "  pip install playwright && playwright install\n"
+                "  playwright install-deps chromium"
+            )
         
         self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(
-            headless=True,
-            args=[
-                '--disable-blink-features=AutomationControlled',
-                '--disable-dev-shm-usage',
-                '--no-sandbox'
-            ]
-        )
+        
+        # 尝试启动浏览器
+        try:
+            self.browser = await self.playwright.chromium.launch(
+                headless=True,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-dev-shm-usage',
+                    '--no-sandbox',
+                    '--disable-gpu'
+                ]
+            )
+        except Exception as e:
+            error_msg = str(e)
+            if "libnspr4.so" in error_msg or "shared library" in error_msg:
+                raise RuntimeError(
+                    f"Browser dependencies missing: {error_msg}\n\n"
+                    "To fix, run:\n"
+                    "  sudo apt-get update && sudo apt-get install -y libnspr4 libnss3 libatk1.0-0\n"
+                    "Or use Windows browser:\n"
+                    "  playwright install chromium"
+                )
+            raise
         
         # 创建反检测context
         context_options = {
