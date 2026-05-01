@@ -47,24 +47,24 @@ async def main():
     # 1. 检查Ollama可执行文件
     print("\n[1] 检查Ollama安装...")
     if check_ollama_executable():
-        print(f"    ✓ Ollama已安装在: {OLLAMA_PATH}")
+        print(f"    [OK] Ollama installed at: {OLLAMA_PATH}")
     else:
-        print(f"    ✗ Ollama未找到: {OLLAMA_PATH}")
+        print(f"    [FAIL] Ollama未找到: {OLLAMA_PATH}")
         return
 
     # 2. 检查Ollama服务
     print("\n[2] 检查Ollama服务...")
     if check_ollama_server():
-        print("    ✓ Ollama服务正在运行 (http://localhost:11434)")
+        print(f"    [OK] Ollama service is running (http://localhost:11434)")
     else:
-        print("    ✗ Ollama服务未运行，尝试启动...")
+        print("    [FAIL] Ollama服务未运行，尝试启动...")
         # 尝试启动Ollama服务
         os.system(f'start "" "{OLLAMA_PATH}\\ollama.exe" "serve"')
         await asyncio.sleep(3)
         if check_ollama_server():
-            print("    ✓ Ollama服务已启动")
+            print("    [OK] Ollama服务已启动")
         else:
-            print("    ✗ 无法启动Ollama服务")
+            print("    [FAIL] 无法启动Ollama服务")
             return
 
     # 3. 检查已安装的模型
@@ -79,12 +79,12 @@ async def main():
                     for m in models:
                         print(f"      - {m.get('name', 'unknown')} ({m.get('size', 0)//1024//1024}MB)")
                 else:
-                    print("    ⚠ 没有已安装的模型")
+                    print("    [WARN] 没有已安装的模型")
                     print("    请运行: ollama pull llama3.2:1b")
             else:
-                print(f"    ✗ 获取模型列表失败: {response.status_code}")
+                print(f"    [FAIL] 获取模型列表失败: {response.status_code}")
     except Exception as e:
-        print(f"    ✗ 错误: {e}")
+        print(f"    [FAIL] 错误: {e}")
 
     # 4. 测试模型推理
     print("\n[4] 测试模型推理...")
@@ -93,9 +93,9 @@ async def main():
         print(f"\n    测试 {model}...")
         result = await test_ollama_chat(model, "What is 2+2? Keep it brief.")
         if "Error" in result or "Exception" in result:
-            print(f"      ✗ {model} 不可用")
+            print(f"      [FAIL] {model} 不可用")
         else:
-            print(f"      ✓ {model} 响应: {result[:80]}...")
+            print(f"      [OK] {model} 响应: {result[:80]}...")
 
     print("\n" + "=" * 50)
     print("测试完成")
