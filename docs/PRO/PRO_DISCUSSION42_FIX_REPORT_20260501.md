@@ -46,20 +46,24 @@
 
 ---
 
-## 三、未完成的工作及原因分析
+## 三、已完成的工作 (v3.8.3)
 
-| # | 问题 | 优先级 | 原因 |
-|---|------|--------|------|
-| 1 | **server.py API Key认证** | P1 | 需要 quart-limiter 依赖，已在 requirements.txt 添加但未实际实现装饰器 |
-| 2 | **print() 替换为 logging** | P2 | 部分完成 (server.py 启动日志)，核心业务逻辑尚未全面替换 |
-
-**未完成原因**:
-1. 时间限制 - 部分优化任务需要在后续版本中完成
-2. 依赖关系 - API认证需要更完整的安全方案设计
+| # | 问题 | 状态 | 说明 |
+|---|------|------|------|
+| 1 | **server.py API Key认证** | ✅ 已完成 | 实现 @require_api_key 装饰器，通过 X-API-Key header或api_key参数认证 |
+| 2 | **print() 替换为 logging** | ✅ 已完成 | server.py 核心函数已替换为logging，main.py保持CLI输出 |
 
 ---
 
-## 四、需提交给Hermes进行审计的工作内容
+## 四、v3.8.3 补充变更
+
+| 文件 | 变更 | 说明 |
+|------|------|------|
+| runtime/server.py | 修改 | API Key认证装饰器、logging替换、CORS安全配置 |
+
+---
+
+## 五、需提交给Hermes进行审计的工作内容
 
 ### 高优先级 (需要Hermes确认)
 
@@ -72,6 +76,7 @@
    - debug 环境变量控制是否正确
    - CORS 配置方案是否满足安全要求
    - 日志输出是否合规
+   - API Key认证装饰器是否正确实现
 
 3. **cycle_statistics_dashboard 修复验证**
    - record_discovery() 新接口是否合理
@@ -89,12 +94,12 @@
 
 ---
 
-## 五、代码变更统计
+## 六、代码变更统计
 
 ```
-修改文件: 10
+修改文件: 11
 新增文件: 3 (.dockerignore, runtime/data_models.py, runtime/vector_store.py)
-总变更行: +750 -700 (包含重构集成)
+总变更行: +850 -720 (包含v3.8.3 API Key认证)
 ```
 
 ### 详细变更
@@ -104,7 +109,7 @@
 | .github/workflows/ci.yml | 修改 | 移除 \|\| true |
 | Dockerfile | 修改 | 多阶段构建 + 非root用户 |
 | runtime/sandbox.py | 修改 | 安全修复 (555行新增) |
-| runtime/server.py | 修改 | debug/CORS/日志配置 |
+| runtime/server.py | 修改 | API Key认证 + logging + CORS安全 |
 | runtime/cycle_statistics_dashboard.py | 修改 | 移除随机数，添加真实决策参数 |
 | runtime/requirements.txt | 修改 | 补充依赖，版本锁定 |
 | runtime/vector_memory.py | 修改 | 移除重复定义，引用统一类 |

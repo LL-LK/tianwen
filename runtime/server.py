@@ -1,15 +1,21 @@
 """
 Hermes-AGI Web API Server
 为web/index.html提供后端API支持
+
+安全配置:
+- DEBUG: 环境变量控制，默认false
+- API_KEY: API认证密钥
+- CORS_ORIGINS: 允许的跨域域名（逗号分隔）
 """
 
 import asyncio
 import sys
-import psutil
 import os
+import secrets
+import logging
 from pathlib import Path
-import json
-from threading import Lock
+from functools import wraps
+import psutil
 
 # 添加runtime路径
 sys.path.insert(0, str(Path(__file__).parent))
@@ -17,10 +23,33 @@ sys.path.insert(0, str(Path(__file__).parent))
 from quart import Quart, jsonify, request, render_template
 from quart_cors import cors
 import uuid
+import json
+from threading import Lock
 from datetime import datetime
 
+# 日志配置
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+)
+logger = logging.getLogger("hermes_agi")
+
+# 配置
+DEBUG = os.environ.get("DEBUG", "false").lower() in ("true", "1", "yes")
+API_KEY = os.environ.get("API_KEY", "")
+CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "")
+
 app = Quart(__name__, template_folder="../web", static_folder="../web")
-app = cors(app, allow_origin="*")
+
+# CORS配置：仅允许配置的域名
+if CORS_ORIGINS:
+    app = cors(app, allow_origin=CORS_ORIGINS.split(","))
+else:
+    # 非调试模式下默认关闭CORS
+    if not DEBUG:
+        app = cors(app, allow_origin=[])
+    else:
+        app = cors(app, allow_origin="*")
 
 # 导入Agent
 from main import HermesAGI, CognitiveEngine, PlanningEngine
@@ -31,6 +60,22 @@ import httpx
 # 全局Agent实例
 agent = HermesAGI()
 dashboard = CycleStatisticsDashboard()
+
+
+def require_api_key(f):
+    """API Key认证装饰器"""
+    @wraps(f)
+    async def decorated(*args, **kwargs):
+        provided_key = request.headers.get("X-API-Key") or request.args.get("api_key")
+        if DEBUG and not API_KEY:
+            # 调试模式且未配置Key时跳过认证
+            return await f(*args, **kwargs)
+        if not provided_key:
+            return jsonify({"error": "API Key required", "code": "MISSING_KEY"}), 401
+        if not secrets.compare_digest(provided_key, API_KEY):
+            return jsonify({"error": "Invalid API Key", "code": "INVALID_KEY"}), 403
+        return await f(*args, **kwargs)
+    return decorated
 
 
 async def call_minimax(message: str) -> dict:
@@ -81,9 +126,9 @@ def load_sessions():
         try:
             with open(SESSIONS_FILE, 'r', encoding='utf-8') as f:
                 sessions = json.load(f)
-            print(f"Loaded {len(sessions)} sessions from disk")
+            logger.info(f"Loaded {len(sessions)} sessions from disk")
         except Exception as e:
-            print(f"Failed to load sessions: {e}")
+            logger.error(f"Failed to load sessions: {e}")
             sessions = {}
 
 
@@ -94,7 +139,7 @@ def save_sessions():
             with open(SESSIONS_FILE, 'w', encoding='utf-8') as f:
                 json.dump(sessions, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            print(f"Failed to save sessions: {e}")
+            logger.error(f"Failed to save sessions: {e}")
 
 
 def cleanup_old_sessions(max_age_days: int = 30):
@@ -110,7 +155,7 @@ def cleanup_old_sessions(max_age_days: int = 30):
         except Exception:
             pass
     if removed > 0:
-        print(f"Cleaned up {removed} old sessions")
+        logger.info(f"Cleaned up {removed} old sessions")
         save_sessions()
 
 
@@ -124,6 +169,7 @@ async def index():
     return await render_template("index.html")
 
 @app.route("/api/chat", methods=["POST"])
+@require_api_key
 async def chat():
     """处理对话请求 - 简化版（不调用LLM）"""
     data = await request.get_json()
@@ -337,28 +383,15 @@ async def stats_json():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    debug = os.environ.get("DEBUG", "false").lower() in ("true", "1", "yes")
-    cors_origins = os.environ.get("CORS_ORIGINS", "")
-
-    # 日志配置
-    import logging
-    logging.basicConfig(
-        level=logging.DEBUG if debug else logging.INFO,
-        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
-    )
-    logger = logging.getLogger("hermes_agi")
 
     logger.info("=" * 50)
     logger.info("Hermes-AGI Web API Server")
     logger.info("=" * 50)
-    logger.info(f"Debug mode: {debug}")
+    logger.info(f"Debug mode: {DEBUG}")
+    logger.info(f"API Key configured: {'Yes' if API_KEY else 'No (auth disabled)'}")
+    logger.info(f"CORS Origins: {CORS_ORIGINS or 'All (debug mode)'}")
     logger.info(f"Local:    http://localhost:{port}")
     logger.info(f"API Docs: http://localhost:{port}/api/health")
     logger.info("=" * 50)
 
-    # CORS配置：仅允许配置的域名
-    if cors_origins:
-        from functools import partial
-        app.config["CORS_ORIGINS"] = cors_origins.split(",")
-
-    app.run(host="0.0.0.0", port=port, debug=debug)
+    app.run(host="0.0.0.0", port=port, debug=DEBUG)
