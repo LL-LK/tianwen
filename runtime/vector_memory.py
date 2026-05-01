@@ -20,74 +20,11 @@ from sentence_transformers import SentenceTransformer
 import hashlib
 import numpy as np
 
-# 简单的向量数据库实现（不依赖ChromaDB）
-class SimpleVectorStore:
-    """简单的向量存储实现 - 基于余弦相似度"""
+# 从统一模块导入向量存储和数据模型
+from vector_store import SimpleVectorStore, BaseVectorStore
+from data_models import Paper, Experience
 
-    def __init__(self, dimension: int = 384):
-        self.dimension = dimension
-        self.vectors: List[List[float]] = []
-        self.metadata: List[Dict] = []
-        self.texts: List[str] = []
-
-    def add(self, text: str, embedding: List[float], metadata: Dict = None):
-        """添加向量"""
-        self.vectors.append(embedding)
-        self.texts.append(text)
-        self.metadata.append(metadata or {})
-
-    def search(self, query_embedding: List[float], k: int = 5) -> List[Dict]:
-        """搜索相似向量"""
-        scores = []
-        for i, vec in enumerate(self.vectors):
-            score = self._cosine_similarity(query_embedding, vec)
-            scores.append((i, score))
-
-        # 按分数排序
-        scores.sort(key=lambda x: x[1], reverse=True)
-
-        results = []
-        for idx, score in scores[:k]:
-            results.append({
-                "text": self.texts[idx],
-                "score": float(score),
-                "metadata": self.metadata[idx],
-            })
-        return results
-
-    def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
-        """计算余弦相似度"""
-        dot_product = sum(x * y for x, y in zip(a, b))
-        norm_a = sum(x * x for x in a) ** 0.5
-        norm_b = sum(x * x for x in b) ** 0.5
-        if norm_a == 0 or norm_b == 0:
-            return 0.0
-        return dot_product / (norm_a * norm_b)
-
-    def count(self) -> int:
-        return len(self.vectors)
-
-    def save(self, path: str):
-        """保存到文件"""
-        data = {
-            "dimension": self.dimension,
-            "vectors": self.vectors,
-            "metadata": self.metadata,
-            "texts": self.texts,
-        }
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False)
-
-    def load(self, path: str):
-        """从文件加载"""
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        self.dimension = data["dimension"]
-        self.vectors = data["vectors"]
-        self.metadata = data["metadata"]
-        self.texts = data["texts"]
-
-# ============ 经验记录 ============
+# ============ 向量记忆系统 ============
 
 @dataclass
 class Experience:

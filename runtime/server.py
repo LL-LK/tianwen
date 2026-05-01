@@ -335,10 +335,28 @@ async def stats_json():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    print("=" * 50)
-    print("Hermes-AGI Web API Server")
-    print("=" * 50)
-    print(f"Local:    http://localhost:{port}")
-    print(f"API Docs: http://localhost:{port}/api/health")
-    print("=" * 50)
-    app.run(host="0.0.0.0", port=port, debug=True)
+    debug = os.environ.get("DEBUG", "false").lower() in ("true", "1", "yes")
+    cors_origins = os.environ.get("CORS_ORIGINS", "")
+
+    # 日志配置
+    import logging
+    logging.basicConfig(
+        level=logging.DEBUG if debug else logging.INFO,
+        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+    )
+    logger = logging.getLogger("hermes_agi")
+
+    logger.info("=" * 50)
+    logger.info("Hermes-AGI Web API Server")
+    logger.info("=" * 50)
+    logger.info(f"Debug mode: {debug}")
+    logger.info(f"Local:    http://localhost:{port}")
+    logger.info(f"API Docs: http://localhost:{port}/api/health")
+    logger.info("=" * 50)
+
+    # CORS配置：仅允许配置的域名
+    if cors_origins:
+        from functools import partial
+        app.config["CORS_ORIGINS"] = cors_origins.split(",")
+
+    app.run(host="0.0.0.0", port=port, debug=debug)

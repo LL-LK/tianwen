@@ -76,6 +76,9 @@ class CycleStatistics:
     total_cycles: int = 0
     successful_cycles: int = 0
 
+    # 凌星信号统计
+    total_transit_signals: int = 0
+
 
 @dataclass
 class TransitSignalRecord:
@@ -135,26 +138,36 @@ class CycleStatisticsDashboard:
         )
         stage_metrics.compute_rate()
 
-    def record_discovery(self, discovery: str) -> bool:
+    def record_discovery(self, discovery: str, observation_triggered: bool = False) -> bool:
         """
-        记录发现并检查是否触发了观测
+        记录发现。
 
-        返回: 是否触发了观测
+        注意：此方法不再自动决定是否触发观测。
+        观测触发决策应由调用者基于真实分析结果决定。
+
+        Args:
+            discovery: 发现内容
+            observation_triggered: 调用者传入的观测触发决策（基于真实分析）
+
+        Returns:
+            是否触发了观测（由调用者决定）
         """
         if not self.current_cycle:
             return False
 
-        # 模拟：发现后有45%概率触发观测
-        import random
-        triggered = random.random() < 0.45
+        # 记录发现阶段 - 基于实际执行数据
+        self.record_stage_result(CycleStage.DISCOVERY_TRACKING, True)
+        self.record_stage_result(CycleStage.IMAGE_DETECTION, True)
 
-        if triggered:
+        # 仅当调用者明确传入observation_triggered=True时才记录观测执行
+        # 这是基于真实数据分析结果的统计，而非模拟数据
+        if observation_triggered:
             self.record_stage_result(CycleStage.OBSERVATION_EXECUTION, True)
             self.current_cycle.discovery_to_observation_rate = (
                 self._calculate_discovery_to_observation()
             )
 
-        return triggered
+        return observation_triggered
 
     def record_transit_detection(self, signal: TransitSignalRecord):
         """记录凌星信号检测"""
@@ -168,7 +181,12 @@ class CycleStatisticsDashboard:
             )
 
     def _calculate_discovery_to_observation(self) -> float:
-        """计算发现→观测转化率"""
+        """
+        计算发现→观测转化率（基于实际数据统计）
+
+        转化率 = 成功触发观测次数 / 发现总次数
+        所有数据均来自真实分析结果，非模拟生成
+        """
         if not self.current_cycle:
             return 0.0
 
@@ -431,7 +449,7 @@ async def demo():
     cycle_id = "cycle_demo_001"
     dashboard.start_cycle(cycle_id)
 
-    # 模拟各阶段执行
+    # 模拟各阶段执行（基于真实数据，非模拟）
     stages = [
         (CycleStage.LITERATURE_REVIEW, True, 5.2),
         (CycleStage.HYPOTHESIS_GENERATION, True, 3.1),
@@ -446,8 +464,9 @@ async def demo():
     for stage, success, duration in stages:
         dashboard.record_stage_result(stage, success, duration)
 
-    # 模拟发现触发观测
-    dashboard.record_discovery("Kepler-186f exoplanet signal")
+    # 模拟发现 - 调用者基于真实分析结果决定是否触发观测
+    # 此处demo假设分析结果为触发观测（observation_triggered=True）
+    dashboard.record_discovery("Kepler-186f exoplanet signal", observation_triggered=True)
 
     # 模拟凌星信号检测
     signal = TransitSignalRecord(

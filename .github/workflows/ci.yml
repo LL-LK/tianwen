@@ -51,7 +51,7 @@ jobs:
       - name: Run unit tests
         run: |
           cd runtime
-          python -m pytest tests/test_runtime_modules.py -v --tb=short || true
+          python -m pytest tests/test_runtime_modules.py -v --tb=short
 
   docker-build:
     runs-on: ubuntu-latest
