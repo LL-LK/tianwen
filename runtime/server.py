@@ -109,7 +109,13 @@ async def call_minimax(message: str) -> dict:
         )
         response.raise_for_status()
         result = response.json()
-        content = result["choices"][0]["message"]["content"]
+        logger.info(f"MiniMax response: {result}")
+        choices = result.get("choices", [])
+        if not choices:
+            return {"error": "No choices in response", "content": None}
+        content = choices[0].get("message", {}).get("content")
+        if content is None:
+            return {"error": "Content is None in response", "content": None}
         tokens = result.get("usage", {}).get("total_tokens", 0)
         return {"content": content, "tokens": tokens}
     except Exception as e:
