@@ -13,79 +13,9 @@ from sentence_transformers import SentenceTransformer
 import hashlib
 import shutil
 
-# ============ 简单的向量存储 ============
-
-class SimpleVectorStore:
-    """简单向量存储"""
-
-    def __init__(self, dimension: int = 384):
-        self.dimension = dimension
-        self.vectors: List[List[float]] = []
-        self.metadata: List[Dict] = []
-        self.texts: List[str] = []
-
-    def add(self, text: str, embedding: List[float], metadata: Dict = None):
-        self.vectors.append(embedding)
-        self.texts.append(text)
-        self.metadata.append(metadata or {})
-
-    def search(self, query_embedding: List[float], k: int = 5) -> List[Dict]:
-        scores = []
-        for i, vec in enumerate(self.vectors):
-            score = self._cosine_similarity(query_embedding, vec)
-            scores.append((i, score))
-        scores.sort(key=lambda x: x[1], reverse=True)
-        results = []
-        for idx, score in scores[:k]:
-            results.append({"text": self.texts[idx], "score": float(score), "metadata": self.metadata[idx]})
-        return results
-
-    def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
-        dot = sum(x * y for x, y in zip(a, b))
-        norm_a = sum(x * x for x in a) ** 0.5
-        norm_b = sum(x * x for x in b) ** 0.5
-        if norm_a == 0 or norm_b == 0:
-            return 0.0
-        return dot / (norm_a * norm_b)
-
-    def count(self) -> int:
-        return len(self.vectors)
-
-    def save(self, path: str):
-        data = {"dimension": self.dimension, "vectors": self.vectors, "metadata": self.metadata, "texts": self.texts}
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False)
-
-    def load(self, path: str):
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        self.dimension = data["dimension"]
-        self.vectors = data["vectors"]
-        self.metadata = data["metadata"]
-        self.texts = data["texts"]
-
-# ============ 经验记录 ============
-
-@dataclass
-class Experience:
-    id: str
-    type: str  # 'success' | 'failure' | 'pattern'
-    task_description: str
-    solution: str
-    skills_used: List[str]
-    entities: List[Dict] = field(default_factory=list)
-    intent: str = ""
-    complexity: str = "medium"
-    outcome: str = ""
-    lessons_learned: str = ""
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-
-    def to_dict(self) -> Dict:
-        return asdict(self)
-
-    @staticmethod
-    def from_dict(data: Dict) -> 'Experience':
-        return Experience(**data)
+# 从统一模块导入向量存储和经验数据模型
+from vector_store import SimpleVectorStore
+from data_models import SimpleExperience as Experience
 
 # ============ 持久化记忆系统 ============
 

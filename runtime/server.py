@@ -35,16 +35,17 @@ dashboard = CycleStatisticsDashboard()
 
 async def call_minimax(message: str) -> dict:
     """调用MiniMax API"""
+    group_id = os.environ.get("MINIMAX_GROUP_ID")
     api_key = os.environ.get("MINIMAX_API_KEY")
-    if not api_key:
-        return {"error": "MiniMax API key not configured", "content": None}
+    if not api_key or not group_id:
+        return {"error": "MiniMax API key or Group ID not configured", "content": None}
 
     config = ModelConfig.minimax_api(api_key)
     client = httpx.AsyncClient(timeout=60.0)
 
     try:
         response = await client.post(
-            f"{config.endpoint}/chat/completions",
+            f"{config.endpoint}/text/chatcompletion_v2",
             json={
                 "model": config.name,
                 "messages": [{"role": "user", "content": message}],
@@ -53,7 +54,8 @@ async def call_minimax(message: str) -> dict:
             },
             headers={
                 "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "GroupId": group_id
             }
         )
         response.raise_for_status()
