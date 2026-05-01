@@ -32,7 +32,7 @@
 
 ```
 runtime/
-├── observatory_linker.py  ← 新增: 观测指导核心模块
+├── observatory_linker.py  ← 新增: 观测指导核心模块 (v1.0)
 ├── discovery_tracker.py   ← 已有: 发现追踪器(假说验证闭环)
 ├── observation_scheduler.py ← 已有: 观测调度引擎(时间窗口计算)
 └── auto_observatory.py    ← 已有: 全自动观测站
@@ -102,28 +102,26 @@ ATLAS专注于小行星检测，采用:
 
 ### 3.3 实现的优先级算法
 
+已实现 `PriorityCalculator` 类：
+
 ```python
-def calculate_priority(self, hypothesis, verification_state):
-    """
-    计算观测优先级
-    基于LSST特征驱动 + ATLAS威胁评分
-    """
-    # 基础科学价值
-    base_value = hypothesis.confidence * hypothesis.impact_score
+class PriorityCalculator:
+    WEIGHTS = {
+        "scientific_impact": 0.30,
+        "verification_urgency": 0.25,
+        "observability": 0.20,
+        "resource_efficiency": 0.15,
+        "cost_risk": 0.10
+    }
 
-    # 验证紧迫性
-    urgency = 1.0
-    if verification_state == "failed":
-        urgency = 2.0  # 验证失败需要立即跟进
-    elif verification_state == "inconclusive":
-        urgency = 1.5  # 不确定结果需要更多数据
-
-    # 资源成本
-    cost = estimate_observation_cost(hypothesis)
-
-    # 综合优先级
-    priority = (base_value * urgency) / cost
-    return min(100, priority * 100)
+    VERIFICATION_MULTIPLIERS = {
+        VerificationState.REJECTED: 2.0,
+        VerificationState.INCONCLUSIVE: 1.5,
+        VerificationState.REVISED: 1.3,
+        VerificationState.IN_PROGRESS: 1.2,
+        VerificationState.PENDING: 1.0,
+        VerificationState.CONFIRMED: 0.5
+    }
 ```
 
 ---
@@ -139,8 +137,12 @@ SIMBAD (Set of Identifications, Measurements, and Bibliography for Astronomical 
 - 文献引用数据
 
 API端点:
-- 基本查询: `https://simbad.cds.unistra.fr/simbad/sim-basic`
+- 基本查询: `https://simbad.cds.unistra.fr/simbad/sim-script`
 - 坐标查询: `https://simbad.cds.unistra.fr/simbad/sim-coord`
+
+已实现 `SimbadClient` 类，支持:
+- `query_by_name(target_name)`: 通过名称查询
+- `query_by_coords(ra, dec, radius)`: 通过坐标查询
 
 ### 4.2 MPC 接口
 
@@ -150,33 +152,49 @@ Minor Planet Center (小行星中心) 提供:
 - 历表计算
 
 API端点:
-- 轨道查询: `https:// Minor Planet Center API`
-- 历表: `https://ssd.jpl.nasa.gov/sbdb.cgi`
+- 轨道查询: `https://ssd.jpl.nasa.gov/sbdb.cgi`
+
+已实现 `MpcClient` 类，支持:
+- `query_by_name(target_name)`: 小行星名称查询
+- `query_near_earth_objects()`: 近地天体查询
+- `get_orbital_elements(designation)`: 轨道根数查询
 
 ---
 
-## 五、代码实现
+## 五、代码实现清单
 
 ### 5.1 核心类
 
+| 类名 | 功能 |
+|------|------|
+| `ObservatoryLinker` | 主入口：假说→观测计划转化 |
+| `PriorityCalculator` | 优先级计算：LSST/ATLAS算法 |
+| `SimbadClient` | SIMBAD API客户端 |
+| `MpcClient` | MPC API客户端 |
+
+### 5.2 数据结构
+
+| 结构 | 说明 |
+|------|------|
+| `ObservationTarget` | 观测目标(名称、坐标、星等) |
+| `ObservationRequest` | 单个观测请求(含优先级) |
+| `ObservationPlan` | 完整观测计划 |
+| `SimbadResult` | SIMBAD查询结果 |
+| `MpcResult` | MPC查询结果 |
+
+### 5.3 关键方法
+
 ```python
 class ObservatoryLinker:
-    """观测指导器 - 将假说验证结果转化为观测计划"""
+    async def link_to_observation(hypothesis_id) -> ObservationPlan
+    async def generate_observation_plan(hypothesis_ids) -> ObservationPlan
+    async def update_plan_priorities(plan, urgent_hypotheses) -> ObservationPlan
 
-    async def link_to_observation(self, hypothesis_id: str) -> ObservationPlan
-    async def generate_observation_plan(self, hypotheses: List[Hypothesis]) -> ObservationPlan
-    async def query_simbad(self, target_name: str) -> SimbadResult
-    async def query_mpc(self, target_name: str) -> MpcResult
-    def calculate_priority(self, hypothesis: Hypothesis, verification_state: str) -> float
+    # 内部方法
+    async def _get_hypothesis(hypothesis_id) -> Optional[Dict]
+    async def _create_observation_request(hypothesis, state) -> Optional[ObservationRequest]
+    async def _resolve_target(target_name) -> Optional[ObservationTarget]
 ```
-
-### 5.2 观测计划生成流程
-
-1. **输入**: hypothesis_id 或 hypothesis列表
-2. **获取验证状态**: 从 discovery_tracker 查询
-3. **查询目标数据**: SIMBAD获取天体数据, MPC获取轨道数据
-4. **计算优先级**: 基于LSST/ATLAS算法
-5. **生成计划**: 输出可执行的观测计划
 
 ---
 
@@ -185,16 +203,14 @@ class ObservatoryLinker:
 ### 6.1 与 discovery_tracker 集成
 
 ```python
-from discovery_tracker import DiscoveryTracker, VerificationOutcome
+from observatory_linker import ObservatoryLinker
+from discovery_tracker import DiscoveryTracker
 
-linker = ObservatoryLinker()
-tracker = DiscoveryTracker()
+# 初始化
+linker = ObservatoryLinker(discovery_tracker=DiscoveryTracker())
 
-# 获取需要观测的假说
-hypotheses = await tracker.get_unverified_hypotheses()
-
-# 生成观测计划
-plan = await linker.generate_observation_plan(hypotheses)
+# 获取待验证假说生成观测计划
+plan = await linker.generate_observation_plan(["hypo_001", "hypo_002"])
 ```
 
 ### 6.2 与 observation_scheduler 集成
@@ -204,24 +220,80 @@ from observation_scheduler import ObservationScheduler
 
 # 生成时间窗口
 scheduler = ObservationScheduler(location)
-for target in plan.targets:
-    windows = await scheduler.score_observation_window(target.name, ...)
+for request in plan.requests:
+    windows = await scheduler.score_observation_window(
+        request.target.name,
+        datetime.now()
+    )
+```
+
+### 6.3 与 auto_observatory 集成
+
+```python
+# 完整工作流
+observatory = AutoObservatory()
+linker = ObservatoryLinker()
+
+# 从观测计划获取目标
+for request in plan.requests:
+    observatory.config["observation_targets"].append(request.target.name)
+
+# 执行观测
+await observatory.start_observation()
 ```
 
 ---
 
-## 七、实施检查清单
+## 七、文档更新
+
+### 7.1 skills/Data-Analysis.md
+
+已添加"天文观测指导模块 (ObservatoryLinker)"章节，包含:
+- 模块概述
+- 核心功能说明
+- 优先级算法权重
+- SIMBAD/MPC接口说明
+- 与DiscoveryTracker集成示例
+
+---
+
+## 八、实施检查清单
 
 - [x] 研究LSST调度策略
 - [x] 研究ATLAS实时调度
 - [x] 分析discovery_tracker接口
 - [x] 设计观测优先级算法
 - [x] 定义SIMBAD/MPC接口
-- [ ] 实现observatory_linker.py
-- [ ] 更新Data-Analysis.md文档
+- [x] 实现observatory_linker.py (v1.0)
+- [x] 更新Data-Analysis.md文档
 - [ ] 单元测试覆盖
+- [ ] 与observation_scheduler集成测试
+- [ ] 与auto_observatory集成测试
 
 ---
 
-*文档版本: v1.0*
+## 九、后续工作
+
+### 9.1 短期 (v3.6)
+
+1. 添加单元测试覆盖
+2. 实现与observation_scheduler的时间窗口对接
+3. 添加ATLAS风格的威胁评估(针对NEO)
+
+### 9.2 中期 (v3.7)
+
+1. 实现望远镜调度API接口
+2. 添加实时天气数据集成
+3. 实现多站协调调度
+
+### 9.3 长期 (v4.0+)
+
+1. 自主发现模式：系统独立提出并验证假说后直接调度观测
+2. 跨学科推理：物理、化学、生物多学科数据融合
+3. 实时观测联动：直接对接望远镜控制API
+
+---
+
+*文档版本: v1.1*
 *更新: 2026-05-01*
+*实现: ObservatoryLinker v1.0*
