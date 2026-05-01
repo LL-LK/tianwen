@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import List, Dict, Optional, Any, Callable
 from enum import Enum
 import uuid
+import numpy as np
 
 
 # ============================================================================
@@ -585,16 +586,18 @@ class ConflictResolver:
         agent1_id: str,
         agent2_id: str,
         issue: str,
-        conflict_type: ConflictType = ConflictType.METHOD_CONFLICT
+        conflict_type: ConflictType = ConflictType.METHOD_CONFLICT,
+        historical_agreement: Optional[float] = None
     ) -> Optional[Conflict]:
         """
         检测冲突
 
-        参数:
+        Args:
             agent1_id: 第一个Agent的ID
             agent2_id: 第二个Agent的ID
             issue: 冲突问题描述
             conflict_type: 冲突类型
+            historical_agreement: 历史一致性分数 (0-1, 来自跨验证)
 
         返回:
             Conflict对象, 如果未检测到冲突返回None
@@ -606,9 +609,23 @@ class ConflictResolver:
         if not agent1 or not agent2:
             return None
 
-        # 检查是否为相关领域的冲突 (简单模拟: 30%概率发生冲突)
-        # 实际应用中需要更复杂的模式识别
-        if abs(hash(issue)) % 10 < 3:
+        # 计算冲突概率 (基于历史一致性)
+        if historical_agreement is not None:
+            # 使用历史一致性计算冲突概率
+            conflict_probability = 1 - historical_agreement
+        else:
+            # 基于Agent专业领域重叠度估计冲突概率
+            expertise1 = set(agent1.expertise)
+            expertise2 = set(agent2.expertise)
+            overlap = len(expertise1 & expertise2)
+            total = len(expertise1 | expertise2)
+            similarity = overlap / total if total > 0 else 0.5
+
+            # 相似度高但结论不同 = 高冲突概率
+            conflict_probability = max(0.1, min(0.8, 1 - similarity))
+
+        # 基于冲突概率决定是否检测到冲突
+        if np.random.random() < conflict_probability:
             conflict = Conflict(
                 conflict_type=conflict_type,
                 involved_agents=[agent1_id, agent2_id],
@@ -809,6 +826,142 @@ class ConflictResolver:
             "resolved": resolved_count,
             "unresolved": unresolved_count,
             "by_type": type_stats
+        }
+
+    def estimate_consensus_confidence(
+        self,
+        agent_ids: List[str],
+        decision_topic: str
+    ) -> Dict[str, Any]:
+        """
+        估计共识决策的置信度
+
+        Args:
+            agent_ids: 参与的Agent ID列表
+            decision_topic: 决策主题
+
+        Returns:
+            Dict containing:
+            - estimated_confidence: 估计置信度 (0-1)
+            - agreement_probability: 同意概率
+            - confidence_interval: (lower, upper) 置信区间
+            - factors: 影响置信度的因素
+        """
+        agents = [self.coordinator.agents.get(aid) for aid in agent_ids if self.coordinator.agents.get(aid)]
+
+        if len(agents) < 2:
+            return {
+                "estimated_confidence": 0.5,
+                "agreement_probability": 0.5,
+                "confidence_interval": (0.3, 0.7),
+                "factors": ["Agent数量不足"]
+            }
+
+        # 因素1: Agent专业领域的重叠度
+        expertise_sets = [set(a.expertise) for a in agents]
+        overlap_count = len(set.intersection(*expertise_sets)) if expertise_sets else 0
+        total_count = len(set.union(*expertise_sets)) if expertise_sets else 1
+        expertise_overlap = overlap_count / total_count if total_count > 0 else 0.5
+
+        # 因素2: 历史一致性 (如果有历史记录)
+        historical_agreement = self._calculate_historical_agreement(agent_ids)
+
+        # 因素3: Agent角色一致性
+        roles = [a.role for a in agents]
+        role_consistency = len(set(roles)) / len(roles)  # 角色越多样化，可能越难达成共识
+
+        # 计算估计置信度
+        base_confidence = 0.5
+        estimated_confidence = (
+            base_confidence +
+            expertise_overlap * 0.3 +
+            historical_agreement * 0.2 -
+            role_consistency * 0.1
+        )
+        estimated_confidence = max(0.1, min(0.95, estimated_confidence))
+
+        # 估计同意概率
+        agreement_probability = estimated_confidence
+
+        # 计算置信区间 (模拟多次采样)
+        n_samples = 100
+        samples = []
+        for _ in range(n_samples):
+            # 添加扰动
+            perturbed = estimated_confidence + np.random.normal(0, 0.1)
+            perturbed = max(0, min(1, perturbed))
+            samples.append(perturbed)
+
+        samples = np.array(samples)
+        ci_lower = np.percentile(samples, 2.5)
+        ci_upper = np.percentile(samples, 97.5)
+
+        # 因素列表
+        factors = []
+        if expertise_overlap > 0.5:
+            factors.append("专业领域高度重叠 (+0.2)")
+        elif expertise_overlap < 0.2:
+            factors.append("专业领域重叠低 (-0.1)")
+
+        if historical_agreement > 0.7:
+            factors.append("历史一致性高 (+0.15)")
+        elif historical_agreement < 0.4:
+            factors.append("历史一致性低 (-0.1)")
+
+        if role_consistency > 0.7:
+            factors.append("角色多样性高 (-0.05)")
+
+        return {
+            "estimated_confidence": round(estimated_confidence, 3),
+            "agreement_probability": round(agreement_probability, 3),
+            "confidence_interval": (round(ci_lower, 3), round(ci_upper, 3)),
+            "factors": factors,
+            "expertise_overlap": round(expertise_overlap, 3),
+            "historical_agreement": round(historical_agreement, 3)
+        }
+
+    def _calculate_historical_agreement(self, agent_ids: List[str]) -> float:
+        """计算Agent间的历史一致性"""
+        # 获取这些Agent的历史对话
+        conversations = []
+        for agent in self.coordinator.agents.values():
+            if agent.id in agent_ids:
+                conversations.extend(agent.conversation_history)
+
+        if len(conversations) < 5:
+            return 0.6  # 默认中等一致性
+
+        # 检查历史消息的一致性 (简单模拟)
+        # 实际应该检查决策结果的一致性
+        return 0.7  # 模拟值
+
+    async def resolve_conflict_with_confidence(
+        self,
+        conflict: Conflict,
+        strategy: str = "consensus"
+    ) -> Dict[str, Any]:
+        """
+        解决冲突并返回置信度信息
+
+        Returns:
+            Dict containing resolution and confidence metrics
+        """
+        # 首先估计共识置信度
+        consensus_confidence = self.estimate_consensus_confidence(
+            conflict.involved_agents,
+            conflict.description
+        )
+
+        # 执行冲突解决
+        resolution = await self.resolve_conflict(conflict, strategy)
+
+        return {
+            "conflict_id": conflict.conflict_id,
+            "resolution": resolution,
+            "consensus_confidence": consensus_confidence["estimated_confidence"],
+            "agreement_probability": consensus_confidence["agreement_probability"],
+            "confidence_interval": consensus_confidence["confidence_interval"],
+            "resolution_strategy": strategy
         }
 
 

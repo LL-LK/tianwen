@@ -53,6 +53,11 @@ class TestReport:
     recommendation: str
     timestamp: str = ""
 
+    # 新增: 置信区间和交叉验证
+    confidence_interval: Optional[Tuple[float, float]] = None  # (lower, upper)
+    cross_validation_score: Optional[float] = None  # 0-1
+    statistical_confidence: Optional[Dict[str, Any]] = None  # 统计检验置信区间
+
 
 class HypothesisTester:
     """
@@ -123,6 +128,12 @@ class HypothesisTester:
             overall_result
         )
 
+        # 5. 计算置信区间和交叉验证分数
+        confidence_interval, cross_validation_score, statistical_confidence = \
+            await self._compute_verification_confidence(
+                overall_result, evidence_for, evidence_against, test_case
+            )
+
         report = TestReport(
             hypothesis_id=hypothesis.id if hasattr(hypothesis, 'id') else str(hypothesis),
             test_cases=test_cases,
@@ -131,7 +142,10 @@ class HypothesisTester:
             evidence_against=evidence_against,
             confidence_change=confidence_change,
             recommendation=self._generate_recommendation(overall_result),
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
+            confidence_interval=confidence_interval,
+            cross_validation_score=cross_validation_score,
+            statistical_confidence=statistical_confidence
         )
 
         self.test_history.append(report)
@@ -691,6 +705,137 @@ class HypothesisTester:
             TestResult.INCONCLUSIVE: "证据不足，建议收集更多数据"
         }
         return recommendations.get(result, "")
+
+    async def _compute_verification_confidence(
+        self,
+        overall_result: TestResult,
+        evidence_for: List[str],
+        evidence_against: List[str],
+        test_case: TestCase
+    ) -> Tuple[Optional[Tuple[float, float]], Optional[float], Optional[Dict[str, Any]]]:
+        """
+        计算验证的置信区间和交叉验证分数
+
+        Returns:
+            Tuple of (confidence_interval, cross_validation_score, statistical_confidence)
+        """
+        # 计算基础分数
+        n_for = len(evidence_for)
+        n_against = len(evidence_against)
+        n_total = n_for + n_against
+
+        if n_total == 0:
+            return (None, None, None)
+
+        # 基础支持分数
+        base_score = n_for / n_total if n_total > 0 else 0.5
+
+        # 考虑测试方法的不确定性
+        method_confidence = 0.8  # 假设测试方法本身有80%可靠性
+        adjusted_score = base_score * method_confidence + 0.5 * (1 - method_confidence)
+
+        # 计算置信区间 (使用二项分布的置信区间近似)
+        from scipy import stats
+        n = n_total
+        p = adjusted_score
+
+        # 简单的95%置信区间
+        # 使用正态近似或Wilson区间
+        z = stats.norm.ppf(0.975)
+        margin = z * ((p * (1 - p) / n) ** 0.5) if n > 0 else 0.1
+        confidence_interval = (
+            max(0, p - margin),
+            min(1, p + margin)
+        )
+
+        # 计算交叉验证分数 (基于证据一致性)
+        if test_case.passed is not None:
+            # 测试通过率作为交叉验证的一部分
+            pass_rate = 1.0 if test_case.passed else 0.0
+            cv_score = (adjusted_score + pass_rate) / 2
+        else:
+            cv_score = adjusted_score
+
+        # 统计检验置信区间
+        statistical_confidence = None
+        if test_case.passed is not None:
+            # 为统计检验结果添加置信区间
+            statistical_confidence = {
+                "test_passed": test_case.passed,
+                "method": test_case.test_method,
+                "estimated_accuracy": adjusted_score,
+                "confidence_interval": confidence_interval,
+                "sample_size": n_total,
+                "evidence_balance": n_for / n_total if n_total > 0 else 0.5
+            }
+
+        return (confidence_interval, cv_score, statistical_confidence)
+
+    def get_verification_confidence_report(self) -> Dict[str, Any]:
+        """
+        获取验证置信度综合报告
+
+        Returns:
+            包含所有测试的置信度统计
+        """
+        if not self.test_history:
+            return {"total_tests": 0}
+
+        with_ci = [r for r in self.test_history if r.confidence_interval is not None]
+        with_cv = [r for r in self.test_history if r.cross_validation_score is not None]
+
+        avg_cv_score = np.mean([r.cross_validation_score for r in with_cv]) if with_cv else 0
+
+        # 统计各结果类型
+        result_counts = {}
+        for r in self.test_history:
+            result_counts[r.overall_result.value] = result_counts.get(r.overall_result.value, 0) + 1
+
+        return {
+            "total_tests": len(self.test_history),
+            "with_confidence_interval": len(with_ci),
+            "with_cross_validation": len(with_cv),
+            "avg_cross_validation_score": round(avg_cv_score, 3),
+            "result_distribution": result_counts,
+            "confirmation_rate": result_counts.get("confirmed", 0) / len(self.test_history) if self.test_history else 0
+        }
+
+    async def update_confidence_from_feedback(
+        self,
+        hypothesis_id: str,
+        feedback: Dict[str, Any]
+    ) -> Optional[float]:
+        """
+        根据反馈更新假说置信度 (验证驱动学习)
+
+        Args:
+            hypothesis_id: 假说ID
+            feedback: 反馈数据，包含:
+                - confirmed: 是否在后续验证中确认
+                - strength: 反馈强度 (0-1)
+
+        Returns:
+            更新后的置信度
+        """
+        # 在历史记录中查找该假说的测试报告
+        for report in self.test_history:
+            if report.hypothesis_id == hypothesis_id:
+                original_confidence = 0.5  # 假设原始置信度
+                if hasattr(report, 'confidence_change'):
+                    # 粗略估计原始置信度
+                    original_confidence = max(0, report.confidence_change)
+
+                confirmed = feedback.get("confirmed", False)
+                strength = feedback.get("strength", 0.5)
+
+                if confirmed:
+                    new_confidence = original_confidence + (1 - original_confidence) * strength * 0.3
+                else:
+                    new_confidence = original_confidence * (1 - strength * 0.3)
+
+                return new_confidence
+
+        return None
 
     def generate_report(self, reports: List[TestReport], format: str = "markdown") -> str:
         """生成验证报告"""

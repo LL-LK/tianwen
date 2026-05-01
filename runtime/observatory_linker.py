@@ -28,6 +28,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from collections import defaultdict
 import httpx
+import numpy as np
 
 
 # ============ 枚举定义 ============
@@ -324,6 +325,143 @@ class PriorityCalculator:
             return ObservationPriority.LOW
         else:
             return ObservationPriority.BACKLOG
+
+    @classmethod
+    def calculate_with_confidence(
+        cls,
+        hypothesis_confidence: float,
+        scientific_impact: float,
+        verification_state: VerificationState,
+        observability_score: float,
+        resource_cost: float,
+        uncertainty: float = 0.1
+    ) -> Dict[str, Any]:
+        """
+        计算优先级分数及置信区间
+
+        Args:
+            hypothesis_confidence: 假说置信度 (0-1)
+            scientific_impact: 科学影响力评分 (0-1)
+            verification_state: 当前验证状态
+            observability_score: 可观测性评分 (0-100)
+            resource_cost: 资源成本估计 (0-1)
+            uncertainty: 输入不确定性 (默认0.1)
+
+        Returns:
+            Dict containing:
+            - priority_score: 优先级分数
+            - confidence_interval: (lower, upper) 置信区间
+            - confidence: 预测置信度
+        """
+        # 计算多个扰动样本
+        n_samples = 100
+        scores = []
+
+        for _ in range(n_samples):
+            # 添加扰动模拟不确定性传播
+            perturbed_confidence = hypothesis_confidence + np.random.normal(0, uncertainty)
+            perturbed_confidence = max(0, min(1, perturbed_confidence))
+
+            perturbed_impact = scientific_impact + np.random.normal(0, uncertainty)
+            perturbed_impact = max(0, min(1, perturbed_impact))
+
+            perturbed_observability = observability_score + np.random.normal(0, 5)
+            perturbed_observability = max(0, min(100, perturbed_observability))
+
+            perturbed_cost = resource_cost + np.random.normal(0, uncertainty / 2)
+            perturbed_cost = max(0, min(1, perturbed_cost))
+
+            score = cls.calculate(
+                perturbed_confidence, perturbed_impact,
+                verification_state, perturbed_observability, perturbed_cost
+            )
+            scores.append(score)
+
+        # 计算置信区间
+        scores = np.array(scores)
+        priority_score = cls.calculate(
+            hypothesis_confidence, scientific_impact,
+            verification_state, observability_score, resource_cost
+        )
+
+        ci_lower = np.percentile(scores, 2.5)
+        ci_upper = np.percentile(scores, 97.5)
+
+        # 置信度：样本一致性越高，置信度越高
+        score_std = np.std(scores)
+        confidence = max(0, 1 - score_std / 50)  # 归一化
+
+        return {
+            "priority_score": priority_score,
+            "confidence_interval": (float(ci_lower), float(ci_upper)),
+            "confidence": float(confidence),
+            "uncertainty_estimate": float(score_std)
+        }
+
+    @classmethod
+    def cross_validate_priority(
+        cls,
+        hypothesis_confidence: float,
+        scientific_impact: float,
+        verification_state: VerificationState,
+        observability_score: float,
+        resource_cost: float
+    ) -> Dict[str, Any]:
+        """
+        使用多种方法交叉验证优先级
+
+        Returns:
+            Dict containing:
+            - primary_score: 主方法分数
+            - alternative_scores: 替代方法分数
+            - agreement: 一致性分数 (0-1)
+            - consensus: 共识优先级
+        """
+        # 方法1: 原始加权计算
+        score1 = cls.calculate(
+            hypothesis_confidence, scientific_impact,
+            verification_state, observability_score, resource_cost
+        )
+
+        # 方法2: 简化模型 (只用科学价值)
+        scientific_value = (hypothesis_confidence * 0.4 + scientific_impact * 0.6)
+        score2 = scientific_value * 100
+
+        # 方法3: 保守估计 (用最小权重)
+        weights_min = {
+            "scientific_impact": 0.2,
+            "verification_urgency": 0.15,
+            "observability": 0.1,
+            "resource_efficiency": 0.1,
+            "cost_risk": 0.05
+        }
+        raw_priority = (
+            scientific_value * weights_min["scientific_impact"] +
+            scientific_value * 0.8 * weights_min["verification_urgency"] +
+            (observability_score / 100) * weights_min["observability"] +
+            0.5 * weights_min["resource_efficiency"]
+        )
+        score3 = (raw_priority - resource_cost * weights_min["cost_risk"]) * 100
+
+        scores = [score1, score2, score3]
+
+        # 计算一致性
+        mean_score = np.mean(scores)
+        std_score = np.std(scores)
+
+        # 一致性分数：标准差越小，一致性越高
+        agreement = max(0, 1 - std_score / 30)
+
+        # 共识：平均值
+        consensus = (score1 + score2 + score3) / 3
+
+        return {
+            "primary_score": score1,
+            "alternative_scores": {"simplified": score2, "conservative": score3},
+            "agreement": float(agreement),
+            "consensus": float(consensus),
+            "method_used": "weighted_cross_validation"
+        }
 
 
 # ============ SIMBAD 数据接口 ============

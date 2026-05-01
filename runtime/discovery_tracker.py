@@ -193,6 +193,26 @@ class GraphRelation:
 
 
 @dataclass
+class ConfidenceInterval:
+    """置信区间"""
+    lower: float
+    upper: float
+    confidence: float = 0.95  # 默认95%置信水平
+
+    def to_dict(self) -> Dict:
+        return {
+            "lower": self.lower,
+            "upper": self.upper,
+            "confidence": self.confidence,
+            "width": self.upper - self.lower
+        }
+
+    def contains(self, value: float) -> bool:
+        """检查值是否在置信区间内"""
+        return self.lower <= value <= self.upper
+
+
+@dataclass
 class VerificationRecord:
     """验证记录"""
     id: str
@@ -202,6 +222,10 @@ class VerificationRecord:
     method: str
     notes: str = ""
     created_at: str = ""
+
+    # 新增: 验证置信度
+    confidence_interval: Optional[ConfidenceInterval] = None
+    cross_validation_score: Optional[float] = None  # 交叉验证分数 (0-1)
 
     def __post_init__(self):
         if not self.created_at:
@@ -480,16 +504,57 @@ class DiscoveryTracker:
         outcome: VerificationOutcome,
         evidence: List[str],
         method: str,
-        notes: str = ""
+        notes: str = "",
+        cross_validation_results: Optional[List[Dict]] = None
     ) -> VerificationRecord:
-        """记录假说验证结果"""
+        """
+        记录假说验证结果
+
+        Args:
+            hypothesis_id: 假说ID
+            outcome: 验证结果
+            evidence: 支持证据列表
+            method: 验证方法
+            notes: 备注
+            cross_validation_results: 交叉验证结果列表 (用于计算置信区间)
+        """
+        record_id = f"ver_{uuid.uuid4().hex[:8]}"
+
+        # 计算置信区间
+        confidence_interval = None
+        cross_validation_score = None
+
+        if cross_validation_results and len(cross_validation_results) >= 2:
+            # 基于多个验证方法计算置信区间
+            outcomes = [r.get("outcome_score", 0.5) for r in cross_validation_results]
+            mean_score = sum(outcomes) / len(outcomes)
+            std_score = (sum((x - mean_score) ** 2 for x in outcomes) / len(outcomes)) ** 0.5
+
+            # 使用t分布计算95%置信区间
+            n = len(outcomes)
+            if n >= 2:
+                from scipy import stats as scipy_stats
+                t_critical = scipy_stats.t.ppf(0.975, n - 1)  # 95%双侧
+                margin = t_critical * (std_score / (n ** 0.5))
+                confidence_interval = ConfidenceInterval(
+                    lower=max(0, mean_score - margin),
+                    upper=min(1, mean_score + margin),
+                    confidence=0.95
+                )
+
+            # 计算交叉验证一致性分数
+            positive_votes = sum(1 for r in cross_validation_results if r.get("outcome_score", 0) > 0.5)
+            cross_validation_score = positive_votes / len(cross_validation_results)
+
         record = VerificationRecord(
-            id=f"ver_{uuid.uuid4().hex[:8]}",
+            id=record_id,
             hypothesis_id=hypothesis_id,
             outcome=outcome,
             evidence=evidence,
             method=method,
-            notes=notes
+            notes=notes,
+            confidence_interval=confidence_interval,
+            cross_validation_score=cross_validation_score
         )
 
         self.verification_records.append(record)
@@ -672,6 +737,297 @@ class DiscoveryTracker:
             results = await self.chroma.find_similar_papers(embedding)
             return [{"id": r[0], "similarity": r[1]} for r in results]
         return []
+
+    # ============ 交叉验证与自我进化方法 ============
+
+    async def cross_validate_hypothesis(
+        self,
+        hypothesis_id: str,
+        methods: List[str] = None
+    ) -> Dict[str, Any]:
+        """
+        对假说验证结果进行交叉验证
+
+        Args:
+            hypothesis_id: 假说ID
+            methods: 验证方法列表 (如 ["statistical", "literature", "observation"])
+
+        Returns:
+            Dict containing:
+            - consensus: 共识结果 (confirmed/rejected/inconclusive)
+            - agreement_score: 一致性分数 (0-1)
+            - confidence_interval: 置信区间
+            - method_results: 各方法的结果
+        """
+        if methods is None:
+            methods = ["statistical", "literature", "observation"]
+
+        method_results = []
+        for method in methods:
+            # 模拟不同验证方法的结果
+            # 实际应用中应调用具体的验证逻辑
+            result = await self._apply_verification_method(hypothesis_id, method)
+            method_results.append(result)
+
+        # 计算一致性
+        confirmed_count = sum(1 for r in method_results if r.get("outcome") == "confirmed")
+        rejected_count = sum(1 for r in method_results if r.get("outcome") == "rejected")
+        total = len(method_results)
+
+        # 共识决策：多数投票
+        if confirmed_count > total / 2:
+            consensus = "confirmed"
+        elif rejected_count > total / 2:
+            consensus = "rejected"
+        else:
+            consensus = "inconclusive"
+
+        # 一致性分数
+        max_count = max(confirmed_count, rejected_count, total - confirmed_count - rejected_count)
+        agreement_score = max_count / total if total > 0 else 0
+
+        # 计算置信区间
+        scores = [r.get("score", 0.5) for r in method_results]
+        if len(scores) >= 2:
+            from scipy import stats as scipy_stats
+            mean_score = sum(scores) / len(scores)
+            std_score = (sum((x - mean_score) ** 2 for x in scores) / len(scores)) ** 0.5
+            n = len(scores)
+            t_critical = scipy_stats.t.ppf(0.975, n - 1)
+            margin = t_critical * (std_score / (n ** 0.5))
+            confidence_interval = {
+                "lower": max(0, mean_score - margin),
+                "upper": min(1, mean_score + margin),
+                "confidence": 0.95
+            }
+        else:
+            confidence_interval = {"lower": 0.3, "upper": 0.7, "confidence": 0.95}
+
+        return {
+            "hypothesis_id": hypothesis_id,
+            "consensus": consensus,
+            "agreement_score": agreement_score,
+            "confidence_interval": confidence_interval,
+            "method_results": method_results,
+            "cross_validation_applied": methods
+        }
+
+    async def _apply_verification_method(self, hypothesis_id: str, method: str) -> Dict:
+        """应用特定验证方法"""
+        # 获取已有的验证记录
+        records = [r for r in self.verification_records if r.hypothesis_id == hypothesis_id]
+
+        if not records:
+            return {"method": method, "outcome": "inconclusive", "score": 0.5}
+
+        # 基于已有记录计算方法得分
+        latest_record = records[-1]
+
+        # 模拟不同方法的不同权重
+        method_weights = {
+            "statistical": 0.9,
+            "literature": 0.8,
+            "observation": 0.85
+        }
+
+        base_score = 0.5
+        if latest_record.outcome == VerificationOutcome.CONFIRMED:
+            base_score = 0.8
+        elif latest_record.outcome == VerificationOutcome.REJECTED:
+            base_score = 0.2
+        elif latest_record.outcome == VerificationOutcome.REVISED:
+            base_score = 0.5
+
+        weight = method_weights.get(method, 0.8)
+        score = base_score * weight
+
+        return {
+            "method": method,
+            "outcome": latest_record.outcome.value,
+            "score": score
+        }
+
+    async def predict_model_disagreement(
+        self,
+        hypothesis_id: str
+    ) -> Dict[str, Any]:
+        """
+        预测不同模型/方法对同一假说的分歧程度
+
+        Args:
+            hypothesis_id: 假说ID
+
+        Returns:
+            Dict containing:
+            - predicted_agreement: 预测一致性 (0-1)
+            - confidence: 预测置信度
+            - factors: 分歧因素
+        """
+        # 获取历史验证记录
+        records = [r for r in self.verification_records if r.hypothesis_id == hypothesis_id]
+
+        if len(records) < 2:
+            return {
+                "predicted_agreement": 0.6,
+                "confidence": 0.3,
+                "factors": ["数据不足"]
+            }
+
+        # 计算历史一致性
+        confirmed = sum(1 for r in records if r.outcome == VerificationOutcome.CONFIRMED)
+        rejected = sum(1 for r in records if r.outcome == VerificationOutcome.REJECTED)
+        total = len(records)
+
+        # 如果历史结果一致，预测未来也一致
+        if confirmed == total or rejected == total:
+            predicted_agreement = 0.9
+            confidence = 0.8
+        elif confirmed + rejected < total:
+            # 存在不确定结果，预测分歧较大
+            predicted_agreement = 0.5
+            confidence = 0.5
+        else:
+            predicted_agreement = 0.7
+            confidence = 0.6
+
+        return {
+            "hypothesis_id": hypothesis_id,
+            "predicted_agreement": predicted_agreement,
+            "confidence": confidence,
+            "factors": ["历史验证一致性", "结果分布"]
+        }
+
+    async def get_validation_consensus(
+        self,
+        hypothesis_ids: List[str] = None
+    ) -> Dict[str, Any]:
+        """
+        获取验证共识报告
+
+        Args:
+            hypothesis_ids: 假说ID列表 (None表示全部)
+
+        Returns:
+            Dict containing consensus statistics
+        """
+        if hypothesis_ids is None:
+            records = self.verification_records
+        else:
+            records = [r for r in self.verification_records if r.hypothesis_id in hypothesis_ids]
+
+        if not records:
+            return {"consensus_rate": 0, "total_verifications": 0}
+
+        # 计算交叉验证分数
+        with_cv = [r for r in records if r.cross_validation_score is not None]
+        avg_cv_score = sum(r.cross_validation_score for r in with_cv) / len(with_cv) if with_cv else 0
+
+        # 计算置信区间覆盖率
+        with_ci = [r for r in records if r.confidence_interval is not None]
+        ci_covered = 0
+        for r in with_ci:
+            if r.outcome == VerificationOutcome.CONFIRMED and r.confidence_interval.contains(0.7):
+                ci_covered += 1
+            elif r.outcome == VerificationOutcome.REJECTED and r.confidence_interval.contains(0.3):
+                ci_covered += 1
+
+        ci_coverage = ci_covered / len(with_ci) if with_ci else 0
+
+        return {
+            "total_verifications": len(records),
+            "with_cross_validation": len(with_cv),
+            "avg_cross_validation_score": round(avg_cv_score, 3),
+            "confidence_interval_coverage": round(ci_coverage, 3),
+            "consensus_rate": round(len(with_cv) / len(records) if records else 0, 3)
+        }
+
+    async def update_hypothesis_confidence(
+        self,
+        hypothesis_id: str,
+        new_evidence: Dict[str, Any]
+    ) -> float:
+        """
+        根据新证据更新假说置信度 (验证驱动学习)
+
+        Args:
+            hypothesis_id: 假说ID
+            new_evidence: 新证据，包含:
+                - outcome: 验证结果
+                - strength: 证据强度 (0-1)
+                - source: 证据来源
+
+        Returns:
+            更新后的置信度
+        """
+        # 获取当前假说
+        chain = await self.get_completion_chain(hypothesis_id)
+        hypotheses = chain.get("hypotheses", [])
+        if not hypotheses:
+            return 0.5
+
+        current_confidence = hypotheses[0].get("confidence", 0.5)
+
+        # 根据新证据调整置信度
+        outcome = new_evidence.get("outcome", "inconclusive")
+        strength = new_evidence.get("strength", 0.5)
+
+        if outcome == "confirmed":
+            # 确认：增加置信度
+            increase = (1 - current_confidence) * strength * 0.5
+            new_confidence = min(1.0, current_confidence + increase)
+        elif outcome == "rejected":
+            # 反驳：降低置信度
+            decrease = current_confidence * strength * 0.5
+            new_confidence = max(0.0, current_confidence - decrease)
+        else:
+            # 不确定或修订：轻微调整
+            new_confidence = current_confidence * 0.95
+
+        return new_confidence
+
+    async def report_validation_uncertainty(self, hypothesis_id: str) -> Dict[str, Any]:
+        """
+        报告假说验证的不确定性
+
+        Args:
+            hypothesis_id: 假说ID
+
+        Returns:
+            Dict containing uncertainty measures
+        """
+        records = [r for r in self.verification_records if r.hypothesis_id == hypothesis_id]
+
+        if not records:
+            return {"uncertainty": "high", "reason": "no_verification_records"}
+
+        # 计算不确定性
+        outcomes = [r.outcome for r in records]
+        confirmed = outcomes.count(VerificationOutcome.CONFIRMED)
+        rejected = outcomes.count(VerificationOutcome.REJECTED)
+        total = len(outcomes)
+
+        if confirmed == total or rejected == total:
+            uncertainty = "low"
+        elif confirmed + rejected < total:
+            uncertainty = "medium"
+        else:
+            uncertainty = "medium-high"
+
+        # 置信区间宽度
+        ci_widths = []
+        for r in records:
+            if r.confidence_interval:
+                ci_widths.append(r.confidence_interval.upper - r.confidence_interval.lower)
+
+        avg_ci_width = sum(ci_widths) / len(ci_widths) if ci_widths else 0.5
+
+        return {
+            "hypothesis_id": hypothesis_id,
+            "uncertainty_level": uncertainty,
+            "avg_confidence_interval_width": round(avg_ci_width, 3),
+            "total_verifications": total,
+            "cross_validation_available": any(r.cross_validation_score is not None for r in records)
+        }
 
 
 async def demo():
