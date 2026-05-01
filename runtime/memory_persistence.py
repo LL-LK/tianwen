@@ -243,6 +243,42 @@ class PersistentMemory:
             query_lower = query.lower()
             return [e for e in self.experiences if query_lower in e.get('task_description', '').lower()][:k]
 
+    def get_similar_experiences(self, query: str, k: int = 5, min_score: float = 0.5) -> List[Dict]:
+        """
+        获取语义相似的经验用于任务上下文检索
+
+        Args:
+            query: 查询文本（任务描述、问题或需求）
+            k: 返回结果数量
+            min_score: 最小相似度分数阈值
+
+        Returns:
+            List[Dict]: 相似经验列表，包含task_description、solution、skills_used等
+        """
+        if not self.embedder_loaded:
+            print("[Memory] Embedder not loaded, using fallback text search")
+            return self.search_experiences(query, k=k)
+
+        query_embedding = self._get_embedding(query)
+        results = self.experiences_store.search(query_embedding, k=k * 2)  # 获取更多以便过滤
+
+        # 过滤低分结果并格式化
+        similar_experiences = []
+        for r in results:
+            if r['score'] >= min_score:
+                metadata = r['metadata']
+                similar_experiences.append({
+                    'task_description': metadata.get('task_description', ''),
+                    'solution': metadata.get('solution', ''),
+                    'skills_used': metadata.get('skills_used', []),
+                    'type': metadata.get('type', ''),
+                    'outcome': metadata.get('outcome', ''),
+                    'score': r['score'],
+                    'id': metadata.get('id', ''),
+                })
+
+        return similar_experiences[:k]
+
     # ============ 任务历史管理 ============
 
     def add_task_record(self, task_record: Dict):
@@ -385,6 +421,20 @@ class MemoryIntegratedAgent:
     def get_similar_tasks(self, query: str, k: int = 5) -> List[Dict]:
         """获取相似任务"""
         return self.memory.search_experiences(query, k=k)
+
+    def get_similar_experiences(self, query: str, k: int = 5, min_score: float = 0.5) -> List[Dict]:
+        """
+        获取语义相似的经验用于任务上下文检索（RAG增强）
+
+        Args:
+            query: 查询文本（任务描述、问题或需求）
+            k: 返回结果数量
+            min_score: 最小相似度分数阈值
+
+        Returns:
+            List[Dict]: 相似经验列表，按相似度降序排列
+        """
+        return self.memory.get_similar_experiences(query, k=k, min_score=min_score)
 
 # ============ 示例用法 ============
 
