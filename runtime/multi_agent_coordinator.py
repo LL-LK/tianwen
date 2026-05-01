@@ -3,7 +3,7 @@
 
 核心概念:
 - ResearchAgent: 研究Agent（带角色和专业知识）
-- AgentRole: 角色枚举 (PLANNER/EXECUTOR/REVIEWER/COORDINATOR)
+- AgentRole: 角色枚举 (生旦净末丑 - THEATRICAL_ROLES)
 - Conversation: Agent间对话记录
 - ConflictResolution: 冲突解决机制
 - VLACoordinator: 视觉-语言-动作模型协调器
@@ -17,6 +17,12 @@
 - VLA集成接口 (Issue #29)
 - 过拟合检测协同 (Issue #13)
 - 硬件安全协调
+
+天文大舞台架构 (Issue #36):
+- 生旦净末丑: 角色定义 (sheng-dan-jing-mo-chou)
+- 剧本/演出迭代: Script/Performance机制
+- Qwen3模式切换: Thinking/Non-thinking模式
+- 孰能生巧/举一反三: 迭代学习机制
 
 Author: Tianwen-AGI Team
 Date: 2026/05/01
@@ -32,19 +38,61 @@ import numpy as np
 
 
 # ============================================================================
-# 第一部分: Agent角色定义
+# 第一部分: Agent角色定义 - 生旦净末丑 (Theatrical Roles)
 # ============================================================================
 
+class AgentMode(Enum):
+    """Qwen3-style Agent运行模式 - 思维模式切换"""
+    THINKING = "thinking"      # 复杂推理模式 (生旦净主演)
+    NON_THINKING = "non_thinking"  # 高效执行模式 (末丑配合)
+
+
 class AgentRole(Enum):
-    """Agent角色枚举"""
-    COORDINATOR = "coordinator"      # 协调者 - 分配任务、协调合作
-    PLANNER = "planner"              # 规划者 - 制定研究计划
-    EXECUTOR = "executor"            # 执行者 - 执行具体任务
-    REVIEWER = "reviewer"            # 评审者 - 评估结果、提出建议
-    RESEARCHER = "researcher"        # 研究者 - 文献调研
-    HYPOTHESIS_GENERATOR = "hypothesis_generator"  # 假说生成
+    """Agent角色枚举 - 生旦净末丑"""
+    # 生 (sheng) - 文献调研，正面主角
+    RESEARCHER = "researcher"  # 生: 研究者/文献调研
+
+    # 旦 (dan) - 假说生成，细腻创作
+    HYPOTHESIS_GENERATOR = "hypothesis_generator"  # 旦: 假说生成
+
+    # 净 (jing) - 数据分析，性格鲜明 (新增)
+    DATA_ANALYST = "data_analyst"  # 净: 数据分析师
+
+    # 末 (mo) - 观测执行，配合主演
+    OBSERVATION_EXECUTOR = "observation_executor"  # 末: 观测执行
+
+    # 丑 (chou) - 协调控制，灵活调度
+    COORDINATOR = "coordinator"  # 丑: 协调者
+
+    # 传统角色兼容 (保留用于向后兼容)
+    PLANNER = "planner"              # 规划者
+    EXECUTOR = "executor"            # 执行者
+    REVIEWER = "reviewer"            # 评审者
     OBSERVATION_SPECIALIST = "observation_specialist"  # 观测专家
-    VLA_AGENT = "vla_agent"          # VLA Agent - 视觉-语言-动作协调
+    VLA_AGENT = "vla_agent"          # VLA Agent
+
+    @property
+    def theatrical_name(self) -> str:
+        """获取角色的戏曲名称"""
+        theatrical_names = {
+            AgentRole.RESEARCHER: "生",
+            AgentRole.HYPOTHESIS_GENERATOR: "旦",
+            AgentRole.DATA_ANALYST: "净",
+            AgentRole.OBSERVATION_EXECUTOR: "末",
+            AgentRole.COORDINATOR: "丑",
+        }
+        return theatrical_names.get(self, self.value)
+
+    @property
+    def mode(self) -> AgentMode:
+        """获取角色对应的默认运行模式"""
+        # 生旦净需要复杂推理 -> thinking模式
+        thinking_roles = {
+            AgentRole.RESEARCHER,
+            AgentRole.HYPOTHESIS_GENERATOR,
+            AgentRole.DATA_ANALYST,
+        }
+        return AgentMode.THINKING if self in thinking_roles else AgentMode.NON_THINKING
 
 
 class VLAActionType(Enum):
@@ -89,20 +137,42 @@ class ResearchAgent:
     属性:
     - id: Agent唯一标识
     - name: Agent名称
-    - role: Agent角色
+    - role: Agent角色 (生旦净末丑)
+    - mode: 运行模式 (THINKING/NON_THINKING - Qwen3风格)
     - expertise: 专业知识领域
     - capabilities: 可执行的能力
     - conversation_history: 对话历史
     - is_active: 是否活跃
+    - skill_level: 技能等级 (孰能生巧)
+    - performance_count: 演出次数
     """
 
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     role: AgentRole = AgentRole.EXECUTOR
+    mode: AgentMode = AgentMode.NON_THINKING  # Qwen3-style mode
     expertise: List[str] = field(default_factory=list)
     capabilities: List[AgentCapability] = field(default_factory=list)
     conversation_history: List[Dict] = field(default_factory=list)
     is_active: bool = True
+    skill_level: float = 1.0  # 技能等级 (1.0为基础)
+    performance_count: int = 0  # 演出次数
+
+    def set_mode(self, mode: AgentMode):
+        """设置运行模式 (Qwen3-style切换)"""
+        self.mode = mode
+
+    def should_use_thinking(self) -> bool:
+        """判断是否使用thinking模式"""
+        # 复杂角色使用thinking模式
+        return self.role.mode == AgentMode.THINKING or self.mode == AgentMode.THINKING
+
+    def increment_performance(self, success: bool):
+        """记录演出完成 (孰能生巧)"""
+        self.performance_count += 1
+        # 成功则提升技能等级
+        if success:
+            self.skill_level = min(10.0, self.skill_level + 0.1)
 
     def add_message(self, role: str, content: str, metadata: Optional[Dict] = None):
         """
@@ -142,7 +212,281 @@ class ResearchAgent:
 
 
 # ============================================================================
-# 第二部分: 消息类型定义
+# 第二部分: 剧本与演出机制 (Script/Performance System)
+# ============================================================================
+
+@dataclass
+class Script:
+    """
+    剧本 - 任务执行模板 (Issue #36)
+
+    属性:
+    - name: 剧本名称
+    - description: 剧本描述
+    - required_roles: 需要角色列表
+    - stages: 演出阶段列表
+    - transitions: 角色切换条件
+    - success_criteria: 成功标准
+    - improvement_hints: 改进提示 (演出后填充)
+    - performance_count: 演出次数 (孰能生巧)
+    - success_rate: 成功率
+    """
+    name: str
+    description: str = ""
+    required_roles: List[AgentRole] = field(default_factory=list)
+    stages: List[str] = field(default_factory=list)  # e.g., ["planning", "research", "hypothesis", "review"]
+    transitions: Dict[str, str] = field(default_factory=dict)  # role -> next_role
+    success_criteria: Dict[str, float] = field(default_factory=dict)  # metric -> threshold
+    improvement_hints: List[str] = field(default_factory=list)
+    performance_count: int = 0
+    success_rate: float = 0.0
+
+    def increment_performance(self, success: bool):
+        """演出完成记录 (孰能生巧)"""
+        self.performance_count += 1
+        # 更新成功率
+        current_successes = self.success_rate * (self.performance_count - 1)
+        if success:
+            current_successes += 1
+        self.success_rate = current_successes / self.performance_count
+
+    def add_improvement_hint(self, hint: str):
+        """添加改进提示"""
+        self.improvement_hints.append(hint)
+
+
+@dataclass
+class PerformanceFeedback:
+    """
+    演出反馈 (Issue #36)
+
+    属性:
+    - script_name: 剧本名称
+    - role: 执行角色
+    - success: 是否成功
+    - metrics: 评分指标
+    - issues: 发现问题
+    - suggestions: 改进建议
+    - observations: 观察数据 (举一反三素材)
+    """
+    script_name: str
+    role: AgentRole
+    success: bool
+    metrics: Dict[str, float] = field(default_factory=dict)
+    issues: List[str] = field(default_factory=list)
+    suggestions: List[str] = field(default_factory=list)
+    observations: List[Dict] = field(default_factory=list)  # 用于举一反三
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
+class ScriptLibrary:
+    """
+    剧本库 - 管理所有剧本 (Issue #36)
+
+    功能:
+    - 剧本注册和查找
+    - 剧本进化 (从演出反馈学习)
+    - 自动生成新剧本
+    """
+
+    def __init__(self):
+        self.scripts: Dict[str, Script] = {}
+        self.feedback_history: List[PerformanceFeedback] = []
+
+    def add_script(self, script: Script):
+        """注册新剧本"""
+        self.scripts[script.name] = script
+
+    def get_script(self, name: str) -> Optional[Script]:
+        """获取剧本"""
+        return self.scripts.get(name)
+
+    def learn_from_feedback(self, feedback: PerformanceFeedback):
+        """
+        从演出反馈学习 (举一反三)
+
+        1. 更新对应剧本的成功率
+        2. 收集改进提示
+        3. 检测新模式用于生成新剧本
+        """
+        self.feedback_history.append(feedback)
+
+        script = self.scripts.get(feedback.script_name)
+        if script:
+            script.increment_performance(feedback.success)
+            for suggestion in feedback.suggestions:
+                script.add_improvement_hint(suggestion)
+
+        # 检测新模式 (举一反三)
+        if feedback.observations:
+            self._detect_novel_pattern(feedback)
+
+    def _detect_novel_pattern(self, feedback: PerformanceFeedback) -> bool:
+        """检测新模式用于剧本生成"""
+        # 如果收集到足够观察，可能生成新剧本
+        if len(feedback.observations) >= 5:
+            # 这里简化处理，实际应该用更复杂的模式识别
+            return True
+        return False
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """获取剧本库统计"""
+        total_performances = sum(s.performance_count for s in self.scripts.values())
+        avg_success_rate = (
+            sum(s.success_rate for s in self.scripts.values()) / len(self.scripts)
+            if self.scripts else 0
+        )
+        return {
+            "total_scripts": len(self.scripts),
+            "total_performances": total_performances,
+            "average_success_rate": avg_success_rate,
+            "feedback_count": len(self.feedback_history)
+        }
+
+
+# ============================================================================
+# 第三部分: 迭代学习机制 (孰能生巧/举一反三)
+# ============================================================================
+
+class IterativeLearning:
+    """
+    迭代学习机制 (Issue #36)
+
+    两种学习模式:
+    1. 孰能生巧: 单一任务越做越好
+    2. 举一反三: 学会一类任务的通用方法
+
+    学习维度:
+    - skill_improvement: 技能提升
+    - pattern_generalization: 模式泛化
+    - script_optimization: 剧本优化
+    """
+
+    def __init__(self):
+        self.skill_library: Dict[str, Dict] = {}  # task_type -> skill_data
+        self.pattern_cache: Dict[str, Any] = {}    # pattern -> generalized_method
+        self.learning_history: List[Dict] = []
+
+    def on_task_complete(
+        self,
+        task_type: str,
+        result: Dict[str, Any],
+        context: Optional[Dict] = None
+    ):
+        """
+        任务完成后的学习
+
+        1. 孰能生巧 - 更新此类任务的专用技能
+        2. 举一反三 - 提取通用模式
+        """
+        # 1. 孰能生巧 - 更新技能
+        self._update_skill(task_type, result)
+
+        # 2. 举一反三 - 提取模式
+        if context:
+            general_pattern = self._extract_pattern(task_type, context)
+            if general_pattern:
+                self._add_to_skill_library(task_type, general_pattern)
+
+        # 记录学习历史
+        self.learning_history.append({
+            "task_type": task_type,
+            "result": result,
+            "timestamp": datetime.now().isoformat()
+        })
+
+    def _update_skill(self, task_type: str, result: Dict[str, Any]):
+        """更新技能 (孰能生巧)"""
+        if task_type not in self.skill_library:
+            self.skill_library[task_type] = {
+                "count": 0,
+                "success_rate": 0.0,
+                "avg_quality": 0.0,
+                "best_practices": []
+            }
+
+        skill = self.skill_library[task_type]
+        skill["count"] += 1
+
+        # 更新成功率
+        success = result.get("success", False)
+        prev_successes = skill["success_rate"] * (skill["count"] - 1)
+        if success:
+            prev_successes += 1
+        skill["success_rate"] = prev_successes / skill["count"]
+
+        # 更新质量
+        quality = result.get("quality", 0.0)
+        if quality > 0:
+            prev_quality_sum = skill["avg_quality"] * (skill["count"] - 1)
+            skill["avg_quality"] = (prev_quality_sum + quality) / skill["count"]
+
+        # 记录最佳实践
+        if result.get("best_practice"):
+            skill["best_practices"].append(result["best_practice"])
+            # 只保留最近10个最佳实践
+            skill["best_practices"] = skill["best_practices"][-10:]
+
+    def _extract_pattern(self, task_type: str, context: Dict) -> Optional[Dict]:
+        """提取通用模式 (举一反三)"""
+        # 简化实现：检查是否有足够样本
+        skill = self.skill_library.get(task_type, {})
+        if skill.get("count", 0) >= 3:
+            # 样本足够，尝试提取模式
+            return {
+                "task_type": task_type,
+                "common_steps": context.get("steps", []),
+                "key_decisions": context.get("decisions", []),
+                "success_factors": context.get("factors", [])
+            }
+        return None
+
+    def _add_to_skill_library(self, task_type: str, pattern: Dict):
+        """添加到技能库"""
+        self.pattern_cache[task_type] = pattern
+
+    def get_skill(self, task_type: str) -> Optional[Dict]:
+        """获取技能"""
+        return self.skill_library.get(task_type)
+
+    def get_best_practice(self, task_type: str) -> Optional[str]:
+        """获取最佳实践"""
+        skill = self.skill_library.get(task_type)
+        if skill and skill["best_practices"]:
+            return skill["best_practices"][-1]  # 返回最新的最佳实践
+        return None
+
+    def suggest_improvement(self, task_type: str) -> List[str]:
+        """建议改进 (基于学习历史)"""
+        skill = self.skill_library.get(task_type, {})
+        suggestions = []
+
+        if skill.get("success_rate", 1.0) < 0.7:
+            suggestions.append("成功率较低，建议复习最佳实践")
+
+        if skill.get("count", 0) < 5:
+            suggestions.append("样本不足，建议多加练习 (孰能生巧)")
+
+        if not skill.get("best_practices"):
+            suggestions.append("缺乏最佳实践记录，建议总结经验")
+
+        return suggestions
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """获取学习统计"""
+        return {
+            "total_task_types": len(self.skill_library),
+            "total_patterns": len(self.pattern_cache),
+            "learning_events": len(self.learning_history),
+            "most_practiced": max(
+                self.skill_library.items(),
+                key=lambda x: x[1].get("count", 0)
+            )[0] if self.skill_library else None
+        }
+
+
+# ============================================================================
+# 第四部分: 消息类型定义
 # ============================================================================
 
 class MessageType(Enum):
@@ -190,7 +534,7 @@ class AgentMessage:
 
 
 # ============================================================================
-# 第三部分: 多Agent协调器
+# 第五部分: 多Agent协调器
 # ============================================================================
 
 class MultiAgentCoordinator:
@@ -203,6 +547,9 @@ class MultiAgentCoordinator:
     - 处理Agent间对话
     - 冲突检测和解决
     - 共识机制
+    - 剧本/演出管理 (Issue #36)
+    - Qwen3-style模式切换
+    - 迭代学习 (孰能生巧/举一反三)
 
     使用示例:
         coordinator = MultiAgentCoordinator()
@@ -223,6 +570,10 @@ class MultiAgentCoordinator:
         self.team_id: str = str(uuid.uuid4())
         self.workflow_history: List[Dict] = []
 
+        # 天文大舞台: 剧本库 (Issue #36)
+        self.script_library = ScriptLibrary()
+        self.iterative_learning = IterativeLearning()
+
         # VLA集成支持 (Issue #29)
         self.vla_coordinator: Optional['VLACoordinator'] = None
 
@@ -231,6 +582,111 @@ class MultiAgentCoordinator:
 
         # 安全协调器
         self.safety_coordinator: Optional['SafetyCoordinator'] = None
+
+        # 默认剧本
+        self._init_default_scripts()
+
+    def _init_default_scripts(self):
+        """初始化默认剧本"""
+        # 默认研究剧本
+        research_script = Script(
+            name="research_workflow",
+            description="标准研究工作流剧本",
+            required_roles=[
+                AgentRole.RESEARCHER,       # 生
+                AgentRole.HYPOTHESIS_GENERATOR,  # 旦
+                AgentRole.DATA_ANALYST,    # 净
+                AgentRole.COORDINATOR       # 丑
+            ],
+            stages=["planning", "research", "hypothesis", "analysis", "review", "decision"],
+            transitions={
+                "planner": "researcher",
+                "researcher": "hypothesis_generator",
+                "hypothesis_generator": "data_analyst",
+                "data_analyst": "coordinator"
+            },
+            success_criteria={
+                "completion_rate": 0.8,
+                "hypothesis_quality": 0.7
+            }
+        )
+        self.script_library.add_script(research_script)
+
+    def set_agent_mode(self, agent_id: str, mode: AgentMode):
+        """
+        设置Agent运行模式 (Qwen3-style切换)
+
+        参数:
+            agent_id: Agent ID
+            mode: 运行模式 (THINKING/NON_THINKING)
+        """
+        agent = self.agents.get(agent_id)
+        if agent:
+            agent.set_mode(mode)
+
+    def execute_performance(
+        self,
+        script_name: str,
+        task: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        执行演出 (剧本驱动的任务执行)
+
+        参数:
+            script_name: 剧本名称
+            task: 任务数据
+
+        返回:
+            演出结果
+        """
+        script = self.script_library.get_script(script_name)
+        if not script:
+            return {"success": False, "error": f"Script {script_name} not found"}
+
+        # 创建演出反馈
+        feedback = PerformanceFeedback(
+            script_name=script_name,
+            role=AgentRole.COORDINATOR,  # 协调者主导
+            success=False
+        )
+
+        try:
+            # 执行各阶段
+            for stage in script.stages:
+                # 每个阶段根据角色分配任务
+                pass  # 简化的演出执行
+
+            feedback.success = True
+            script.increment_performance(True)
+
+        except Exception as e:
+            feedback.success = False
+            feedback.issues.append(str(e))
+            script.increment_performance(False)
+
+        # 学习反馈
+        self.script_library.learn_from_feedback(feedback)
+
+        return {
+            "success": feedback.success,
+            "script": script_name,
+            "performance_count": script.performance_count,
+            "success_rate": script.success_rate
+        }
+
+    def record_observation(self, observation: Dict[str, Any]):
+        """
+        记录观察数据 (举一反三素材)
+
+        参数:
+            observation: 观察数据
+        """
+        # 将观察数据传递给迭代学习
+        self.iterative_learning.on_task_complete(
+            task_type=observation.get("type", "unknown"),
+            result={"success": observation.get("success", True)},
+            context=observation
+        )
 
     def create_agent(
         self,
@@ -280,14 +736,14 @@ class MultiAgentCoordinator:
         team_name: str = "ResearchTeam"
     ) -> Dict[str, ResearchAgent]:
         """
-        创建完整的研究团队
+        创建完整的研究团队 - 天文大舞台阵容
 
-        默认团队配置:
-        - Coordinator: 协调整个研究流程
-        - Planner: 制定研究计划
-        - Researcher: 文献调研
-        - HypothesisGenerator: 假说生成
-        - Reviewer: 评审和反馈
+        默认团队配置 (生旦净末丑):
+        - COORDINATOR (丑): 协调整个研究流程
+        - RESEARCHER (生): 文献调研
+        - HYPOTHESIS_GENERATOR (旦): 假说生成
+        - DATA_ANALYST (净): 数据分析
+        - OBSERVATION_EXECUTOR (末): 观测执行
 
         参数:
             team_name: 团队名称
@@ -297,39 +753,46 @@ class MultiAgentCoordinator:
 
         示例:
             team = coordinator.create_research_team("天文研究团队")
-            planner = team["planner"]
+            researcher = team["researcher"]  # 生
         """
         team = {}
 
-        # 协调者 - 负责整体协调和决策
+        # 丑 - 协调者 (chou) - 负责整体协调和决策
         team["coordinator"] = self.create_agent(
             name=f"{team_name}_Coordinator",
             role=AgentRole.COORDINATOR,
             expertise=["project_management", "coordination", "decision_making"]
         )
 
-        # 规划者 - 负责制定研究计划
-        team["planner"] = self.create_agent(
-            name=f"{team_name}_Planner",
-            role=AgentRole.PLANNER,
-            expertise=["strategic_planning", "goal_setting", "resource_allocation"]
-        )
-
-        # 研究者 - 负责文献调研和信息收集
+        # 生 - 研究者 (sheng) - 负责文献调研和信息收集
         team["researcher"] = self.create_agent(
             name=f"{team_name}_Researcher",
             role=AgentRole.RESEARCHER,
             expertise=["literature_review", "data_analysis", "information_synthesis"]
         )
 
-        # 假说生成者 - 负责生成研究假说
+        # 旦 - 假说生成者 (dan) - 负责生成研究假说
         team["hypothesis_generator"] = self.create_agent(
             name=f"{team_name}_HypothesisGenerator",
             role=AgentRole.HYPOTHESIS_GENERATOR,
             expertise=["creative_thinking", "scientific_reasoning", "hypothesis_formation"]
         )
 
-        # 评审者 - 负责评审和反馈
+        # 净 - 数据分析师 (jing) - 负责数据分析 (新增)
+        team["data_analyst"] = self.create_agent(
+            name=f"{team_name}_DataAnalyst",
+            role=AgentRole.DATA_ANALYST,
+            expertise=["statistical_analysis", "data_visualization", "pattern_recognition"]
+        )
+
+        # 末 - 观测执行者 (mo) - 负责观测执行
+        team["observation_executor"] = self.create_agent(
+            name=f"{team_name}_ObservationExecutor",
+            role=AgentRole.OBSERVATION_EXECUTOR,
+            expertise=["observation_planning", "telescope_operations", "data_capture"]
+        )
+
+        # 评审者 - 负责评审和反馈 (保留用于兼容)
         team["reviewer"] = self.create_agent(
             name=f"{team_name}_Reviewer",
             role=AgentRole.REVIEWER,
@@ -537,23 +1000,38 @@ class MultiAgentCoordinator:
         return self.pending_tasks
 
     def get_statistics(self) -> Dict[str, Any]:
-        """获取团队统计信息"""
-        return {
+        """获取团队统计信息 - 包含天文大舞台统计"""
+        stats = {
             "team_id": self.team_id,
             "total_agents": len(self.agents),
             "pending_tasks": len(self.pending_tasks),
             "completed_tasks": len(self.completed_tasks),
             "messages_in_queue": len(self.message_queue),
-            "agents": {
-                agent_id: {
-                    "name": agent.name,
-                    "role": agent.role.value,
-                    "messages_count": len(agent.conversation_history),
-                    "is_active": agent.is_active
-                }
-                for agent_id, agent in self.agents.items()
-            }
+            "agents": {}
         }
+
+        # Agent详细信息
+        for agent_id, agent in self.agents.items():
+            stats["agents"][agent_id] = {
+                "name": agent.name,
+                "role": agent.role.value,
+                "theatrical_role": agent.role.theatrical_name,  # 生旦净末丑
+                "mode": agent.mode.value,  # thinking/non_thinking
+                "messages_count": len(agent.conversation_history),
+                "is_active": agent.is_active,
+                "skill_level": agent.skill_level,  # 孰能生巧
+                "performance_count": agent.performance_count
+            }
+
+        # 天文大舞台统计
+        script_stats = self.script_library.get_statistics()
+        learning_stats = self.iterative_learning.get_statistics()
+        stats["theater"] = {
+            "scripts": script_stats,
+            "learning": learning_stats
+        }
+
+        return stats
 
     def clear_completed_tasks(self):
         """清空已完成任务记录"""

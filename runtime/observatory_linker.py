@@ -12,10 +12,16 @@ ObservatoryLinker - 将假说验证结果转化为观测计划
 - 优先级排序(LSST特征驱动 + ATLAS威胁评分)
 - SIMBAD/MPC数据接口
 - 望远镜调度接口
+- Seestar MCP客户端集成 (真实模式/模拟模式)
 
 用法:
     linker = ObservatoryLinker()
     plan = await linker.link_to_observation("hypo_001")
+
+真实模式控制:
+    linker = ObservatoryLinker()
+    linker.set_real_mode(real_mode=True)
+    result = await linker.execute_observation(request)
 """
 
 import asyncio
@@ -29,6 +35,15 @@ from enum import Enum
 from collections import defaultdict
 import httpx
 import numpy as np
+
+# 导入Seestar MCP客户端
+from seestar_mcp_client import (
+    SeestarMCPClient,
+    ObservationTarget as SeestarObservationTarget,
+    SafetyProtocolManager,
+    SafetyCallback,
+    HardwareInterfaceType
+)
 
 
 # ============ 枚举定义 ============
@@ -825,7 +840,11 @@ class ObservatoryLinker:
         scheduler=None,
         observation_location=None,
         simbad_client: SimbadClient = None,
-        mpc_client: MpcClient = None
+        mpc_client: MpcClient = None,
+        real_mode: bool = False,
+        seestar_host: str = "localhost",
+        seestar_port: int = 8765,
+        simulation: bool = True
     ):
         self.discovery_tracker = discovery_tracker
         self.scheduler = scheduler
@@ -840,6 +859,202 @@ class ObservatoryLinker:
         self._simbad_cache: Dict[str, SimbadResult] = {}
         self._mpc_cache: Dict[str, MpcResult] = {}
         self._target_resolution_cache: Dict[str, ObservationTarget] = {}
+
+        # Seestar MCP客户端 (望远镜控制)
+        self._real_mode = real_mode
+        self._simulation = simulation
+        self._seestar_client: Optional[SeestarMCPClient] = None
+        self._seestar_host = seestar_host
+        self._seestar_port = seestar_port
+        self._safety_manager = SafetyProtocolManager()
+
+    def set_real_mode(self, real_mode: bool, simulation: Optional[bool] = None):
+        """
+        设置真实/模拟模式
+
+        Args:
+            real_mode: True启用真实望远镜控制，False仅计算不执行
+            simulation: 覆盖模拟模式设置（默认None，保持当前设置）
+        """
+        self._real_mode = real_mode
+        if simulation is not None:
+            self._simulation = simulation
+
+    def set_seestar_connection(self, host: str, port: int):
+        """设置Seestar MCP服务器连接参数"""
+        self._seestar_host = host
+        self._seestar_port = port
+
+    async def _get_seestar_client(self) -> Optional[SeestarMCPClient]:
+        """
+        获取或创建Seestar MCP客户端
+
+        使用懒加载方式初始化客户端
+        """
+        if self._seestar_client is None:
+            self._seestar_client = SeestarMCPClient(
+                host=self._seestar_host,
+                port=self._seestar_port
+            )
+            # 根据设置启用/禁用模拟模式
+            if self._simulation:
+                self._seestar_client.enable_simulation(True)
+            else:
+                self._seestar_client.enable_simulation(False)
+
+            # 连接
+            await self._seestar_client.connect()
+
+        return self._seestar_client
+
+    def register_safety_callback(self, name: str, callback, priority: int = 0):
+        """
+        注册安全回调
+
+        Args:
+            name: 回调名称
+            callback: 回调函数，接收Dict参数，返回bool表示是否允许操作
+            priority: 优先级（数字越大优先级越高）
+        """
+        self._safety_manager.register_callback(
+            SafetyCallback(name, callback, priority)
+        )
+
+    async def execute_observation(
+        self,
+        request: ObservationRequest
+    ) -> Dict[str, Any]:
+        """
+        执行观测请求（真实模式）
+
+        当_real_mode为True时，实际控制望远镜执行观测。
+        当_real_mode为False时，仅计算并返回执行计划。
+
+        Args:
+            request: 观测请求
+
+        Returns:
+            包含执行结果的字典
+        """
+        result = {
+            "request_id": request.id,
+            "target_name": request.target.name,
+            "success": False,
+            "mode": "real" if self._real_mode else "simulation"
+        }
+
+        # 如果不在真实模式，只返回计划不执行
+        if not self._real_mode:
+            result["message"] = "模拟模式：仅计算不执行"
+            result["plan"] = self._build_execution_plan(request)
+            return result
+
+        # 真实模式：控制望远镜
+        try:
+            client = await self._get_seestar_client()
+            if not client:
+                result["error"] = "无法连接到Seestar MCP服务器"
+                return result
+
+            # 创建Seestar目标
+            seestar_target = SeestarObservationTarget(
+                name=request.target.name,
+                ra=request.target.ra,
+                dec=request.target.dec,
+                priority=request.priority_score / 100.0,
+                exposure_time=request.suggested_duration * 60,  # 转换为秒
+                filter=request.suggested_bands[0] if request.suggested_bands else "L"
+            )
+
+            # 安全检查
+            safety_result = await client.safety_check(seestar_target)
+            if not safety_result.passed:
+                result["error"] = "安全检查未通过"
+                result["safety_reasons"] = safety_result.reasons
+                return result
+
+            # 执行goto
+            goto_success = await client.goto_target(seestar_target)
+            if not goto_success:
+                result["error"] = "转向失败"
+                return result
+
+            result["success"] = True
+            result["message"] = f"成功转向目标 {request.target.name}"
+
+            # 开始成像（如果配置了建议时长）
+            if request.suggested_duration > 0:
+                imaging_success = await client.start_imaging(
+                    exposure_time=seestar_target.exposure_time,
+                    filter_name=seestar_target.filter,
+                    count=max(1, int(request.suggested_duration / (seestar_target.exposure_time / 60)))
+                )
+                result["imaging_started"] = imaging_success
+
+        except Exception as e:
+            result["error"] = f"执行异常: {str(e)}"
+
+        return result
+
+    async def analyze_image_and_slew(
+        self,
+        image_path: str,
+        min_confidence: float = 0.7
+    ) -> Dict[str, Any]:
+        """
+        分析图像并转向检测到的目标
+
+        Args:
+            image_path: 图像文件路径
+            min_confidence: 最小置信度阈值
+
+        Returns:
+            包含success、target和detection信息的字典
+        """
+        if not self._real_mode:
+            return {
+                "error": "真实模式未启用，无法执行图像分析转向",
+                "mode": "simulation"
+            }
+
+        try:
+            client = await self._get_seestar_client()
+            if not client:
+                return {"error": "无法连接到Seestar MCP服务器"}
+
+            return await client.analyze_and_slew(image_path, min_confidence)
+
+        except Exception as e:
+            return {"error": f"图像分析转向失败: {str(e)}"}
+
+    async def emergency_stop(self):
+        """紧急停止所有望远镜操作"""
+        if self._seestar_client:
+            await self._seestar_client.abort()
+            self._seestar_client.safety_manager.activate_emergency_stop("用户请求紧急停止")
+
+    async def release_emergency_stop(self):
+        """解除紧急停止"""
+        if self._seestar_client:
+            self._seestar_client.safety_manager.deactivate_emergency_stop()
+
+    def _build_execution_plan(self, request: ObservationRequest) -> Dict:
+        """构建执行计划（用于模拟模式）"""
+        return {
+            "target_name": request.target.name,
+            "ra": request.target.ra,
+            "dec": request.target.dec,
+            "priority": request.priority.name,
+            "suggested_bands": request.suggested_bands,
+            "suggested_duration": request.suggested_duration,
+            "expected_exposures": max(1, int(request.suggested_duration / 2))  # 假设每曝光2分钟
+        }
+
+    async def get_telescope_status(self) -> Dict[str, Any]:
+        """获取望远镜状态"""
+        if self._seestar_client:
+            return await self._seestar_client.get_status()
+        return {"error": "望远镜未连接"}
 
     async def link_to_observation(
         self,
@@ -1291,6 +1506,14 @@ class ObservatoryLinker:
         """清理资源"""
         await self.simbad.close()
         await self.mpc.close()
+
+        # 关闭Seestar MCP客户端
+        if self._seestar_client:
+            try:
+                await self._seestar_client.safe_shutdown()
+            except Exception:
+                pass
+            self._seestar_client = None
 
 
 # ============ 便捷函数 ============
