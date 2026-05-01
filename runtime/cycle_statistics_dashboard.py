@@ -279,6 +279,146 @@ class CycleStatisticsDashboard:
         """导出JSON格式统计"""
         return json.dumps(stats, indent=2, ensure_ascii=False)
 
+    def get_html_dashboard(self) -> str:
+        """生成自包含HTML统计面板"""
+        # 计算总体统计
+        total_cycles = len(self.cycles)
+        successful_cycles = sum(1 for c in self.cycles if c.overall_cycle_success_rate > 0)
+        overall_success_rate = (
+            successful_cycles / total_cycles if total_cycles > 0 else 0.0
+        )
+
+        # 累计所有假说和发现
+        total_hypotheses = sum(
+            c.hypothesis_generation.total_runs for c in self.cycles
+        ) + (self.current_cycle.hypothesis_generation.total_runs if self.current_cycle else 0)
+
+        verified_discoveries = sum(
+            c.discovery_tracking.successful_runs for c in self.cycles
+        ) + (self.current_cycle.discovery_tracking.successful_runs if self.current_cycle else 0)
+
+        # 各阶段成功率数据
+        stage_names = [
+            "文献调研", "假说生成", "假说验证", "发现追踪",
+            "天体检测", "观测调度", "凌星检测", "观测执行"
+        ]
+        stage_keys = [
+            "literature_review", "hypothesis_generation", "hypothesis_testing",
+            "discovery_tracking", "image_detection", "observation_scheduling",
+            "transit_detection", "observation_execution"
+        ]
+
+        # 计算历史平均成功率
+        stage_rates = []
+        for stage_key in stage_keys:
+            stage_obj = getattr(self.cycles[-1] if self.cycles else self.current_cycle, stage_key) if self.current_cycle or self.cycles else None
+            if stage_obj:
+                stage_rates.append(stage_obj.success_rate)
+            else:
+                stage_rates.append(0.0)
+
+        # SVG柱状图数据
+        max_rate = max(stage_rates) if stage_rates else 1.0
+        bar_width = 40
+        bar_gap = 15
+        chart_width = len(stage_names) * (bar_width + bar_gap) + 60
+        chart_height = 200
+
+        bars_svg = ""
+        for i, (name, rate) in enumerate(zip(stage_names, stage_rates)):
+            x = 50 + i * (bar_width + bar_gap)
+            bar_height = (rate / max_rate) * 150 if max_rate > 0 else 0
+            y = 170 - bar_height
+            color = "#4ade80" if rate >= 0.7 else "#fbbf24" if rate >= 0.4 else "#f87171"
+            bars_svg += f'''
+            <rect x="{x}" y="{y}" width="{bar_width}" height="{bar_height}" fill="{color}" rx="4"/>
+            <text x="{x + bar_width/2}" y="185" text-anchor="middle" font-size="10" fill="#64748b">{name[:2]}</text>
+            <text x="{x + bar_width/2}" y="{y - 5}" text-anchor="middle" font-size="9" fill="#94a3b8">{rate:.0%}</text>
+            '''
+
+        html = f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天问-AGI 闭环统计面板</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh; color: #e2e8f0; padding: 20px; }}
+        .container {{ max-width: 1200px; margin: 0 auto; }}
+        h1 {{ text-align: center; margin-bottom: 30px; color: #f8fafc; font-size: 1.8rem; }}
+        .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }}
+        .stat-card {{ background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 24px; text-align: center; backdrop-filter: blur(10px); }}
+        .stat-value {{ font-size: 3rem; font-weight: 700; background: linear-gradient(135deg, #4ade80, #22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }}
+        .stat-label {{ font-size: 0.9rem; color: #94a3b8; margin-top: 8px; }}
+        .chart-container {{ background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 24px; margin-bottom: 30px; }}
+        .chart-title {{ font-size: 1.1rem; margin-bottom: 20px; color: #e2e8f0; }}
+        .footer {{ text-align: center; color: #64748b; font-size: 0.85rem; margin-top: 20px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>天问-AGI 闭环成功率统计面板</h1>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">{overall_success_rate:.1%}</div>
+                <div class="stat-label">整体成功率</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{total_hypotheses}</div>
+                <div class="stat-label">总假说数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{verified_discoveries}</div>
+                <div class="stat-label">验证发现数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{total_cycles}</div>
+                <div class="stat-label">总闭环数</div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <div class="chart-title">各阶段成功率</div>
+            <svg width="{chart_width}" height="{chart_height}" viewBox="0 0 {chart_width} {chart_height}">
+                {bars_svg}
+                <line x1="40" y1="170" x2="{chart_width - 10}" y2="170" stroke="#475569" stroke-width="1"/>
+            </svg>
+        </div>
+
+        <div class="footer">
+            更新时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        </div>
+    </div>
+</body>
+</html>'''
+        return html
+
+    def get_summary_stats(self) -> Dict[str, Any]:
+        """获取JSON格式的统计摘要"""
+        total_cycles = len(self.cycles)
+        successful_cycles = sum(1 for c in self.cycles if c.overall_cycle_success_rate > 0)
+        overall_success_rate = (
+            successful_cycles / total_cycles if total_cycles > 0 else 0.0
+        )
+
+        total_hypotheses = sum(
+            c.hypothesis_generation.total_runs for c in self.cycles
+        ) + (self.current_cycle.hypothesis_generation.total_runs if self.current_cycle else 0)
+
+        verified_discoveries = sum(
+            c.discovery_tracking.successful_runs for c in self.cycles
+        ) + (self.current_cycle.discovery_tracking.successful_runs if self.current_cycle else 0)
+
+        return {
+            "overall_success_rate": overall_success_rate,
+            "total_hypotheses": total_hypotheses,
+            "verified_discoveries": verified_discoveries,
+            "total_cycles": total_cycles,
+            "successful_cycles": successful_cycles,
+        }
+
 
 async def demo():
     """演示统计面板功能"""

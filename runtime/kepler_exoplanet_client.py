@@ -111,7 +111,7 @@ class KeplerExoplanetClient:
             encoded_query = quote(query, safe='')
             url = f"{self.TAP_BASE}?query={encoded_query}&format=json"
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
                 response = await client.get(url)
                 response.raise_for_status()
                 data = response.json()
@@ -360,7 +360,7 @@ class KeplerExoplanetClient:
             # 使用TAP查询
             url = self._build_tap_url(query)
 
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=120.0, trust_env=False) as client:
                 response = await client.get(url)
                 response.raise_for_status()
                 data = response.json()
@@ -508,7 +508,7 @@ class KeplerExoplanetClient:
             encoded_query = quote(query, safe='')
             url = f"{self.TAP_BASE}?query={encoded_query}&format=json"
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=30.0, trust_env=False) as client:
                 response = await client.get(url)
                 response.raise_for_status()
                 data = response.json()

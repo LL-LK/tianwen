@@ -8,6 +8,8 @@ import sys
 import psutil
 import os
 from pathlib import Path
+import json
+from threading import Lock
 
 # 添加runtime路径
 sys.path.insert(0, str(Path(__file__).parent))
@@ -22,12 +24,61 @@ app = cors(app, allow_origin="*")
 
 # 导入Agent
 from main import HermesAGI, CognitiveEngine, PlanningEngine
+from cycle_statistics_dashboard import CycleStatisticsDashboard
 
 # 全局Agent实例
 agent = HermesAGI()
+dashboard = CycleStatisticsDashboard()
 
 # 会话存储
 sessions: dict = {}
+sessions_lock = Lock()
+SESSIONS_FILE = Path(__file__).parent / "sessions.json"
+
+
+def load_sessions():
+    """从文件加载会话"""
+    global sessions
+    if SESSIONS_FILE.exists():
+        try:
+            with open(SESSIONS_FILE, 'r', encoding='utf-8') as f:
+                sessions = json.load(f)
+            print(f"Loaded {len(sessions)} sessions from disk")
+        except Exception as e:
+            print(f"Failed to load sessions: {e}")
+            sessions = {}
+
+
+def save_sessions():
+    """将会话保存到文件"""
+    with sessions_lock:
+        try:
+            with open(SESSIONS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(sessions, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Failed to save sessions: {e}")
+
+
+def cleanup_old_sessions(max_age_days: int = 30):
+    """清理超过最大年龄的会话"""
+    cutoff = datetime.now().timestamp() - (max_age_days * 86400)
+    removed = 0
+    for sid in list(sessions.keys()):
+        try:
+            created = datetime.fromisoformat(sessions[sid].get("created_at", "2000-01-01"))
+            if created.timestamp() < cutoff:
+                del sessions[sid]
+                removed += 1
+        except Exception:
+            pass
+    if removed > 0:
+        print(f"Cleaned up {removed} old sessions")
+        save_sessions()
+
+
+# 启动时加载会话
+load_sessions()
+cleanup_old_sessions()
 
 @app.route("/")
 async def index():
@@ -107,6 +158,9 @@ async def chat():
             "timestamp": datetime.now().isoformat(),
             "data": response_data,
         })
+
+        # 保存会话到磁盘
+        save_sessions()
 
         return jsonify(response_data)
 
@@ -227,6 +281,18 @@ async def health():
     health_data["status"] = "ok" if overall_healthy else "degraded"
 
     return jsonify(health_data)
+
+@app.route("/api/stats/dashboard", methods=["GET"])
+async def stats_dashboard():
+    """返回HTML统计面板"""
+    html = dashboard.get_html_dashboard()
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+@app.route("/api/stats/json", methods=["GET"])
+async def stats_json():
+    """返回JSON格式的统计"""
+    stats = dashboard.get_summary_stats()
+    return jsonify(stats)
 
 if __name__ == "__main__":
     print("=" * 50)
