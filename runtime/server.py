@@ -25,10 +25,46 @@ app = cors(app, allow_origin="*")
 # 导入Agent
 from main import HermesAGI, CognitiveEngine, PlanningEngine
 from cycle_statistics_dashboard import CycleStatisticsDashboard
+from reasoning_engine import ModelConfig
+import httpx
 
 # 全局Agent实例
 agent = HermesAGI()
 dashboard = CycleStatisticsDashboard()
+
+
+async def call_longcat(message: str) -> dict:
+    """调用LongCat API"""
+    api_key = os.environ.get("LONGCAT_API_KEY")
+    if not api_key:
+        return {"error": "LongCat API key not configured", "content": None}
+
+    config = ModelConfig.longcat_api(api_key)
+    client = httpx.AsyncClient(timeout=60.0)
+
+    try:
+        response = await client.post(
+            f"{config.endpoint}/chat/completions",
+            json={
+                "model": config.name,
+                "messages": [{"role": "user", "content": message}],
+                "max_tokens": 2000,
+                "temperature": 0.7,
+            },
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+        )
+        response.raise_for_status()
+        result = response.json()
+        content = result["choices"][0]["message"]["content"]
+        tokens = result.get("usage", {}).get("total_tokens", 0)
+        return {"content": content, "tokens": tokens}
+    except Exception as e:
+        return {"error": str(e), "content": None}
+    finally:
+        await client.aclose()
 
 # 会话存储
 sessions: dict = {}
@@ -115,31 +151,44 @@ async def chat():
     })
 
     try:
-        # 简化响应 - 不调用LLM
-        response_text = f"收到消息: {message[:50]}..."
+        # 调用LongCat API
+        llm_result = await call_longcat(message)
 
-        # 准备响应
-        response_data = {
-            "session_id": session_id,
-            "cognitive": {
-                "intent": "chat",
-                "entities": [],
-                "skills": [],
-                "complexity": "low",
-            },
-            "plan": {
-                "task_id": str(uuid.uuid4()),
-                "subtasks": [],
-                "estimated_time": "0s",
-                "risks": [],
-            },
-            "output": response_text,
-            "metrics": {
-                "tokens_used": 0,
-                "latency_ms": 0,
-            },
-            "status": "simplified",
-        }
+        if llm_result.get("error"):
+            # 如果API调用失败，返回简化响应
+            response_text = f"收到消息: {message[:50]}..."
+            response_data = {
+                "session_id": session_id,
+                "cognitive": {"intent": "chat", "entities": [], "skills": [], "complexity": "low"},
+                "plan": {"task_id": str(uuid.uuid4()), "subtasks": [], "estimated_time": "0s", "risks": []},
+                "output": response_text,
+                "metrics": {"tokens_used": 0, "latency_ms": 0},
+                "status": "simplified",
+                "error": llm_result["error"],
+            }
+        else:
+            response_text = llm_result["content"]
+            response_data = {
+                "session_id": session_id,
+                "cognitive": {
+                    "intent": "chat",
+                    "entities": [],
+                    "skills": [],
+                    "complexity": "low",
+                },
+                "plan": {
+                    "task_id": str(uuid.uuid4()),
+                    "subtasks": [],
+                    "estimated_time": "0s",
+                    "risks": [],
+                },
+                "output": response_text,
+                "metrics": {
+                    "tokens_used": llm_result.get("tokens", 0),
+                    "latency_ms": 0,
+                },
+                "status": "success",
+            }
 
         # 记录助手消息
         session["messages"].append({
