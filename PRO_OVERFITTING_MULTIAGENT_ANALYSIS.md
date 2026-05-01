@@ -826,36 +826,53 @@ class BrowserSearchIntegration:
 
 ## 十、参考文献与技术基础
 
-### 10.1 理论基础
+### 10.1 GitHub 真实项目数据汇总
 
-1. **Gradient Episodic Memory**: 
+| 项目 | Stars | 语言 | 核心价值 |
+|------|-------|------|----------|
+| **OpenClaw** | 366,814 | TypeScript | 多渠道个人AI助手，多Agent路由 |
+| **NousResearch Hermes Agent** | 126,812 | Python | 自我进化Agent，技能自创建/自改进 |
+| **Claude Code** | 119,517 | Shell | 终端Agent编程工具，安全优先 |
+| **AutoGen** | 57,613 | Python | 多Agent框架 (维护中) |
+| **LlamaIndex** | 49,064 | Python | 数据框架 + Agent应用 |
+| **LangGraph** | 30,935 | Python | 有状态Agent图工作流 |
+| **Microsoft Agent Framework** | 10,001 | Python/C# | AutoGen继任者，AF Labs含RL |
+
+### 10.2 理论基础
+
+1. **Gradient Episodic Memory (GEPA)**: 
    - 论文: "Gradient Episodic Memory for Continual Learning" (Facebook AI Research)
    - 核心: 解决神经网络持续学习中的灾难性遗忘问题
+   - GitHub参考: `rroart/gemservice`, `HaneenSu/ContinualLearning`
 
 2. **RL in Agent Systems**:
-   - 论文: "Learning to Reinforcement Learn" 
+   - Microsoft Agent Framework AF Labs: 包含强化学习实验包
    - 应用: Voyager, AutoGPT等Agent系统的训练范式
 
 3. **Multi-Agent Coordination**:
-   - 论文: "Multi-Agent Actor-Critic with Hierarchical Coordination"
-   - 应用: 复杂任务的多Agent分解与协调
+   - OpenClaw: Router → Agents → Registry 架构
+   - LangGraph: 图结构化Agent编排
+   - Microsoft Agent Framework: 基于图的工作流
 
-### 10.2 架构参考
+### 10.3 架构参考
 
-1. **Claude Code**: Anthropic官方架构文档
-2. **OpenClaw**: GitHub开源实现 (待进一步研究)
-3. **DeerFlow**: 多Agent协作文档
-4. **CrewAI**: 多Agent协作框架参考
+| 参考项目 | URL | 关键特点 |
+|---------|-----|---------|
+| Claude Code | github.com/anthropics/claude-code | 安全优先，状态机，插件系统 |
+| OpenClaw | github.com/openclaw/openclaw | 多渠道，多Agent路由，开源 |
+| Hermes Agent | github.com/nousresearch/hermes-agent | 自我进化，技能自创建 |
+| AutoGen | github.com/microsoft/autogen | 多Agent (维护中) |
+| Microsoft Agent Framework | github.com/microsoft/agent-framework | AutoGen继任者 |
+| LangGraph | github.com/langchain-ai/langgraph | 有状态工作流，持久化 |
+| LlamaIndex | github.com/run-llama/llama_index | RAG + Agent框架 |
 
 ---
 
-**文档状态**: 初稿完成，待补充浏览器搜索结果
-**下一步**: 
-1. 通过Edge/Chrome浏览器补充学术文献搜索
-2. 创建对应GitHub Issue进行专题讨论
-3. 建立对比实验验证多模型吸收效果
+**文档状态**: 基于GitHub真实数据更新完成
+**更新日期**: 2026-05-01
 
 ---
 
 *评审者签名: Hermes Agent*
 *创建日期: 2026-05-01*
+*更新日期: 2026-05-01 (基于gh CLI SSH获取的真实数据)*
