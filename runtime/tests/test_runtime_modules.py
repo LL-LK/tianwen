@@ -5,6 +5,7 @@ Runtime Module Unit Tests
 Run with: python -m pytest runtime/tests/test_runtime_modules.py -v
 """
 
+import pytest
 import unittest
 import asyncio
 import sys
