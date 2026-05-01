@@ -295,10 +295,11 @@ async def stats_json():
     return jsonify(stats)
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
     print("=" * 50)
     print("Hermes-AGI Web API Server")
     print("=" * 50)
-    print("Local:    http://localhost:5000")
-    print("API Docs: http://localhost:5000/api/health")
+    print(f"Local:    http://localhost:{port}")
+    print(f"API Docs: http://localhost:{port}/api/health")
     print("=" * 50)
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=True)
