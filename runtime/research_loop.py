@@ -6,11 +6,13 @@ v2.0 新增功能 (v3.6.0):
 - AstroPipeline 三阶段天体检测管道
 - EnhancedObservationScheduler 增强调度器
 - KeplerExoplanetClient 系外行星数据+凌星检测
+- DataMiner 数据挖掘与自动假说生成
 
 实现 Hermes 建议的 P0 优先级：
 - 自动化触发机制 (after_task 钩子)
 - 完整闭环验证演示
 - 观测闭环集成
+- 数据挖掘模块集成
 
 用法:
     loop = ResearchLoop()
@@ -46,6 +48,13 @@ except ImportError:
     KEPLER_CLIENT_AVAILABLE = False
     KeplerExoplanetClient = None
 
+try:
+    from data_miner import DataMiner
+    DATA_MINER_AVAILABLE = True
+except ImportError:
+    DATA_MINER_AVAILABLE = False
+    DataMiner = None
+
 
 @dataclass
 class CycleResult:
@@ -64,6 +73,7 @@ class CycleResult:
     detection_results: List[Dict] = field(default_factory=list)  # AstroPipeline检测结果
     scheduled_observations: List[Dict] = field(default_factory=list)  # 调度观察结果
     transit_signals: List[Any] = field(default_factory=list)  # 凌星信号
+    mining_report: Any = None  # DataMiner挖掘报告
 
 
 class AfterTaskHook:
@@ -235,6 +245,7 @@ class ResearchLoop:
         self.astro_pipeline = AstroPipeline() if ASTRO_PIPELINE_AVAILABLE else None
         self.scheduler = EnhancedObservationScheduler() if SCHEDULER_AVAILABLE else None
         self.kepler_client = KeplerExoplanetClient() if KEPLER_CLIENT_AVAILABLE else None
+        self.data_miner = DataMiner(hypothesis_tester=hypothesis_tester) if DATA_MINER_AVAILABLE and hypothesis_tester else None
         self.observation_location = observation_location  # 观测站位置
 
         # 闭环统计 [v3.6.0新增]
@@ -391,6 +402,35 @@ class ResearchLoop:
                             print(f"  → {target}: 凌星检测失败 - {e}")
                 result.transit_signals = transit_signals
                 self.cycle_statistics["total_transit_signals_detected"] += len(transit_signals)
+
+            # ========== [v3.6.0 新增] 步骤6.5: 数据挖掘与假说生成 ==========
+            if self.data_miner and targets:
+                print(f"\n[Step 6.5/8] 数据挖掘与假说生成 (DataMiner)")
+                # 为每个目标生成模拟光变曲线数据进行挖掘
+                mining_data = []
+                for target in targets[:3]:
+                    if isinstance(target, str):
+                        # 生成模拟光变曲线数据（实际应从观测或数据库获取）
+                        import numpy as np
+                        n_points = 200
+                        times = np.linspace(0, 30, n_points)
+                        period = np.random.uniform(1, 5)
+                        fluxes = 100 + 20 * np.sin(2 * np.pi * times / period) + np.random.normal(0, 5, n_points)
+                        mining_data.append({
+                            "source_id": target,
+                            "times": times.tolist(),
+                            "fluxes": fluxes.tolist()
+                        })
+
+                if mining_data:
+                    try:
+                        mining_report = await self.data_miner.mine(mining_data, source_type="light_curve")
+                        result.mining_report = mining_report
+                        print(f"  → 提取特征: {len(mining_report.features)} 个")
+                        print(f"  → 发现模式: {len(mining_report.patterns)} 个")
+                        print(f"  → 生成假说候选: {len(mining_report.hypotheses_generated)} 个")
+                    except Exception as e:
+                        print(f"  → 数据挖掘失败 - {e}")
 
             # ========== 步骤7: 原指导观测 (保留兼容性) ==========
             print(f"\n[Step 7/7] 指导观测")

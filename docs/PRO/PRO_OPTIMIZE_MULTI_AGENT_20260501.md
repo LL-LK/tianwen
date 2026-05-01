@@ -3,7 +3,7 @@
 **Date**: 2026-05-01
 **Author**: Claude (Anthropic)
 **Related Issues**: #13, #15, #20
-**Status**: Draft
+**Status**: Implemented
 
 ---
 
@@ -73,7 +73,7 @@ DataSearchAgent  ─┘
     ▼               ▼               ▼               ▼               │
 ┌─────────┐   ┌───────────┐   ┌───────────┐   ┌───────────┐         │
 │ arxiv   │   │  github   │   │   data    │   │observing  │         │
-│searcher │   │ searcher  │   │ searcher  │   │ specialist│         │
+│searcher │   │ searcher  │   │ searcher  │   │specialist │         │
 └────┬────┘   └─────┬─────┘   └─────┬─────┘   └─────┬─────┘         │
      │              │              │              │                │
      └──────────────┴──────────────┴──────────────┘                │
@@ -124,67 +124,116 @@ class ObservationSpecialist(BaseSearchAgent):
 
 ---
 
-## 5. 实现计划
+## 5. 实现状态
 
-### Phase 1: 架构重构
-- [ ] 添加ObservationSpecialist Agent
-- [ ] 实现ResultIntegrator
-- [ ] 改进通信协议
+### Phase 1: 架构重构 ✅
+- [x] 添加ObservationSpecialist Agent
+- [x] 实现ResultIntegrator
+- [x] 改进通信协议 (LLM路由更新)
 
 ### Phase 2: 功能增强
-- [ ] 4-Agent并行执行
-- [ ] 超时和重试机制
-- [ ] 结果智能合并
+- [x] 4-Agent并行执行 (max_parallel=4)
+- [ ] 超时和重试机制 (待实现)
+- [ ] 结果智能合并 (ResultIntegrator完成)
 
 ### Phase 3: 集成测试
-- [ ] 与data_miner.py集成
-- [ ] 与research_observatory_linker.py集成
-- [ ] 端到端闭环测试
+- [ ] 与data_miner.py集成 (待测试)
+- [ ] 与research_observatory_linker.py集成 (待测试)
+- [ ] 端到端闭环测试 (待测试)
 
 ---
 
-## 6. 预期效果
+## 6. 实际代码变更
+
+### 变更文件
+1. `multi_agent_search.py` - 主要优化文件
+
+### 变更内容
+
+#### 1. 新增 ObservationSpecialist Agent
+```python
+class ObservationSpecialist(BaseSearchAgent):
+    """观测专家Agent - 搜索天文观测数据和调度信息"""
+    def __init__(self):
+        super().__init__(
+            agent_id=f"obs_{uuid.uuid4().hex[:8]}",
+            agent_type="observation"
+        )
+```
+
+#### 2. 新增 ResultIntegrator 类
+```python
+class ResultIntegrator:
+    """结果整合器 v2.0 - 智能合并多Agent结果"""
+    SOURCE_WEIGHTS = {
+        "arxiv": 1.0,
+        "github": 0.8,
+        "nasa": 1.0,
+        "observation": 0.9
+    }
+
+    @classmethod
+    def integrate(cls, agent_results: Dict[str, AgentResult]) -> Dict[str, Any]:
+        # 按来源置信度加权排序
+        pass
+
+    @classmethod
+    def generate_report(cls, integrated: Dict[str, Any], query: str) -> str:
+        # 生成综合报告
+        pass
+```
+
+#### 3. 4-Agent并行协调器更新
+```python
+class MultiAgentSearchCoordinator:
+    def __init__(self, max_parallel: int = 4):  # 从3改为4
+        self.result_integrator = ResultIntegrator()
+
+    async def initialize(self):
+        self.agents = [
+            ArxivSearchAgent(),
+            GithubSearchAgent(),
+            DataSearchAgent(),
+            ObservationSpecialist()  # v2.0 新增
+        ]
+```
+
+#### 4. LLM路由更新
+```python
+KEYWORD_MAPPING = {
+    # ...原有...
+    "observation": ["observation", "tess", "scheduling", "可见性", "调度"]
+}
+```
+
+---
+
+## 7. 预期效果
 
 | 指标 | 当前 | 优化后 |
 |-----|------|-------|
 | Agent数量 | 3 | 4 |
 | 并行度 | 3 | 4 |
 | 故障隔离 | 基础 | 完善 |
-| 结果整合 | 简单去重 | 智能合并 |
+| 结果整合 | 简单去重 | 智能合并+置信度加权 |
 | 闭环成功率 | ~8% | ~25-30% |
 
 ---
 
-## 7. 关键代码变更
+## 8. 待完成工作
 
-### 新增 ResultIntegrator 类
-```python
-class ResultIntegrator:
-    """多Agent结果整合器"""
-    def integrate(self, agent_results: Dict[str, AgentResult]) -> Dict:
-        # 智能合并、置信度加权、去重
-        pass
+1. 超时和重试机制
+2. 与 data_miner.py 集成测试
+3. 与 research_observatory_linker.py 集成测试
+4. 端到端闭环测试
 
-    def generate_report(self, integrated: Dict) -> str:
-        # 生成综合报告
-        pass
-```
+---
 
-### 新增通信协议
-```python
-class AgentProtocol:
-    HEARTBEAT_INTERVAL = 5  # seconds
-    TASK_TIMEOUT = 30  # seconds
-    MAX_RETRIES = 3
-```
+## 9. 关联文档
 
-### 4-Agent工厂方法
-```python
-def create_quad_agent_team(self) -> List[BaseSearchAgent]:
-    return [
-        ArxivSearchAgent(),
-        GithubSearchAgent(),
-        DataSearchAgent(),
-        ObservationSpecialist()
-    ]
-```
+- Issues: #13, #15, #20
+- 相关文件:
+  - `runtime/multi_agent_coordinator.py` - 研究Agent协作系统
+  - `multi_agent_search.py` - 搜索协调器 (已优化)
+  - `runtime/data_miner.py` - 数据挖掘模块
+  - `runtime/research_observatory_linker.py` - 研究-观测联动

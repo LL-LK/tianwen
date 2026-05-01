@@ -462,29 +462,44 @@ class ExecutionEngine:
         import asyncio
         await asyncio.sleep(seconds)
 
-# ============ 自我进化系统 ============
+# ============ 自我进化系统 (真实版) ============
 
 class EvolutionSystem:
-    """自我进化系统 - 持续学习和优化"""
+    """自我进化系统 - 持续学习和优化 (v2.0)
+
+    与 PersistentMemory 集成，实现真正的自我进化：
+    - 任务完成后自动记录经验和模式
+    - 连接记忆系统进行长期知识积累
+    - 提供健康监控和统计
+    """
 
     def __init__(self, memory_dir: str = "./memory"):
         self.memory_dir = memory_dir
         self.task_history: List[Dict] = []
         self.patterns: List[Dict] = []
+        self.health = HealthMonitor()
+        self.retry_engine = RetryEngine()
+
+        # 初始化持久化记忆
+        if MEMORY_AVAILABLE:
+            try:
+                self.memory = PersistentMemory(memory_dir)
+                print(f"[Evolution] Connected to PersistentMemory: {memory_dir}")
+            except Exception as e:
+                print(f"[Evolution] Failed to init PersistentMemory: {e}")
+                self.memory = None
+        else:
+            self.memory = None
 
     def after_task(self, result: ExecutionResult):
-        """任务完成后的自我进化钩子"""
+        """任务完成后的自我进化钩子 (真实实现)
+
+        1. 记录任务到历史
+        2. 提取成功/失败模式
+        3. 更新健康监控
+        4. 同步到持久化记忆
+        """
         # 记录任务执行
-        self._record_task(result)
-
-        # 提取模式
-        if result.status == TaskStatus.COMPLETED:
-            self._extract_success_pattern(result)
-        else:
-            self._analyze_failure(result)
-
-    def _record_task(self, result: ExecutionResult):
-        """记录任务"""
         record = {
             'date': datetime.now().isoformat(),
             'task_id': result.task_model.id,
@@ -493,8 +508,65 @@ class EvolutionSystem:
             'status': result.status.value,
             'duration': result.metrics.get('duration', 0),
             'subtask_count': len(result.plan.subtasks),
+            'errors': result.errors
         }
         self.task_history.append(record)
+
+        # 更新健康监控
+        if result.status == TaskStatus.COMPLETED:
+            self.health.record_task_success(result.metrics.get('duration', 0))
+        else:
+            self.health.record_task_failure()
+
+        # 提取模式并保存
+        if result.status == TaskStatus.COMPLETED:
+            self._extract_success_pattern(result)
+            if self.memory:
+                self._record_to_memory_success(result)
+        else:
+            self._analyze_failure(result)
+            if self.memory:
+                self._record_to_memory_failure(result)
+
+        # 提取子任务成功率模式
+        if len(result.plan.subtasks) > 0:
+            success_count = sum(1 for t in result.plan.subtasks
+                              if t.status == TaskStatus.COMPLETED)
+            rate = success_count / len(result.plan.subtasks)
+            self._save_pattern({
+                "type": "subtask_success_rate",
+                "skills": result.task_model.required_skills,
+                "rate": rate,
+                "total_subtasks": len(result.plan.subtasks)
+            })
+
+    def _record_to_memory_success(self, result: ExecutionResult):
+        """记录成功到持久化记忆"""
+        if not self.memory:
+            return
+        try:
+            self.memory.record_success(
+                task=result.task_model.description,
+                solution=result.output[:500] if result.output else "",
+                skills=result.task_model.required_skills,
+                intent=result.task_model.type.value,
+                complexity=result.task_model.complexity
+            )
+        except Exception as e:
+            print(f"[Evolution] Failed to record success: {e}")
+
+    def _record_to_memory_failure(self, result: ExecutionResult):
+        """记录失败到持久化记忆"""
+        if not self.memory:
+            return
+        try:
+            self.memory.record_failure(
+                task=result.task_model.description,
+                error=", ".join(result.errors) if result.errors else "Unknown error",
+                skills=result.task_model.required_skills
+            )
+        except Exception as e:
+            print(f"[Evolution] Failed to record failure: {e}")
 
     def _extract_success_pattern(self, result: ExecutionResult):
         """提取成功模式"""
@@ -506,39 +578,79 @@ class EvolutionSystem:
             'subtask_count': len(result.plan.subtasks),
         }
         self.patterns.append(pattern)
+        self._save_pattern(pattern)
 
     def _analyze_failure(self, result: ExecutionResult):
         """分析失败原因"""
         for error in result.errors:
             print(f"[Evolution] 失败分析: {error}")
+            self._save_pattern({
+                "type": "failure",
+                "error_type": ErrorClassifier().classify(error).value,
+                "error_message": error[:200],
+                "skills": result.task_model.required_skills
+            })
+
+    def _save_pattern(self, pattern: Dict):
+        """保存模式到记忆系统"""
+        if self.memory:
+            try:
+                self.memory.add_pattern(pattern.get("type", "unknown"), pattern)
+            except Exception as e:
+                print(f"[Evolution] Failed to save pattern: {e}")
 
     def get_stats(self) -> Dict:
         """获取统计信息"""
         total = len(self.task_history)
         if total == 0:
-            return {'total_tasks': 0, 'success_rate': 0}
+            return {
+                'total_tasks': 0,
+                'success_rate': 0,
+                'health_score': 1.0,
+                'patterns_count': 0
+            }
 
         successes = sum(1 for r in self.task_history if r['status'] == 'completed')
         return {
             'total_tasks': total,
             'success_rate': successes / total,
+            'health_score': self.health.get_health_score(),
             'patterns_count': len(self.patterns),
+            'health_stats': self.health.get_stats()
         }
 
-# ============ 主Agent类 ============
+    def get_similar_experiences(self, query: str, k: int = 3) -> List[Dict]:
+        """获取相似经验"""
+        if self.memory:
+            return self.memory.search_experiences(query, k=k)
+        return []
+
+    async def process_with_hooks(self, func, *args, **kwargs):
+        """带钩子处理的执行（用于重试）"""
+        return await self.retry_engine.execute_with_retry(func, *args, **kwargs)
+
+# ============ 主Agent类 (增强版) ============
 
 class HermesAGI:
-    """Hermes-AGI 智能体主类"""
+    """Hermes-AGI 智能体主类 (v2.0)
+
+    整合认知、规划、执行、进化系统
+    新增: 任务开始记录、重试执行、相似经验上下文
+    """
 
     def __init__(self, skill_dir: str = "./skills", memory_dir: str = "./memory"):
         self.cognitive = CognitiveEngine()
         self.planning = PlanningEngine()
         self.execution = ExecutionEngine(skill_dir)
         self.evolution = EvolutionSystem(memory_dir)
+        self.retry_engine = RetryEngine()
 
     async def process(self, user_input: str) -> ExecutionResult:
-        """处理用户输入的完整流程"""
+        """处理用户输入的完整流程 (v2.0)"""
         start_time = datetime.now()
+
+        # 0. 记录任务开始
+        self.evolution.health.record_task_start()
 
         # 1. 认知引擎 - 理解输入
         task_model = self.cognitive.process(user_input)
@@ -546,22 +658,47 @@ class HermesAGI:
         # 2. 规划引擎 - 制定计划
         plan = self.planning.create_plan(task_model)
 
-        # 3. 执行引擎 - 执行任务
-        await self.execution.execute_plan(plan)
+        # 3. 执行引擎 - 执行任务 (带重试)
+        try:
+            await self.retry_engine.execute_with_retry(
+                self.execution.execute_plan, plan
+            )
+        except MaxRetriesExceeded as e:
+            # 处理重试耗尽的情况
+            errors = [f"Max retries exceeded: {str(e)}"]
+            for subtask in plan.subtasks:
+                if subtask.status != TaskStatus.COMPLETED:
+                    subtask.error = subtask.error or "Max retries exceeded"
+                    errors.append(f"{subtask.id}: {subtask.error}")
+            # 标记失败的子任务
+            for subtask in plan.subtasks:
+                if subtask.status == TaskStatus.PENDING:
+                    subtask.status = TaskStatus.FAILED
 
         # 计算耗时
         duration = (datetime.now() - start_time).total_seconds()
 
         # 4. 构建结果
-        result = ExecutionResult(
-            status=TaskStatus.COMPLETED,
-            output=self._format_output(plan),
-            task_model=task_model,
-            plan=plan,
-            metrics={'duration': duration, 'subtasks_completed': len(plan.subtasks)}
-        )
+        failed_subtasks = [t for t in plan.subtasks if t.status == TaskStatus.FAILED]
+        if failed_subtasks:
+            result = ExecutionResult(
+                status=TaskStatus.FAILED,
+                output=self._format_output(plan),
+                task_model=task_model,
+                plan=plan,
+                metrics={'duration': duration, 'subtasks_completed': len(plan.subtasks) - len(failed_subtasks)},
+                errors=[f"{t.id}: {t.error}" for t in failed_subtasks if t.error]
+            )
+        else:
+            result = ExecutionResult(
+                status=TaskStatus.COMPLETED,
+                output=self._format_output(plan),
+                task_model=task_model,
+                plan=plan,
+                metrics={'duration': duration, 'subtasks_completed': len(plan.subtasks)}
+            )
 
-        # 5. 自我进化 - 学习经验
+        # 5. 自我进化 - 学习经验 (真实触发)
         self.evolution.after_task(result)
 
         return result
@@ -577,12 +714,22 @@ class HermesAGI:
             lines.append(f"| {task.id} | {task.skill} | {status_icon} {task.status.value} |")
             if task.result:
                 lines.append(f"| | 结果: {task.result} |")
+            if task.error:
+                lines.append(f"| | 错误: {task.error} |")
         lines.append(f"\n### 统计")
         lines.append(f"- 总任务数: {len(plan.subtasks)}")
         lines.append(f"- 预估时间: {plan.estimated_time}")
         if plan.risks:
             lines.append(f"- 风险提示: {'; '.join(plan.risks)}")
         return "\n".join(lines)
+
+    def get_health_score(self) -> float:
+        """获取运行时健康分数"""
+        return self.evolution.health.get_health_score()
+
+    def get_similar_tasks(self, query: str, k: int = 3) -> List[Dict]:
+        """获取相似任务的经验"""
+        return self.evolution.get_similar_experiences(query, k=k)
 
 # ============ CLI入口 ============
 
@@ -595,21 +742,38 @@ async def main():
     if len(sys.argv) > 1:
         # 命令行模式
         user_input = " ".join(sys.argv[1:])
-        print(f"\n[Hermes-AGI] 收到任务: {user_input}\n")
+        print(f"\n[Hermes-AGI v2.0] 收到任务: {user_input}\n")
 
         result = await agent.process(user_input)
 
         print(result.output)
-        print(f"\n[Hermes-AGI] 执行完成，耗时 {result.metrics.get('duration', 0):.2f}秒")
+        print(f"\n[Hermes-AGI] 执行完成")
+        print(f"  耗时: {result.metrics.get('duration', 0):.2f}秒")
+        print(f"  健康分数: {agent.get_health_score():.2f}")
 
         # 显示进化统计
         stats = agent.evolution.get_stats()
-        print(f"\n[Evolution] 统计: {stats['total_tasks']}个任务, 成功率{stats.get('success_rate', 0)*100:.0f}%")
+        print(f"\n[Evolution v2.0] 统计:")
+        print(f"  总任务数: {stats['total_tasks']}")
+        print(f"  成功率: {stats.get('success_rate', 0)*100:.0f}%")
+        print(f"  健康分数: {stats.get('health_score', 0)*100:.0f}%")
+        print(f"  模式数: {stats.get('patterns_count', 0)}")
+
+        # 显示健康监控详情
+        if 'health_stats' in stats:
+            hs = stats['health_stats']
+            print(f"\n[HealthMonitor] 详情:")
+            print(f"  成功任务: {hs.get('successful_tasks', 0)}")
+            print(f"  失败任务: {hs.get('failed_tasks', 0)}")
+            print(f"  重试次数: {hs.get('retried_tasks', 0)}")
+            print(f"  平均执行时间: {hs.get('avg_execution_time', 0):.2f}秒")
     else:
         # 交互模式
-        print("Hermes-AGI Agent Runtime")
+        print("Hermes-AGI Agent Runtime v2.0")
         print("=" * 40)
+        print("优化: 重试机制、错误分类、健康监控、真实进化")
         print("输入任务描述，或输入 'quit' 退出")
+        print("输入 'health' 查看健康状态")
         print()
 
         while True:
@@ -617,12 +781,21 @@ async def main():
                 user_input = input("用户> ").strip()
                 if user_input.lower() in ['quit', 'exit', 'q']:
                     break
+                if user_input.lower() == 'health':
+                    stats = agent.evolution.get_stats()
+                    print(f"\n[健康状态]")
+                    print(f"  健康分数: {stats.get('health_score', 0)*100:.0f}%")
+                    print(f"  总任务: {stats.get('total_tasks', 0)}")
+                    print(f"  成功率: {stats.get('success_rate', 0)*100:.0f}%")
+                    print()
+                    continue
                 if not user_input:
                     continue
 
                 print()
                 result = await agent.process(user_input)
                 print(result.output)
+                print(f"\n健康分数: {agent.get_health_score():.2f}")
                 print()
 
             except KeyboardInterrupt:

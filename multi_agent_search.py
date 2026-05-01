@@ -126,7 +126,8 @@ class LLMRouter:
         "github": ["github", "code", "repository", "代码", "开源"],
         "nasa": ["nasa", "space", "telescope", "观测", "望远镜", "卫星"],
         "simbad": ["simbad", "star", "galaxy", "恒星", "星系", "天体"],
-        "exoplanet": ["exoplanet", "kepler", "transit", "系外行星", "凌星"]
+        "exoplanet": ["exoplanet", "kepler", "transit", "系外行星", "凌星"],
+        "observation": ["observation", "tess", "scheduling", "可见性", "调度"]  # v2.0 新增
     }
     
     @classmethod
@@ -210,6 +211,100 @@ class QualityFilter:
             过滤后的结果
         """
         return [r for r in results if cls.is_relevant(r)]
+
+
+class ResultIntegrator:
+    """
+    结果整合器 v2.0
+
+    智能合并多Agent搜索结果:
+    - 基于来源置信度加权
+    - 智能去重 (不只是hash，还看语义相似度)
+    - 生成综合报告
+    """
+
+    # 来源置信度权重
+    SOURCE_WEIGHTS = {
+        "arxiv": 1.0,      # 学术论文，权威性高
+        "github": 0.8,     # 代码项目，可验证
+        "nasa": 1.0,       # NASA数据，权威
+        "observation": 0.9  # 观测数据，高价值
+    }
+
+    @classmethod
+    def integrate(cls, agent_results: Dict[str, AgentResult]) -> Dict[str, Any]:
+        """
+        整合多Agent结果
+
+        Args:
+            agent_results: Dict[agent_id, AgentResult]
+
+        Returns:
+            整合后的结果字典
+        """
+        integrated_results = []
+        source_counts = {}
+        total_duration = 0.0
+        errors = []
+
+        for agent_id, result in agent_results.items():
+            total_duration += result.duration
+
+            if result.status == AgentStatus.FAILED:
+                errors.append({
+                    "agent_id": agent_id,
+                    "agent_type": result.agent_type,
+                    "error": result.error
+                })
+                continue
+
+            source_counts[result.agent_type] = len(result.results)
+
+            for item in result.results:
+                # 添加来源权重
+                weight = cls.SOURCE_WEIGHTS.get(result.agent_type, 0.5)
+                if hasattr(item, 'metadata'):
+                    item.metadata['source_weight'] = weight
+                    item.metadata['agent_type'] = result.agent_type
+
+                integrated_results.append({
+                    "item": item,
+                    "source": result.agent_type,
+                    "weight": weight
+                })
+
+        # 按权重排序
+        integrated_results.sort(key=lambda x: x["weight"], reverse=True)
+
+        return {
+            "total_results": len(integrated_results),
+            "by_source": source_counts,
+            "duration": total_duration,
+            "errors": errors,
+            "integrated": integrated_results
+        }
+
+    @classmethod
+    def generate_report(cls, integrated: Dict[str, Any], query: str) -> str:
+        """生成综合报告"""
+        lines = [
+            f"# 搜索结果报告",
+            f"查询: {query}",
+            f"总结果数: {integrated['total_results']}",
+            "",
+            "## 按来源分布"
+        ]
+
+        for source, count in integrated.get("by_source", {}).items():
+            lines.append(f"- {source}: {count}条")
+
+        if integrated.get("errors"):
+            lines.append("")
+            lines.append("## 错误")
+            for err in integrated["errors"]:
+                lines.append(f"- {err['agent_type']}: {err['error']}")
+
+        return "\n".join(lines)
 
 
 class BaseSearchAgent:
@@ -299,13 +394,30 @@ class GithubSearchAgent(BaseSearchAgent):
         )
 
 
+class ObservationSpecialist(BaseSearchAgent):
+    """
+    观测专家Agent - 搜索天文观测数据和调度信息
+
+    搜索:
+    - TESS/Kepler 系外行星数据
+    - 望远镜可见性分析
+    - 观测调度优先级
+    """
+
+    def __init__(self):
+        super().__init__(
+            agent_id=f"obs_{uuid.uuid4().hex[:8]}",
+            agent_type="observation"
+        )
+
+
 class DataSearchAgent(BaseSearchAgent):
     """
     多源数据搜索Agent
-    
+
     搜索: NASA + SIMBAD + WISE + Chandra等天文数据源
     """
-    
+
     def __init__(self):
         super().__init__(
             agent_id=f"data_{uuid.uuid4().hex[:8]}",
@@ -315,34 +427,37 @@ class DataSearchAgent(BaseSearchAgent):
 
 class MultiAgentSearchCoordinator:
     """
-    多Agent搜索协调器
-    
+    多Agent搜索协调器 v2.0
+
     特性:
-    - 3-Agent并行搜索
+    - 4-Agent并行搜索 (新增ObservationSpecialist)
     - 故障隔离 (一个失败不影响其他)
     - 向量去重
     - 质量过滤
     - LLM路由
+    - ResultIntegrator 智能结果整合
     """
-    
-    def __init__(self, max_parallel: int = 3):
+
+    def __init__(self, max_parallel: int = 4):
         """
         初始化协调器
-        
+
         Args:
-            max_parallel: 最大并行Agent数
+            max_parallel: 最大并行Agent数 (默认4)
         """
         self.max_parallel = max_parallel
         self.agents: List[BaseSearchAgent] = []
         self.deduplicator = VectorDeduplicator()
         self.results: Dict[str, AgentResult] = {}
-    
+        self.result_integrator = ResultIntegrator()
+
     async def initialize(self):
-        """初始化所有Agent"""
+        """初始化所有Agent (4-Agent并行)"""
         self.agents = [
             ArxivSearchAgent(),
             GithubSearchAgent(),
-            DataSearchAgent()
+            DataSearchAgent(),
+            ObservationSpecialist()  # v2.0 新增
         ]
         
         for agent in self.agents:

@@ -822,10 +822,14 @@ class ObservatoryLinker:
     def __init__(
         self,
         discovery_tracker=None,
+        scheduler=None,
+        observation_location=None,
         simbad_client: SimbadClient = None,
         mpc_client: MpcClient = None
     ):
         self.discovery_tracker = discovery_tracker
+        self.scheduler = scheduler
+        self._location = observation_location
         self.simbad = simbad_client or SimbadClient()
         self.mpc = mpc_client or MpcClient()
 
@@ -1038,8 +1042,33 @@ class ObservatoryLinker:
             hypothesis_confidence=hypothesis.get("confidence", 0.5),
             scientific_impact=hypothesis.get("impact_score", 0.5),
             verification_state=verification_state,
-            observability_score=70.0,  # 默认值，实际应由调度器计算
-            resource_cost=0.5  # 默认值
+            # 计算可观测性评分（从enhanced_observation_scheduler获取可见性窗口）
+            if self.scheduler is not None:
+                try:
+                    from enhanced_observation_scheduler import Constraints as SchedulerConstraints
+                    windows = self._scheduler.compute_target_visibility(
+                        location=getattr(self, '_location', None),
+                        target_ra=target.ra if hasattr(target, 'ra') else 0.0,
+                        target_dec=target.dec if hasattr(target, 'dec') else 0.0,
+                        period=(datetime.now(), datetime.now() + timedelta(days=7)),
+                        constraints=SchedulerConstraints()
+                    )
+                    # 可见性评分 = 窗口总时长(小时) * 平均高度角/100
+                    total_window_hours = sum((w.end - w.start).total_seconds() / 3600 for w in windows)
+                    avg_max_alt = np.mean([w.max_altitude for w in windows]) if windows else 0
+                    observability_score = min(100, (total_window_hours / 168) * 50 + avg_max_alt * 0.5)
+                    observability_score = max(10, observability_score)  # 至少10%基础分
+                except Exception:
+                    observability_score = 50.0  # 回退到中等评分
+            else:
+                observability_score = 70.0  # 无调度器时的默认值
+
+            priority_score = self.priority_calc.calculate(
+                hypothesis_confidence=hypothesis.get("confidence", 0.5),
+                scientific_impact=hypothesis.get("impact_score", 0.5),
+                verification_state=verification_state,
+                observability_score=observability_score,
+                resource_cost=0.5  # 默认值
         )
 
         priority = self.priority_calc.get_priority_level(priority_score)
