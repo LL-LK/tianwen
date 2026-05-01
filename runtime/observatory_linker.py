@@ -1037,12 +1037,7 @@ class ObservatoryLinker:
         if not target:
             return None
 
-        # 计算优先级
-        priority_score = self.priority_calc.calculate(
-            hypothesis_confidence=hypothesis.get("confidence", 0.5),
-            scientific_impact=hypothesis.get("impact_score", 0.5),
-            verification_state=verification_state,
-            # 计算可观测性评分（从enhanced_observation_scheduler获取可见性窗口）
+        # 计算可观测性评分（从enhanced_observation_scheduler获取可见性窗口）
             if self.scheduler is not None:
                 try:
                     from enhanced_observation_scheduler import Constraints as SchedulerConstraints
@@ -1063,6 +1058,7 @@ class ObservatoryLinker:
             else:
                 observability_score = 70.0  # 无调度器时的默认值
 
+            # 计算优先级
             priority_score = self.priority_calc.calculate(
                 hypothesis_confidence=hypothesis.get("confidence", 0.5),
                 scientific_impact=hypothesis.get("impact_score", 0.5),
