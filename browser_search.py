@@ -401,12 +401,19 @@ class BrowserSearch:
             # 等待结果加载
             await page.wait_for_selector(".repo-list-item", timeout=10000)
             
-            # 提取结果
-            result_elements = await page.query_selector_all(".repo-list-item")
+            # 提取结果 (GitHub可能改变页面结构)
+            try:
+                await page.wait_for_selector(".results-list", timeout=5000)
+                result_elements = await page.query_selector_all(".results-list li")
+            except:
+                result_elements = await page.query_selector_all("li.repo-list-item")
             
             for elem in result_elements[:max_results]:
                 try:
-                    title_elem = await elem.query_selector("a[class*='v-align-middle']")
+                    # 尝试多种选择器
+                    title_elem = await elem.query_selector("a[href*='/']:not([data-hovercard-type])")
+                    if not title_elem:
+                        title_elem = await elem.query_selector("a")
                     title = await title_elem.inner_text() if title_elem else ""
                     url = "https://github.com" + await title_elem.get_attribute("href") if title_elem else ""
                     
@@ -451,18 +458,21 @@ class BrowserSearch:
         results = []
         
         try:
-            # 访问NASA开放数据
+            # 访问NASA开放数据 (使用更宽松的等待策略)
             search_url = f"https://data.nasa.gov/search?q={query.replace(' ', '%20')}"
-            await page.goto(search_url, wait_until="networkidle")
+            await page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
             
             # 模拟人类行为
             await self._random_human_behavior(page)
             
-            # 等待结果
-            await asyncio.sleep(2)
+            # 等待结果 (宽松等待)
+            await asyncio.sleep(3)
             
             # 提取结果 (NASA数据结构可能变化)
             result_elements = await page.query_selector_all("[class*='resource-item']")
+            
+            if not result_elements:
+                result_elements = await page.query_selector_all("a[href*='/dataset/']")
             
             for elem in result_elements[:max_results]:
                 try:
