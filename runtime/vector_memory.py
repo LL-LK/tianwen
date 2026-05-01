@@ -91,7 +91,21 @@ class SimpleVectorStore:
 
 @dataclass
 class Experience:
-    """经验记录"""
+    """
+    经验记录
+
+    重要性评分 (importance_score):
+    - 0.0-0.3: 低重要性，常规经验，可快速遗忘
+    - 0.3-0.6: 中等重要性，有价值的经验
+    - 0.6-0.8: 高重要性，关键决策经验
+    - 0.8-1.0: 极高重要性，核心知识，不可遗忘
+
+    计算因素:
+    - 任务复杂度 (complexity)
+    - 结果质量 (outcome)
+    - 使用频率 (access_count)
+    - 时间衰减 (recency)
+    """
     id: str
     type: str  # 'success' | 'failure' | 'pattern'
     task_description: str
@@ -103,6 +117,11 @@ class Experience:
     outcome: str = ""  # 'success' | 'partial' | 'failed'
     lessons_learned: str = ""
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    # ============ 重要性评分系统 (新增) ============
+    importance_score: float = 0.5  # 默认中等重要性
+    access_count: int = 0  # 被访问/使用次数
+    last_accessed: str = field(default_factory=lambda: datetime.now().isoformat())
+    success_weight: float = 1.0  # 成功经验权重
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -110,6 +129,52 @@ class Experience:
     @staticmethod
     def from_dict(data: Dict) -> 'Experience':
         return Experience(**data)
+
+    def calculate_importance(self) -> float:
+        """
+        计算重要性评分
+
+        基于多维度因素计算:
+        - 基础分数: outcome质量 (成功=1.0, 部分=0.5, 失败=0.3)
+        - 复杂度加权: EXTREME=1.5, HIGH=1.2, MEDIUM=1.0, LOW=0.8
+        - 使用频率: log(1 + access_count) * 0.1
+        - 时间衰减: 近期经验权重更高
+
+        Returns:
+            float: 重要性分数 (0.0-1.0)
+        """
+        # 1. 基础分数 (outcome质量)
+        outcome_scores = {"success": 1.0, "partial": 0.5, "failed": 0.3}
+        base_score = outcome_scores.get(self.outcome, 0.5) * self.success_weight
+
+        # 2. 复杂度加权
+        complexity_weights = {"extreme": 1.5, "high": 1.2, "medium": 1.0, "low": 0.8}
+        complexity_weight = complexity_weights.get(self.complexity.lower(), 1.0)
+        base_score *= complexity_weight
+
+        # 3. 使用频率加成 (log函数防止饱和)
+        access_bonus = min(0.2, 0.1 * np.log(1 + self.access_count))
+
+        # 4. 时间衰减因子 (更近的经验更重要)
+        try:
+            last_access_dt = datetime.fromisoformat(self.last_accessed)
+            days_ago = (datetime.now() - last_access_dt).days
+            recency_factor = np.exp(-days_ago / 90)  # 90天半衰期
+        except:
+            recency_factor = 0.5
+
+        # 综合计算
+        final_score = base_score + access_bonus
+        final_score *= (0.7 + 0.3 * recency_factor)  # 时间调整
+        final_score = min(1.0, max(0.0, final_score))  # 限制范围
+
+        return round(final_score, 3)
+
+    def record_access(self):
+        """记录一次访问，更新重要性"""
+        self.access_count += 1
+        self.last_accessed = datetime.now().isoformat()
+        self.importance_score = self.calculate_importance()
 
 # ============ 论文数据模型（兼容literature_researcher.py）============
 

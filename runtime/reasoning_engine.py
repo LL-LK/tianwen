@@ -1,22 +1,27 @@
 """
-天问-AGI 推理引擎模块 v1.1
+天问-AGI 推理引擎模块 v1.2
 ReasoningEngine - 多模型推理能力集成
 
 功能:
 - Qwen3-32B thinking/non-thinking双模式
 - DeepSeek-R1 API集成
+- Ollama本地LLM支持 (Llama2, Mistral, Qwen等本地模型)
 - 复杂度自动选择
 - LRU内存缓存（减少重复API调用）
 - 与literature_researcher.py无缝集成
 
-使用方法:
-    # 默认启用缓存
-    engine = ReasoningEngine()
-    result = await engine.think("复杂问题", complexity="high")
+模型选择策略:
+- LOW复杂度: 优先Ollama (低延迟低成本)
+- MEDIUM/HIGH: 优先Qwen > Ollama > DeepSeek
+- EXTREME: DeepSeek > Qwen > Ollama
 
-    # 禁用缓存
-    engine = ReasoningEngine(cache_enabled=False)
-    result = await engine.think("问题", use_cache=False)
+使用方法:
+    engine = ReasoningEngine()
+    await engine.configure(ollama_config=ModelConfig.ollama("llama2"))
+    result = await engine.think("问题")
+
+    # 强制使用Ollama
+    result = await engine.think("问题", force_model="ollama")
 """
 
 import asyncio
@@ -140,6 +145,23 @@ class Complexity(Enum):
     EXTREME = "extreme"  # 极复杂问题
 
 
+class ReasoningMode(Enum):
+    """
+    推理模式枚举
+
+    CoD (Chain of Draft) vs CoT (Chain of Thought):
+    - CoT: 200+ tokens/step，完整推理过程，精度高但消耗大
+    - CoD: <50 tokens/step，简短草稿标记，精度适中但速度快4倍
+
+    选择原则:
+    - LOW复杂度问题 -> 使用CoD
+    - MEDIUM复杂度问题 -> 可选CoD或CoT
+    - HIGH/EXTREME复杂度问题 -> 使用CoT
+    """
+    COT = "cot"   # Chain of Thought - 完整思维链
+    COD = "cod"   # Chain of Draft - 简短草稿模式
+
+
 @dataclass
 class ModelConfig:
     """模型配置"""
@@ -157,6 +179,11 @@ class ModelConfig:
     def deepseek_api(cls, api_key: str):
         """DeepSeek API配置"""
         return cls(name="deepseek", endpoint="https://api.deepseek.com", api_key=api_key)
+
+    @classmethod
+    def ollama(cls, model: str = "llama2", endpoint: str = "http://localhost:11434"):
+        """Ollama本地部署配置"""
+        return cls(name=model, endpoint=endpoint, model_type="ollama")
 
 
 @dataclass
@@ -315,6 +342,200 @@ class QwenAdapter(BaseAdapter):
             "raw_analysis": result.content,
             "thinking_process": result.thinking_process
         }
+
+
+class OllamaAdapter(BaseAdapter):
+    """
+    Ollama本地LLM适配器 - 支持多种本地模型
+
+    Ollama优势:
+    - 完全本地运行，无需网络
+    - 支持多种开源模型 (Llama2, Mistral, Qwen, etc.)
+    - API兼容OpenAI格式
+    - 隐私友好
+    """
+
+    def __init__(self, config: ModelConfig):
+        super().__init__(config)
+        self.client = httpx.AsyncClient(timeout=120.0)
+
+    async def think(
+        self,
+        prompt: str,
+        system_prompt: str = "你是一个专业的AI助手，擅长深度推理分析。",
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+        thinking: bool = False
+    ) -> ReasoningResult:
+        """
+        执行Ollama推理
+
+        Args:
+            prompt: 用户输入
+            system_prompt: 系统提示
+            max_tokens: 最大生成长度
+            temperature: 温度参数
+            thinking: 是否启用思维链模式 (部分模型支持)
+        """
+        import time
+        start_time = time.time()
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+
+        payload = {
+            "model": self.config.name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": False
+        }
+
+        # 部分模型支持thinking参数
+        if thinking:
+            payload["options"] = {"thinking": True}
+
+        try:
+            response = await self.client.post(
+                f"{self.config.endpoint}/api/chat",
+                json=payload
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            content = result.get("message", {}).get("content", "")
+            tokens = result.get("eval_count", 0)
+
+            # 提取思维过程 (如果模型返回)
+            thinking_process = ""
+            if "<thinking>" in content:
+                match = re.search(r'<thinking>(.*?)</thinking>', content, re.DOTALL)
+                if match:
+                    thinking_process = match.group(1).strip()
+                    content = content.replace(f"<thinking>{thinking_process}</thinking>", "").strip()
+
+            return ReasoningResult(
+                content=content,
+                thinking_process=thinking_process,
+                model_used=f"Ollama-{self.config.name}",
+                complexity="high" if thinking else "medium",
+                tokens_used=tokens,
+                latency_ms=(time.time() - start_time) * 1000
+            )
+
+        except Exception as e:
+            return ReasoningResult(
+                content=f"Ollama推理出错: {str(e)}",
+                model_used=f"Ollama-{self.config.name}",
+                complexity="medium"
+            )
+
+    async def analyze(self, content: str, analysis_type: str = "general") -> Dict:
+        """分析文本"""
+        prompt = f"""请分析以下内容，提取关键信息:
+
+{content[:4000]}
+
+分析要求:
+1. 识别主要研究问题
+2. 提取研究空白(gaps)
+3. 评估创新性
+4. 总结关键贡献
+
+请以JSON格式返回分析结果。"""
+
+        result = await self.think(prompt, thinking=True)
+
+        try:
+            json_match = re.search(r'\{.*\}', result.content, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group())
+        except:
+            pass
+
+        return {
+            "raw_analysis": result.content,
+            "thinking_process": result.thinking_process
+        }
+
+    @staticmethod
+    def list_models(endpoint: str = "http://localhost:11434") -> List[Dict]:
+        """列出Ollama可用的模型"""
+        import httpx
+        try:
+            client = httpx.Client(timeout=10.0)
+            response = client.get(f"{endpoint}/api/tags")
+            response.raise_for_status()
+            data = response.json()
+            return data.get("models", [])
+        except Exception as e:
+            return []
+
+
+class ChainOfDraftAdapter:
+    """
+    Chain of Draft (CoD) 适配器
+
+    CoD协议:
+    - 每个推理步骤 <50 tokens (相比CoT的200+ tokens/step)
+    - 使用简短草稿标记: [D1] 步骤1, [D2] 步骤2, ...
+    - 快速推理，适用于简单问题和批量处理
+
+    优势:
+    - token消耗降低60-80%
+    - 延迟降低50%以上
+    - 适用于低复杂度问题
+
+    使用场景:
+    - 简单问答
+    - 批量推理任务
+    - 资源受限环境
+    """
+
+    # CoD提示模板 - 简短推理
+    COD_TEMPLATE = """使用简短草稿模式推理:
+
+问题: {prompt}
+
+要求:
+- 每个推理步骤 <50 tokens
+- 使用草稿标记: [D1] 步骤1, [D2] 步骤2, ...
+- 最终答案用 [ANSWER] 标记
+- 保持简洁，直接
+"""
+
+    @staticmethod
+    def format_cod_prompt(prompt: str) -> str:
+        """格式化CoD提示"""
+        return ChainOfDraftAdapter.COD_TEMPLATE.format(prompt=prompt)
+
+    @staticmethod
+    def parse_cod_response(response: str) -> Tuple[str, str]:
+        """
+        解析CoD响应
+
+        Returns:
+            (draft_steps, final_answer)
+        """
+        draft_steps = ""
+        final_answer = response
+
+        # 提取草稿步骤
+        draft_parts = []
+        for match in re.finditer(r'\[D(\d+)\]\s*(.+?)(?=\[D\d+\]|\[ANSWER\]|$)', response, re.DOTALL):
+            draft_parts.append(f"[D{match.group(1)}] {match.group(2).strip()}")
+
+        if draft_parts:
+            draft_steps = "\n".join(draft_parts)
+
+        # 提取最终答案
+        answer_match = re.search(r'\[ANSWER\]\s*(.+?)$', response, re.DOTALL)
+        if answer_match:
+            final_answer = answer_match.group(1).strip()
+
+        return draft_steps, final_answer
 
 
 class DeepSeekAdapter(BaseAdapter):
@@ -479,6 +700,7 @@ class ReasoningEngine:
         """
         self.qwen: Optional[QwenAdapter] = None
         self.deepseek: Optional[DeepSeekAdapter] = None
+        self.ollama: Optional[OllamaAdapter] = None
         self._config: Dict[str, ModelConfig] = {}
 
         # 缓存配置
@@ -488,7 +710,8 @@ class ReasoningEngine:
     async def configure(
         self,
         qwen_config: Optional[ModelConfig] = None,
-        deepseek_config: Optional[ModelConfig] = None
+        deepseek_config: Optional[ModelConfig] = None,
+        ollama_config: Optional[ModelConfig] = None
     ):
         """
         配置推理引擎
@@ -496,6 +719,7 @@ class ReasoningEngine:
         Args:
             qwen_config: Qwen配置 (默认为本地Ollama)
             deepseek_config: DeepSeek配置 (需要API Key)
+            ollama_config: Ollama配置 (本地模型)
         """
         if qwen_config:
             self.qwen = QwenAdapter(qwen_config)
@@ -504,6 +728,10 @@ class ReasoningEngine:
         if deepseek_config:
             self.deepseek = DeepSeekAdapter(deepseek_config)
             self._config["deepseek"] = deepseek_config
+
+        if ollama_config:
+            self.ollama = OllamaAdapter(ollama_config)
+            self._config["ollama"] = ollama_config
 
     def _estimate_complexity(self, prompt: str) -> Complexity:
         """根据提示词估计复杂度"""
@@ -544,7 +772,8 @@ class ReasoningEngine:
         prompt: str,
         complexity: Optional[str] = None,
         force_model: Optional[str] = None,
-        use_cache: Optional[bool] = None
+        use_cache: Optional[bool] = None,
+        reasoning_mode: Optional[str] = None
     ) -> ReasoningResult:
         """
         执行推理 - 主入口
@@ -552,17 +781,35 @@ class ReasoningEngine:
         Args:
             prompt: 输入提示
             complexity: 强制复杂度 (low/medium/high/extreme)
-            force_model: 强制使用模型 (qwen/deepseek)
+            force_model: 强制使用模型 (qwen/deepseek/ollama)
             use_cache: 是否使用缓存，默认使用缓存(True)，传入False可禁用
+            reasoning_mode: 推理模式 ("cot" | "cod" | None=auto)
+                - cot: Chain of Thought，完整思维链，200+ tokens/step
+                - cod: Chain of Draft，简短草稿，<50 tokens/step
 
         Returns:
             ReasoningResult: 推理结果
+
+        CoD vs CoT 选择原则:
+            - LOW复杂度: 自动使用CoD
+            - MEDIUM: 默认CoT，可选CoD
+            - HIGH/EXTREME: 使用CoT
         """
         # 确定复杂度
         if complexity:
             comp = Complexity(complexity.lower())
         else:
             comp = self._estimate_complexity(prompt)
+
+        # 确定推理模式
+        if reasoning_mode:
+            mode = ReasoningMode(reasoning_mode.lower())
+        elif comp == Complexity.LOW:
+            # 低复杂度自动使用CoD
+            mode = ReasoningMode.COD
+        else:
+            # 中高复杂度使用CoT
+            mode = ReasoningMode.COT
 
         # 缓存查找（当use_cache不为False且缓存启用时）
         effective_use_cache = use_cache if use_cache is not None else self.cache_enabled
@@ -571,43 +818,110 @@ class ReasoningEngine:
             if cached_result:
                 return cached_result
 
-        # 强制模型
-        if force_model:
-            if force_model == "deepseek" and self.deepseek:
-                result = await self.deepseek.think(prompt)
-            elif force_model == "qwen" and self.qwen:
-                result = await self.qwen.think(prompt, thinking=True)
-            else:
-                result = ReasoningResult(content="错误: 未配置指定模型")
+        # 处理CoD模式
+        if mode == ReasoningMode.COD:
+            result = await self._think_cod(prompt, force_model)
         else:
-            # 根据复杂度选择
-            if comp == Complexity.EXTREME:
-                if self.deepseek:
+            # 强制模型
+            if force_model:
+                if force_model == "deepseek" and self.deepseek:
                     result = await self.deepseek.think(prompt)
-                elif self.qwen:
+                elif force_model == "qwen" and self.qwen:
                     result = await self.qwen.think(prompt, thinking=True)
+                elif force_model == "ollama" and self.ollama:
+                    result = await self.ollama.think(prompt)
                 else:
-                    result = ReasoningResult(content="错误: 未配置任何模型")
+                    result = ReasoningResult(content="错误: 未配置指定模型")
+            else:
+                # 根据复杂度选择
+                if comp == Complexity.EXTREME:
+                    if self.deepseek:
+                        result = await self.deepseek.think(prompt)
+                    elif self.qwen:
+                        result = await self.qwen.think(prompt, thinking=True)
+                    elif self.ollama:
+                        result = await self.ollama.think(prompt, thinking=True)
+                    else:
+                        result = ReasoningResult(content="错误: 未配置任何模型")
 
-            elif comp in (Complexity.HIGH, Complexity.MEDIUM):
-                if self.qwen:
-                    result = await self.qwen.think(prompt, thinking=True)
-                elif self.deepseek:
-                    result = await self.deepseek.think(prompt)
-                else:
-                    result = ReasoningResult(content="错误: 未配置任何模型")
+                elif comp in (Complexity.HIGH, Complexity.MEDIUM):
+                    if self.qwen:
+                        result = await self.qwen.think(prompt, thinking=True)
+                    elif self.ollama:
+                        result = await self.ollama.think(prompt, thinking=True)
+                    elif self.deepseek:
+                        result = await self.deepseek.think(prompt)
+                    else:
+                        result = ReasoningResult(content="错误: 未配置任何模型")
 
-            else:  # LOW
-                if self.qwen:
-                    result = await self.qwen.think(prompt, thinking=False)
-                else:
-                    result = ReasoningResult(content="错误: 未配置Qwen模型")
+                else:  # LOW
+                    # 优先使用本地Ollama (低延迟低成本)
+                    if self.ollama:
+                        result = await self.ollama.think(prompt, thinking=False)
+                    elif self.qwen:
+                        result = await self.qwen.think(prompt, thinking=False)
+                    else:
+                        result = ReasoningResult(content="错误: 未配置任何模型")
 
         # 缓存结果（当use_cache不为False且缓存启用时）
         if effective_use_cache and self._cache and result:
             self._cache.put(prompt, result, comp.value, force_model or "")
 
         return result
+
+    async def _think_cod(
+        self,
+        prompt: str,
+        force_model: Optional[str] = None
+    ) -> ReasoningResult:
+        """
+        Chain of Draft 推理模式
+
+        使用简短草稿标记进行快速推理，token消耗降低60-80%
+
+        Args:
+            prompt: 输入提示
+            force_model: 强制模型
+
+        Returns:
+            ReasoningResult: 推理结果
+        """
+        import time
+        start_time = time.time()
+
+        # 格式化CoD提示
+        cod_prompt = ChainOfDraftAdapter.format_cod_prompt(prompt)
+
+        # 选择模型 (优先Ollama)
+        if force_model == "ollama" and self.ollama:
+            adapter = self.ollama
+        elif force_model == "qwen" and self.qwen:
+            adapter = self.qwen
+        elif self.ollama:
+            adapter = self.ollama
+        elif self.qwen:
+            adapter = self.qwen
+        else:
+            return ReasoningResult(
+                content="错误: CoD模式需要配置Ollama或Qwen",
+                model_used="CoD",
+                complexity="low"
+            )
+
+        # 执行推理 (不启用thinking模式，因为CoD本身包含推理标记)
+        result = await adapter.think(cod_prompt, thinking=False, max_tokens=512)
+
+        # 解析CoD响应
+        draft_steps, final_answer = ChainOfDraftAdapter.parse_cod_response(result.content)
+
+        return ReasoningResult(
+            content=final_answer,
+            thinking_process=draft_steps,
+            model_used=f"{result.model_used} (CoD)",
+            complexity="low",
+            tokens_used=result.tokens_used,
+            latency_ms=(time.time() - start_time) * 1000
+        )
 
     async def analyze_paper(
         self,
@@ -704,6 +1018,7 @@ Gap {i}:
         status = {
             "qwen_configured": self.qwen is not None,
             "deepseek_configured": self.deepseek is not None,
+            "ollama_configured": self.ollama is not None,
             "available_models": list(self._config.keys()),
             "cache_enabled": self.cache_enabled
         }
@@ -802,16 +1117,18 @@ async def demo():
     # 配置模型
     print("\n[1] 配置模型...")
     try:
+        # 优先使用本地Ollama (无需网络，低延迟)
         await engine.configure(
-            qwen_config=ModelConfig.qwen_local("http://localhost:11434"),  # Ollama默认地址
+            ollama_config=ModelConfig.ollama("llama2", "http://localhost:11434"),
+            qwen_config=ModelConfig.qwen_local("http://localhost:8000"),
         )
-        print("  ✅ Qwen配置成功 (本地Ollama)")
+        print("  ✅ Ollama配置成功 (llama2)")
     except Exception as e:
-        print(f"  ⚠️ Qwen配置失败: {e}")
+        print(f"  ⚠️ 模型配置失败: {e}")
 
     print(f"\n[2] 引擎状态: {engine.get_status()}")
 
-    # 简单问题
+    # 简单问题 - 优先使用Ollama
     print("\n[3] 测试简单问题 (LOW复杂度)...")
     result = await engine.think("太阳系有几个行星？", complexity="low")
     print(f"  问题: 太阳系有几个行星？")
@@ -827,6 +1144,12 @@ async def demo():
     print(f"  问题: 分析AI对天文学的影响")
     print(f"  思维链: {result.thinking_process[:100] if result.thinking_process else 'N/A'}...")
     print(f"  模型: {result.model_used}")
+
+    # 列出Ollama可用模型
+    print("\n[5] Ollama可用模型...")
+    models = OllamaAdapter.list_models("http://localhost:11434")
+    for m in models:
+        print(f"  - {m.get('name', 'unknown')}")
 
     print("\n" + "=" * 60)
     print("演示完成")
