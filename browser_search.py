@@ -1,11 +1,16 @@
 """
-天问-AGI 浏览器模拟搜索模块 v1.0
+天问-AGI 浏览器模拟搜索模块 v1.1
 BrowserSearch - 模拟人类行为的浏览器自动化搜索
 
 基于Hermes评审建议实现:
 - Playwright + stealth反检测
 - 多层反检测技术
 - 封禁防护多层策略
+
+Issue #22 增强:
+- 多源搜索协调 (arxiv/github/nasa/google scholar)
+- 搜索结果缓存与去重
+- 智能频率控制
 
 用法:
     searcher = BrowserSearch()
@@ -19,6 +24,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 import json
+from collections import deque
 
 # Playwright导入 (可选)
 try:
@@ -34,9 +40,10 @@ except ImportError:
 class SearchTarget(Enum):
     """搜索目标枚举"""
     ARXIV = "arxiv"
-    GITHUB = "github" 
+    GITHUB = "github"
     NASA = "nasa"
-    SCHOLAR = "scholar"
+    GOOGLE_SCHOLAR = "google_scholar"
+    SEMANTIC_SCHOLAR = "semantic_scholar"
 
 
 @dataclass
@@ -95,6 +102,60 @@ class RateLimitConfig:
     retry_count: int = 3
     retry_delay_range: tuple = (60, 300)  # 重试延迟范围(秒)
     backoff_multiplier: float = 0.5
+
+
+# Issue #22: 搜索结果缓存
+class SearchCache:
+    """
+    搜索结果缓存
+
+    功能:
+    - 缓存搜索结果减少重复请求
+    - 自动去重
+    - TTL过期机制
+    """
+
+    def __init__(self, max_size: int = 1000, ttl_seconds: int = 3600):
+        self.max_size = max_size
+        self.ttl_seconds = ttl_seconds
+        self._cache: Dict[str, tuple[List, float]] = {}  # (results, timestamp)
+
+    def _make_key(self, query: str, target: SearchTarget) -> str:
+        """生成缓存键"""
+        return f"{target.value}:{query.lower().strip()}"
+
+    def get(self, query: str, target: SearchTarget) -> Optional[List[SearchResult]]:
+        """获取缓存"""
+        key = self._make_key(query, target)
+        if key not in self._cache:
+            return None
+
+        results, timestamp = self._cache[key]
+        if time.time() - timestamp > self.ttl_seconds:
+            del self._cache[key]
+            return None
+
+        return results
+
+    def put(self, query: str, target: SearchTarget, results: List[SearchResult]):
+        """存入缓存"""
+        key = self._make_key(query, target)
+        self._cache[key] = (results, time.time())
+
+        # LRU淘汰
+        while len(self._cache) > self.max_size:
+            oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k][1])
+            del self._cache[oldest_key]
+
+    def deduplicate(self, results: List[SearchResult]) -> List[SearchResult]:
+        """去重"""
+        seen_urls = set()
+        unique = []
+        for r in results:
+            if r.url not in seen_urls:
+                seen_urls.add(r.url)
+                unique.append(r)
+        return unique
 
 
 class AntiDetectionScripts:
@@ -199,18 +260,20 @@ class BanRecovery:
 class BrowserSearch:
     """
     浏览器模拟搜索器
-    
+
     特性:
     - Playwright + stealth反检测
     - 多层反检测技术
     - 封禁防护多层策略
-    - 支持arXiv/GitHub/NASA搜索
+    - 支持arXiv/GitHub/NASA/Google Scholar多源搜索
+    - Issue #22: 搜索结果缓存与去重
     """
-    
+
     def __init__(
-        self, 
+        self,
         stealth_config: Optional[StealthConfig] = None,
-        rate_limit_config: Optional[RateLimitConfig] = None
+        rate_limit_config: Optional[RateLimitConfig] = None,
+        use_cache: bool = True
     ):
         self.stealth = stealth_config or StealthConfig()
         self.rate_limit = rate_limit_config or RateLimitConfig()
@@ -219,6 +282,11 @@ class BrowserSearch:
         self.context: Optional[BrowserContext] = None
         self.request_count = 0
         self.last_request_time = 0
+
+        # Issue #22: 搜索缓存
+        self.search_cache = SearchCache() if use_cache else None
+        self.total_requests = 0
+        self.cache_hits = 0
     
     async def initialize(self):
         """初始化浏览器"""
@@ -315,44 +383,52 @@ class BrowserSearch:
     async def search_arxiv(self, query: str, max_results: int = 10) -> List[SearchResult]:
         """
         搜索arXiv
-        
+
         Args:
             query: 搜索关键词
             max_results: 最大结果数
-            
+
         Returns:
             搜索结果列表
         """
+        # Issue #22: 缓存检查
+        if self.search_cache:
+            cached = self.search_cache.get(query, SearchTarget.ARXIV)
+            if cached:
+                self.cache_hits += 1
+                return cached[:max_results]
+
         self._check_rate_limit()
-        
+        self.total_requests += 1
+
         page = await self.context.new_page()
         results = []
-        
+
         try:
             # 访问arXiv
             search_url = f"https://arxiv.org/search/?searchtype=all&query={query.replace(' ', '+')}&start=0"
             await page.goto(search_url, wait_until="networkidle")
-            
+
             # 模拟人类行为
             await self._random_human_behavior(page)
-            
+
             # 等待结果加载
             await page.wait_for_selector(".arxiv-result", timeout=10000)
-            
+
             # 提取结果
             result_elements = await page.query_selector_all(".arxiv-result")
-            
+
             for i, elem in enumerate(result_elements[:max_results]):
                 try:
                     title_elem = await elem.query_selector(".list-title")
                     title = await title_elem.inner_text() if title_elem else ""
-                    
+
                     link_elem = await elem.query_selector(".arxiv-result a")
                     url = await link_elem.get_attribute("href") if link_elem else ""
-                    
+
                     abstract_elem = await elem.query_selector(".abstract-short")
                     snippet = await abstract_elem.inner_text() if abstract_elem else ""
-                    
+
                     results.append(SearchResult(
                         target=SearchTarget.ARXIV,
                         query=query,
@@ -504,32 +580,133 @@ class BrowserSearch:
     async def search_all(self, query: str, max_results_per_target: int = 5) -> Dict[str, List[SearchResult]]:
         """
         并行搜索所有目标
-        
+
+        Issue #22 增强:
+        - 多源搜索协调 (arxiv/github/nasa/semantic scholar)
+        - 搜索结果缓存
+        - 自动去重
+
         Args:
             query: 搜索关键词
             max_results_per_target: 每个目标的最大结果数
-            
+
         Returns:
             按目标分组的搜索结果
         """
         if not self.browser:
             await self.initialize()
-        
+
         # 并行执行所有搜索
         tasks = [
             self.search_arxiv(query, max_results_per_target),
             self.search_github(query, max_results_per_target),
-            self.search_nasa(query, max_results_per_target)
+            self.search_nasa(query, max_results_per_target),
+            self.search_semantic_scholar(query, max_results_per_target)
         ]
-        
+
         # 等待所有搜索完成
-        arxiv_results, github_results, nasa_results = await asyncio.gather(*tasks)
-        
+        arxiv_results, github_results, nasa_results, scholar_results = await asyncio.gather(*tasks)
+
+        # 合并结果
+        all_results = arxiv_results + github_results + nasa_results + scholar_results
+
+        # Issue #22: 去重
+        if self.search_cache:
+            all_results = self.search_cache.deduplicate(all_results)
+
         return {
             "arxiv": arxiv_results,
             "github": github_results,
             "nasa": nasa_results,
-            "all": arxiv_results + github_results + nasa_results
+            "google_scholar": scholar_results,
+            "all": all_results
+        }
+
+    async def search_semantic_scholar(self, query: str, max_results: int = 10) -> List[SearchResult]:
+        """
+        搜索Semantic Scholar
+
+        Issue #22 新增: 学术搜索源
+
+        Args:
+            query: 搜索关键词
+            max_results: 最大结果数
+
+        Returns:
+            搜索结果列表
+        """
+        # Issue #22: 缓存检查
+        if self.search_cache:
+            cached = self.search_cache.get(query, SearchTarget.SEMANTIC_SCHOLAR)
+            if cached:
+                self.cache_hits += 1
+                return cached[:max_results]
+
+        self._check_rate_limit()
+        self.total_requests += 1
+
+        page = await self.context.new_page()
+        results = []
+
+        try:
+            # 访问Semantic Scholar
+            search_url = f"https://www.semanticscholar.org/search?q={query.replace(' ', '+')}&sort=relevance"
+            await page.goto(search_url, wait_until="networkidle")
+
+            # 模拟人类行为
+            await self._random_human_behavior(page)
+
+            # 等待结果加载
+            await asyncio.sleep(2)  # 等待动态加载
+
+            # 提取结果
+            result_elements = await page.query_selector_all("[class*='search-result']")
+
+            for elem in result_elements[:max_results]:
+                try:
+                    title_elem = await elem.query_selector("a[data-paper-id]")
+                    title = await title_elem.inner_text() if title_elem else ""
+
+                    url = await title_elem.get_attribute("href") if title_elem else ""
+                    if url and not url.startswith("http"):
+                        url = "https://www.semanticscholar.org" + url
+
+                    # 提取摘要
+                    snippet_elem = await elem.query_selector("[class*='abstract']")
+                    snippet = await snippet_elem.inner_text() if snippet_elem else ""
+
+                    results.append(SearchResult(
+                        target=SearchTarget.SEMANTIC_SCHOLAR,
+                        query=query,
+                        url=url,
+                        title=title.strip(),
+                        snippet=snippet.strip()[:300],
+                        timestamp=time.strftime("%Y-%m-%d %H:%M:%S")
+                    ))
+                except Exception:
+                    continue
+
+            # 缓存结果
+            if self.search_cache and results:
+                self.search_cache.put(query, SearchTarget.SEMANTIC_SCHOLAR, results)
+
+        except Exception as e:
+            print(f"Semantic Scholar search error: {e}")
+        finally:
+            await page.close()
+
+        return results
+
+    def get_cache_statistics(self) -> Dict[str, Any]:
+        """获取缓存统计"""
+        if not self.search_cache:
+            return {"enabled": False}
+
+        return {
+            "enabled": True,
+            "total_requests": self.total_requests,
+            "cache_hits": self.cache_hits,
+            "cache_hit_rate": self.cache_hits / max(self.total_requests, 1)
         }
     
     def export_results(self, results: Dict[str, List[SearchResult]], filepath: str):

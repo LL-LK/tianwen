@@ -7,13 +7,18 @@ Hermes-AGI Overfitting Self-Correction System
 2. 情景记忆 - GEPA风格的记忆机制
 3. RL奖励纠正 - 强化学习驱动的自我优化
 4. 多样性保护 - 防止思维模式单一化
+
+Issue #13 增强:
+- 与多Agent系统集成
+- 过拟合信号跨Agent传播
+- 协同纠正机制
 """
 
 import json
 import math
 from collections import deque
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Callable
 from dataclasses import dataclass, field
 from typing import Deque
 
@@ -293,6 +298,11 @@ class OverfittingSelfCorrector:
     """
     过拟合自我纠正器
     结合 RL + GEPA 实现迭代自我纠正
+
+    Issue #13 增强:
+    - 跨Agent过拟合信号传播
+    - 多Agent协同纠正
+    - 分布式过拟合检测
     """
 
     def __init__(self, config: Optional[OverfitConfig] = None):
@@ -303,6 +313,63 @@ class OverfittingSelfCorrector:
 
         self.correction_count = 0
         self.overfit_alerts = 0
+
+        # Issue #13: 多Agent集成
+        self.collaborative_callbacks: List[Callable] = []
+        self.agent_overfit_states: Dict[str, Dict] = {}  # 记录各Agent的过拟合状态
+
+    def register_collaborative_callback(self, callback: Callable[[Dict], None]):
+        """注册协作回调 - 用于多Agent系统通知"""
+        self.collaborative_callbacks.append(callback)
+
+    async def notify_other_agents(self, agent_id: str, overfit_state: Dict):
+        """
+        通知其他Agents过拟合状态
+
+        Issue #13: 实现跨Agent的过拟合信号传播
+
+        Args:
+            agent_id: 当前Agent ID
+            overfit_state: 过拟合状态
+        """
+        self.agent_overfit_states[agent_id] = overfit_state
+
+        for callback in self.collaborative_callbacks:
+            try:
+                callback({
+                    "source_agent": agent_id,
+                    "overfit_state": overfit_state,
+                    "timestamp": datetime.now().isoformat()
+                })
+            except Exception as e:
+                print(f"[OverfitCorrection] 回调错误: {e}")
+
+    def get_cross_agent_overfit_report(self) -> Dict[str, Any]:
+        """
+        获取跨Agent过拟合报告
+
+        Issue #13: 多Agent协同的过拟合检测
+
+        Returns:
+            包含各Agent过拟合状态的报告
+        """
+        if not self.agent_overfit_states:
+            return {"status": "no_data", "agents": {}}
+
+        avg_trend = sum(
+            s.get("overfit_trend", 0)
+            for s in self.agent_overfit_states.values()
+        ) / len(self.agent_overfit_states)
+
+        return {
+            "status": "monitored",
+            "agents": self.agent_overfit_states,
+            "avg_overfit_trend": avg_trend,
+            "critical_agents": [
+                agent_id for agent_id, state in self.agent_overfit_states.items()
+                if state.get("overfit_trend", 0) > 0.7
+            ]
+        }
 
     def on_task_complete(
         self,

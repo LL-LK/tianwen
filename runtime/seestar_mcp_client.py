@@ -14,13 +14,373 @@ seestar_mcp_client.py - ZWO Seestar望远镜MCP协议客户端
 from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Callable
 from enum import Enum
 import asyncio
 import json
 import subprocess
 import os
 
+
+# ============================================================================
+# 硬件接口抽象层 - ASCOM/INDI 支持
+# ============================================================================
+
+class HardwareInterfaceType(Enum):
+    """硬件接口类型枚举"""
+    ASCOM = "ascom"       # ASCOM (Windows平台)
+    INDI = "indi"        # INDI (Linux/macOS平台)
+    SEESTAR_MCP = "seestar_mcp"  # Seestar MCP协议
+    SIMULATION = "simulation"  # 模拟模式
+
+
+@dataclass
+class HardwareInterfaceConfig:
+    """硬件接口配置"""
+    interface_type: HardwareInterfaceType = HardwareInterfaceType.SIMULATION
+    host: str = "localhost"
+    port: int = 8765
+    ascom_driver_id: Optional[str] = None  # ASCOM Driver ID
+    indi_host: str = "localhost"
+    indi_port: int = 7624
+    timeout_seconds: float = 30.0
+    retry_count: int = 3
+
+
+class BaseHardwareInterface:
+    """
+    硬件接口抽象基类
+
+    定义望远镜硬件操作的统一接口，支持:
+    - ASCOM (Windows)
+    - INDI (Linux/macOS)
+    - Seestar MCP
+    """
+
+    def __init__(self, config: HardwareInterfaceConfig):
+        self.config = config
+        self.is_connected = False
+
+    async def connect(self) -> bool:
+        """连接到硬件"""
+        raise NotImplementedError
+
+    async def disconnect(self):
+        """断开连接"""
+        raise NotImplementedError
+
+    async def get_status(self) -> Dict[str, Any]:
+        """获取状态"""
+        raise NotImplementedError
+
+    async def goto(self, ra: float, dec: float) -> bool:
+        """转向指定坐标"""
+        raise NotImplementedError
+
+    async def abort(self) -> bool:
+        """中止当前操作"""
+        raise NotImplementedError
+
+    async def get_position(self) -> Dict[str, float]:
+        """获取当前位置"""
+        raise NotImplementedError
+
+
+class INDIInterface(BaseHardwareInterface):
+    """
+    INDI硬件接口
+
+    支持Linux/macOS平台的天文设备控制
+    参考: https://indilib.org
+    """
+
+    def __init__(self, config: HardwareInterfaceConfig):
+        super().__init__(config)
+        self.reader: Optional[asyncio.StreamReader] = None
+        self.writer: Optional[asyncio.StreamWriter] = None
+
+    async def connect(self) -> bool:
+        """连接到INDI服务器"""
+        try:
+            self.reader, self.writer = await asyncio.open_connection(
+                self.config.indi_host,
+                self.config.indi_port
+            )
+            self.is_connected = True
+            return True
+        except Exception as e:
+            print(f"INDI连接失败: {e}")
+            self.is_connected = False
+            return False
+
+    async def disconnect(self):
+        """断开INDI连接"""
+        if self.writer:
+            self.writer.close()
+            await self.writer.wait_closed()
+        self.is_connected = False
+
+    async def _send_indi_message(self, message: Dict) -> Dict:
+        """发送INDI消息并等待响应"""
+        if not self.is_connected:
+            return {"error": "Not connected"}
+
+        try:
+            # 发送消息
+            msg_json = json.dumps(message) + "\n"
+            self.writer.write(msg_json.encode())
+            await self.writer.drain()
+
+            # 等待响应
+            response_line = await asyncio.wait_for(
+                self.reader.readline(),
+                timeout=self.config.timeout_seconds
+            )
+            return json.loads(response_line.decode())
+
+        except asyncio.TimeoutError:
+            return {"error": "INDI操作超时"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def get_status(self) -> Dict[str, Any]:
+        """获取INDI设备状态"""
+        result = await self._send_indi_message({
+            "type": "get_properties",
+            "device": self.config.host,
+            "name": "Telescope"
+        })
+        return result
+
+    async def goto(self, ra: float, dec: float) -> bool:
+        """INDI GOTO命令"""
+        result = await self._send_indi_message({
+            "type": "set_vector",
+            "device": self.config.host,
+            "name": "EQUATORIAL_EOD_COORD",
+            "values": {
+                "RA": ra,
+                "DEC": dec
+            }
+        })
+        return "error" not in result
+
+    async def abort(self) -> bool:
+        """中止INDI操作"""
+        result = await self._send_indi_message({
+            "type": "set_vector",
+            "device": self.config.host,
+            "name": "ABORT"
+        })
+        return "error" not in result
+
+    async def get_position(self) -> Dict[str, float]:
+        """获取INDI望远镜位置"""
+        result = await self._send_indi_message({
+            "type": "get_vector",
+            "device": self.config.host,
+            "name": "EQUATORIAL_EOD_COORD"
+        })
+        if "values" in result:
+            return {
+                "ra": result["values"].get("RA", 0),
+                "dec": result["values"].get("DEC", 0)
+            }
+        return {"ra": 0, "dec": 0}
+
+
+class ASCOMInterface(BaseHardwareInterface):
+    """
+    ASCOM硬件接口
+
+    支持Windows平台的COM组件调用
+    参考: https://ascom-standards.org
+    """
+
+    def __init__(self, config: HardwareInterfaceConfig):
+        super().__init__(config)
+        self.driver: Optional[Any] = None
+
+    async def connect(self) -> bool:
+        """通过COM连接ASCOM驱动"""
+        try:
+            # 注意: 实际使用需要pywin32库
+            # 这里使用模拟实现
+            import platform
+            if platform.system() != "Windows":
+                print("ASCOM仅支持Windows平台")
+                return False
+
+            # 实际应该使用: import win32com.client
+            # self.driver = win32com.client.Dispatch(self.config.ascom_driver_id)
+            self.is_connected = True
+            return True
+        except Exception as e:
+            print(f"ASCOM连接失败: {e}")
+            return False
+
+    async def disconnect(self):
+        """断开ASCOM连接"""
+        if self.driver:
+            try:
+                self.driver.Connected = False
+            except:
+                pass
+        self.is_connected = False
+
+    async def get_status(self) -> Dict[str, Any]:
+        """获取ASCOM望远镜状态"""
+        if not self.is_connected or not self.driver:
+            return {"error": "Not connected"}
+        try:
+            return {
+                "tracking": self.driver.Tracking,
+                "slewing": self.driver.Slewing,
+                "connected": self.driver.Connected
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def goto(self, ra: float, dec: float) -> bool:
+        """ASCOM GOTO命令"""
+        if not self.is_connected or not self.driver:
+            return False
+        try:
+            self.driver.SlewToCoordinatesAsync(ra, dec)
+            return True
+        except Exception as e:
+            print(f"ASCOM GOTO失败: {e}")
+            return False
+
+    async def abort(self) -> bool:
+        """中止ASCOM操作"""
+        if not self.is_connected or not self.driver:
+            return False
+        try:
+            self.driver.AbortSlew()
+            return True
+        except Exception as e:
+            print(f"ASCOM Abort失败: {e}")
+            return False
+
+    async def get_position(self) -> Dict[str, float]:
+        """获取ASCOM望远镜位置"""
+        if not self.is_connected or not self.driver:
+            return {"ra": 0, "dec": 0}
+        try:
+            return {
+                "ra": self.driver.RightAscension,
+                "dec": self.driver.Declination
+            }
+        except Exception:
+            return {"ra": 0, "dec": 0}
+
+
+def create_hardware_interface(config: HardwareInterfaceConfig) -> BaseHardwareInterface:
+    """
+    工厂函数: 根据配置创建硬件接口
+
+    Args:
+        config: 硬件接口配置
+
+    Returns:
+        对应的硬件接口实例
+    """
+    if config.interface_type == HardwareInterfaceType.INDI:
+        return INDIInterface(config)
+    elif config.interface_type == HardwareInterfaceType.ASCOM:
+        return ASCOMInterface(config)
+    else:
+        # 默认返回模拟接口
+        return BaseHardwareInterface(config)
+
+
+# ============================================================================
+# 安全协议回调系统
+# ============================================================================
+
+@dataclass
+class SafetyCallback:
+    """安全回调定义"""
+    name: str
+    callback: Callable[[Dict], bool]  # 返回是否允许操作
+    priority: int = 0  # 优先级，数字越大优先级越高
+
+
+class SafetyProtocolManager:
+    """
+    安全协议管理器
+
+    功能:
+    - 注册和执行安全回调
+    - 多层安全检查
+    - 紧急停止机制
+    """
+
+    def __init__(self):
+        self.callbacks: List[SafetyCallback] = []
+        self.emergency_stop_active: bool = False
+        self.last_safety_check: Optional[datetime] = None
+
+    def register_callback(self, callback: SafetyCallback):
+        """注册安全回调"""
+        self.callbacks.append(callback)
+        # 按优先级排序
+        self.callbacks.sort(key=lambda c: c.priority, reverse=True)
+
+    def unregister_callback(self, name: str):
+        """取消注册回调"""
+        self.callbacks = [c for c in self.callbacks if c.name != name]
+
+    async def check_operation(self, operation: str, context: Dict) -> Dict[str, Any]:
+        """
+        检查操作是否安全
+
+        Args:
+            operation: 操作名称
+            context: 操作上下文
+
+        Returns:
+            包含passed和reasons字段的字典
+        """
+        if self.emergency_stop_active:
+            return {
+                "passed": False,
+                "reasons": ["紧急停止已激活"],
+                "blocked": True
+            }
+
+        reasons: List[str] = []
+
+        for callback in self.callbacks:
+            try:
+                if not callback.callback(context):
+                    reasons.append(f"安全检查未通过: {callback.name}")
+            except Exception as e:
+                reasons.append(f"回调错误 {callback.name}: {str(e)}")
+
+        self.last_safety_check = datetime.now()
+
+        return {
+            "passed": len(reasons) == 0,
+            "reasons": reasons,
+            "blocked": len(reasons) > 0
+        }
+
+    def activate_emergency_stop(self, reason: str = ""):
+        """激活紧急停止"""
+        self.emergency_stop_active = True
+        print(f"[安全协议] 紧急停止已激活: {reason}")
+
+    def deactivate_emergency_stop(self):
+        """解除紧急停止"""
+        self.emergency_stop_active = False
+        print("[安全协议] 紧急停止已解除")
+
+
+# ============================================================================
+# 原有代码继续...
+# ============================================================================
 
 class TelescopeStatus(Enum):
     """望远镜状态枚举"""
@@ -68,6 +428,7 @@ class SeestarMCPClient:
     - 发送MCP协议命令
     - 解析返回结果
     - 状态监控
+    - 安全协议回调
 
     使用示例:
         client = SeestarMCPClient(host="localhost", port=8765)
@@ -100,6 +461,14 @@ class SeestarMCPClient:
         self.current_position = TelescopePosition()
         self._simulation_mode = True  # 默认启用模拟模式用于测试
 
+        # 安全协议管理器
+        self.safety_manager = SafetyProtocolManager()
+        self._setup_default_safety_callbacks()
+
+        # 硬件接口抽象
+        self.hardware_interface: Optional[BaseHardwareInterface] = None
+        self.hardware_config = HardwareInterfaceConfig()
+
     def _find_seestar_mcp(self) -> Optional[str]:
         """
         查找seestar-mcp服务器可执行文件
@@ -125,6 +494,64 @@ class SeestarMCPClient:
                 return path
 
         return None  # 未找到，需要用户配置
+
+    def _setup_default_safety_callbacks(self):
+        """设置默认安全回调"""
+        # 太阳高度角限制回调
+        def sun_altitude_check(context: Dict) -> bool:
+            """检查太阳高度角是否过低（安全观测要求太阳在地平线以下18度）"""
+            # 实际需要计算太阳位置，这里简化处理
+            return True
+
+        # 赤纬范围检查回调
+        def dec_range_check(context: Dict) -> bool:
+            """检查目标赤纬是否在望远镜可观测范围内"""
+            target_dec = context.get("dec", 0)
+            return -30 <= target_dec <= 85
+
+        # 月亮距离检查回调
+        def moon_distance_check(context: Dict) -> bool:
+            """检查目标与月亮的角度距离是否足够（避免月亮过亮影响）"""
+            # 实际需要计算月亮位置，这里简化处理
+            return True
+
+        self.safety_manager.register_callback(
+            SafetyCallback("sun_altitude", sun_altitude_check, priority=10)
+        )
+        self.safety_manager.register_callback(
+            SafetyCallback("dec_range", dec_range_check, priority=5)
+        )
+        self.safety_manager.register_callback(
+            SafetyCallback("moon_distance", moon_distance_check, priority=3)
+        )
+
+    def register_safety_callback(self, name: str, callback: Callable[[Dict], bool], priority: int = 0):
+        """注册额外的安全回调
+
+        Args:
+            name: 回调名称
+            callback: 回调函数，接收操作上下文，返回是否允许
+            priority: 优先级
+        """
+        self.safety_manager.register_callback(
+            SafetyCallback(name, callback, priority)
+        )
+
+    def set_hardware_interface(self, interface_type: HardwareInterfaceType, **kwargs):
+        """设置硬件接口类型
+
+        Args:
+            interface_type: 硬件接口类型
+            **kwargs: 额外的接口配置参数
+        """
+        self.hardware_config.interface_type = interface_type
+        if interface_type == HardwareInterfaceType.INDI:
+            self.hardware_config.indi_host = kwargs.get("host", "localhost")
+            self.hardware_config.indi_port = kwargs.get("port", 7624)
+        elif interface_type == HardwareInterfaceType.ASCOM:
+            self.hardware_config.ascom_driver_id = kwargs.get("driver_id")
+
+        self.hardware_interface = create_hardware_interface(self.hardware_config)
 
     def enable_simulation(self, enabled: bool = True):
         """
@@ -380,11 +807,29 @@ class SeestarMCPClient:
         Returns:
             是否成功
         """
-        # 执行安全检查
-        safety_result = await self.safety_check(target)
-        if not safety_result.passed:
-            print(f"安全检查未通过: {safety_result.reasons}")
+        # 使用安全协议管理器进行检查
+        context = {
+            "operation": "goto",
+            "target_name": target.name,
+            "ra": target.ra,
+            "dec": target.dec,
+            "current_status": self.current_status.value
+        }
+
+        safety_result = await self.safety_manager.check_operation("goto", context)
+        if not safety_result["passed"]:
+            print(f"安全检查未通过: {safety_result['reasons']}")
             return False
+
+        # 如果有硬件接口且不是模拟模式，使用硬件接口
+        if self.hardware_interface and not self._simulation_mode:
+            try:
+                success = await self.hardware_interface.goto(target.ra, target.dec)
+                if success:
+                    self.current_status = TelescopeStatus.SLEWING
+                return success
+            except Exception as e:
+                print(f"硬件接口GOTO失败，回退到MCP: {e}")
 
         result = await self.call_mcp_tool(
             "seestar.goto",

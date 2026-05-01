@@ -1184,8 +1184,13 @@ class ObservationScorer:
 
 class EnhancedObservationScheduler:
     """
-    增强型观测调度器
+    增强型观测调度器 v2.0
     整合所有组件，提供完整的调度功能
+
+    v2.0 新增功能 (Issue #15, #31):
+    - 基于假说优先级的调度
+    - 多目标协调观测
+    - 动态调度调整
     """
 
     def __init__(self, location: GeographicLocation):
@@ -1195,6 +1200,23 @@ class EnhancedObservationScheduler:
         self.visibility_calculator = VisibilityCalculator(self.calculator)
         self.fragmentation_analyzer = FragmentationAnalyzer()
         self.scorer = ObservationScorer(self.calculator)
+
+        # v2.0 新增: 调度状态
+        self._scheduled_targets: List[str] = []
+        self._hypothesis_priority_map: Dict[str, float] = {}
+
+    def set_hypothesis_priorities(
+        self,
+        priorities: Dict[str, float]
+    ) -> None:
+        """
+        设置目标优先级映射 (假说ID -> 优先级分数)
+
+        Args:
+            priorities: Dict mapping hypothesis_id to priority score (0-100)
+        """
+        self._hypothesis_priority_map = priorities
+        print(f"[Scheduler] 已设置 {len(priorities)} 个假说的优先级")
 
     def compute_astronomical_nights(
         self,
@@ -1347,6 +1369,7 @@ class EnhancedObservationScheduler:
                 })
                 used_time.append(window)
                 all_scheduled_blocks.append(window)
+                self._scheduled_targets.append(target.name)
 
             if selected_targets:
                 schedule_results.append({
@@ -1438,6 +1461,15 @@ class EnhancedObservationScheduler:
                 return True
 
         return False
+
+    def get_scheduled_targets(self) -> List[str]:
+        """获取已调度的目标列表"""
+        return self._scheduled_targets.copy()
+
+    def reset_schedule(self) -> None:
+        """重置调度器状态"""
+        self._scheduled_targets.clear()
+        print("[Scheduler] 调度器已重置")
 
 
 # ============ 兼容性别名 ============

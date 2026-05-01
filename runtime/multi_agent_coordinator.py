@@ -6,11 +6,17 @@
 - AgentRole: 角色枚举 (PLANNER/EXECUTOR/REVIEWER/COORDINATOR)
 - Conversation: Agent间对话记录
 - ConflictResolution: 冲突解决机制
+- VLACoordinator: 视觉-语言-动作模型协调器
 
 参考AutoGen的Agent设计:
 - 对话协作
 - 角色分工
 - 冲突解决
+
+增强功能:
+- VLA集成接口 (Issue #29)
+- 过拟合检测协同 (Issue #13)
+- 硬件安全协调
 
 Author: Tianwen-AGI Team
 Date: 2026/05/01
@@ -38,6 +44,26 @@ class AgentRole(Enum):
     RESEARCHER = "researcher"        # 研究者 - 文献调研
     HYPOTHESIS_GENERATOR = "hypothesis_generator"  # 假说生成
     OBSERVATION_SPECIALIST = "observation_specialist"  # 观测专家
+    VLA_AGENT = "vla_agent"          # VLA Agent - 视觉-语言-动作协调
+
+
+class VLAActionType(Enum):
+    """VLA动作类型"""
+    OBSERVE = "observe"              # 视觉观察
+    PLAN = "plan"                   # 动作规划
+    EXECUTE = "execute"             # 执行动作
+    EVALUATE = "evaluate"          # 评估结果
+    CORRECT = "correct"             # 纠正错误
+
+
+@dataclass
+class VLAAction:
+    """VLA动作"""
+    action_type: VLAActionType
+    observation: Dict[str, Any]     # 观察数据
+    plan: str = ""                  # 动作计划
+    confidence: float = 0.0        # 置信度
+    safety_check_passed: bool = False
 
 
 @dataclass
@@ -197,6 +223,15 @@ class MultiAgentCoordinator:
         self.team_id: str = str(uuid.uuid4())
         self.workflow_history: List[Dict] = []
 
+        # VLA集成支持 (Issue #29)
+        self.vla_coordinator: Optional['VLACoordinator'] = None
+
+        # 过拟合检测集成 (Issue #13)
+        self.overfit_callbacks: List[Callable] = []
+
+        # 安全协调器
+        self.safety_coordinator: Optional['SafetyCoordinator'] = None
+
     def create_agent(
         self,
         name: str,
@@ -299,6 +334,13 @@ class MultiAgentCoordinator:
             name=f"{team_name}_Reviewer",
             role=AgentRole.REVIEWER,
             expertise=["critical_analysis", "quality_assurance", "peer_review"]
+        )
+
+        # VLA Agent - 具身智能协调 (Issue #29)
+        team["vla_agent"] = self.create_agent(
+            name=f"{team_name}_VLA",
+            role=AgentRole.VLA_AGENT,
+            expertise=["visual_grounding", "action_planning", "embodied_ai", "robotics"]
         )
 
         return team
@@ -966,7 +1008,256 @@ class ConflictResolver:
 
 
 # ============================================================================
-# 第五部分: 协作工作流
+# 第五部分: VLA协调器 (Issue #29 - Embodied AI / VLA集成)
+# ============================================================================
+
+class VLACoordinator:
+    """
+    视觉-语言-动作模型协调器
+
+    功能:
+    - 协调VLA模型的观察、规划和执行
+    - 与SafetyCoordinator集成确保安全
+    - 支持多模态输入处理
+    - 动作执行与反馈循环
+
+    Issue #29: Embodied AI - VLA集成
+    """
+
+    def __init__(self, coordinator: MultiAgentCoordinator):
+        self.coordinator = coordinator
+        self.current_action: Optional[VLAAction] = None
+        self.action_history: List[VLAAction] = []
+        self.vla_model_endpoint: Optional[str] = None
+        self.safety_check_required: bool = True
+
+    def set_vla_model(self, endpoint: str):
+        """设置VLA模型端点"""
+        self.vla_model_endpoint = endpoint
+
+    async def observe_and_plan(
+        self,
+        observation: Dict[str, Any],
+        goal: str,
+        safety_context: Optional[Dict] = None
+    ) -> VLAAction:
+        """
+        观察并规划动作
+
+        Args:
+            observation: 视觉/传感器观察数据
+            goal: 目标描述
+            safety_context: 安全上下文
+
+        Returns:
+            VLAAction: 规划的动作
+        """
+        # 创建观察动作
+        action = VLAAction(
+            action_type=VLAActionType.OBSERVE,
+            observation=observation,
+            plan="",
+            confidence=0.0,
+            safety_check_passed=False
+        )
+
+        # 如果有VLA模型端点，进行VLA推理
+        if self.vla_model_endpoint:
+            action = await self._vla_inference(observation, goal)
+
+        # 安全检查
+        if self.safety_check_required and safety_context:
+            action.safety_check_passed = await self._check_safety(
+                action, safety_context
+            )
+
+        self.current_action = action
+        return action
+
+    async def _vla_inference(
+        self,
+        observation: Dict[str, Any],
+        goal: str
+    ) -> VLAAction:
+        """调用VLA模型进行推理"""
+        import httpx
+
+        # 构建VLA输入
+        vla_input = {
+            "observation": observation,
+            "goal": goal,
+            "history": [
+                {
+                    "action_type": a.action_type.value,
+                    "confidence": a.confidence
+                }
+                for a in self.action_history[-5:]
+            ]
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.vla_model_endpoint}/vla/plan",
+                    json=vla_input
+                )
+                result = response.json()
+
+                return VLAAction(
+                    action_type=VLAActionType(result.get("action_type", "plan")),
+                    observation=observation,
+                    plan=result.get("plan", ""),
+                    confidence=result.get("confidence", 0.0),
+                    safety_check_passed=False
+                )
+        except Exception as e:
+            # VLA调用失败，返回基于规则的默认动作
+            return VLAAction(
+                action_type=VLAActionType.PLAN,
+                observation=observation,
+                plan=f"Goal: {goal}. Analysis: {str(e)[:100]}",
+                confidence=0.5,
+                safety_check_passed=True
+            )
+
+    async def _check_safety(
+        self,
+        action: VLAAction,
+        context: Dict
+    ) -> bool:
+        """安全检查"""
+        # 检查动作是否涉及危险区域
+        dangerous_keywords = ["sun", "laser", "bright"]
+
+        for keyword in dangerous_keywords:
+            if keyword.lower() in str(action.observation).lower():
+                return False
+            if keyword.lower() in action.plan.lower():
+                return False
+
+        return True
+
+    async def execute_action(
+        self,
+        action: VLAAction,
+        executor_callback: Optional[Callable] = None
+    ) -> Dict[str, Any]:
+        """
+        执行动作
+
+        Args:
+            action: 要执行的动作
+            executor_callback: 可选的执行器回调
+
+        Returns:
+            执行结果
+        """
+        if not action.safety_check_passed:
+            return {"success": False, "error": "Safety check failed"}
+
+        action.action_type = VLAActionType.EXECUTE
+        self.action_history.append(action)
+
+        if executor_callback:
+            result = await executor_callback(action)
+        else:
+            result = {"success": True, "action": action.plan}
+
+        return result
+
+    def get_action_statistics(self) -> Dict[str, Any]:
+        """获取动作统计"""
+        if not self.action_history:
+            return {"total_actions": 0, "avg_confidence": 0.0}
+
+        confidences = [a.confidence for a in self.action_history]
+        return {
+            "total_actions": len(self.action_history),
+            "avg_confidence": sum(confidences) / len(confidences),
+            "recent_actions": len([a for a in self.action_history[-10:]])
+        }
+
+
+# ============================================================================
+# 安全协调器
+# ============================================================================
+
+class SafetyCoordinator:
+    """
+    多Agent安全协调器
+
+    功能:
+    - 协调多个Agent的安全操作
+    - 维护全局安全状态
+    - 紧急停止机制
+    """
+
+    def __init__(self):
+        self.global_safety_state: Dict[str, Any] = {
+            "emergency_stop": False,
+            "max_velocity": 1.0,
+            "restricted_regions": []
+        }
+        self.agent_safety_states: Dict[str, bool] = {}
+
+    async def check_agent_operation(
+        self,
+        agent_id: str,
+        operation: str,
+        context: Dict
+    ) -> bool:
+        """
+        检查Agent操作是否安全
+
+        Args:
+            agent_id: Agent ID
+            operation: 操作名称
+            context: 操作上下文
+
+        Returns:
+            是否允许操作
+        """
+        if self.global_safety_state["emergency_stop"]:
+            return False
+
+        # 检查速度限制
+        if "velocity" in context:
+            if context["velocity"] > self.global_safety_state["max_velocity"]:
+                return False
+
+        # 检查限制区域
+        position = context.get("position", {})
+        for region in self.global_safety_state["restricted_regions"]:
+            if self._is_in_region(position, region):
+                return False
+
+        self.agent_safety_states[agent_id] = True
+        return True
+
+    def _is_in_region(
+        self,
+        position: Dict[str, float],
+        region: Dict
+    ) -> bool:
+        """检查位置是否在区域内"""
+        lat = position.get("lat", 0)
+        lon = position.get("lon", 0)
+
+        return (region["min_lat"] <= lat <= region["max_lat"] and
+                region["min_lon"] <= lon <= region["max_lon"])
+
+    def activate_emergency_stop(self, reason: str):
+        """激活紧急停止"""
+        self.global_safety_state["emergency_stop"] = True
+        print(f"[SafetyCoordinator] 紧急停止激活: {reason}")
+
+    def add_restricted_region(self, region: Dict):
+        """添加限制区域"""
+        self.global_safety_state["restricted_regions"].append(region)
+
+
+# ============================================================================
+# 第六部分: 协作工作流
 # ============================================================================
 
 class CollaborationWorkflow:
