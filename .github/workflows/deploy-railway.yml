@@ -1,0 +1,59 @@
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Railway CLI
+        run: |
+          npm install -g @railway/cli
+
+      - name: Generate Docker image tag
+        id: docker_tag
+        run: |
+          echo "tag=tianwen-agi:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+          docker build -t ${{ secrets.DOCKER_REGISTRY }}/tianwen-agi:${{ github.sha }} .
+          docker push ${{ secrets.DOCKER_REGISTRY }}/tianwen-agi:${{ github.sha }}
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway login --token $RAILWAY_TOKEN
+          railway up --service server
+          railway up --service vector-db
+
+      - name: Health check
+        run: |
+          sleep 30
+          curl -f https://${{ secrets.RAILWAY_APP_URL }}/api/health || exit 1
+
+      - name: Create deployment summary
+        if: always()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Ref: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: https://${{ secrets.RAILWAY_APP_URL }}" >> $GITHUB_STEP_SUMMARY
