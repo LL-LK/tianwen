@@ -9,6 +9,8 @@ Stage III: YOLOv11s检测 (nebula/globular_cluster/comet/galaxy)
 Author: 天问-AGI
 """
 
+from __future__ import annotations
+
 import asyncio
 import base64
 import io
