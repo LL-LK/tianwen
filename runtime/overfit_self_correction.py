@@ -30,7 +30,7 @@ class OverfitConfig:
     """过拟合检测配置"""
     diversity_threshold: float = 0.7      # 多样性阈值 (余弦相似度 > 此值 = 过拟合)
     memory_capacity: int = 1000           # 情景记忆容量
-    gradient projection_margin: float = 0.2  # 梯度投影边界
+    gradient_projection_margin: float = 0.2  # 梯度投影边界
     rl_discount_factor: float = 0.99       # RL折扣因子
     rl_lr: float = 0.01                   # RL学习率
     overfit_alert_threshold: float = 0.85  # 过拟合警报阈值
