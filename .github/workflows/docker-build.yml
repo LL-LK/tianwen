@@ -14,6 +14,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Extract metadata (tags, date, etc.)
         id: meta
@@ -21,7 +23,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=sha,prefix=
+            type=sha,prefix=,format=short
             type=ref,event=branch
             type=semver,pattern={{version}}
 
@@ -49,7 +51,11 @@ jobs:
         run: |
           SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-7)
           IMAGE_TAG="ghcr.io/${{ github.repository }}:${SHA_SHORT}"
-          sed -i "s|image: tianwen-agi:latest|image: ${IMAGE_TAG}|" docker-compose.yml
+          if grep -q "image: tianwen-agi:latest" docker-compose.yml; then
+            sed -i "s|image: tianwen-agi:latest|image: ${IMAGE_TAG}|" docker-compose.yml
+          elif grep -q "image: ghcr.io/" docker-compose.yml; then
+            sed -i "s|image: ghcr.io/.*|image: ${IMAGE_TAG}|" docker-compose.yml
+          fi
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           if git diff --quiet; then
@@ -57,5 +63,5 @@ jobs:
           else
             git add docker-compose.yml
             git commit -m "chore: update docker-compose image to ${IMAGE_TAG}"
-            git push
+            git push origin ${{ github.ref_name }}
           fi
