@@ -11,6 +11,10 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 
+from runtime_logger import get_logger
+
+logger = get_logger(__name__)
+
 # 导入记忆系统
 try:
     from memory_persistence import PersistentMemory, Experience
@@ -159,7 +163,7 @@ class RetryEngine:
                 if attempt < self.max_retries:
                     # 计算延迟（指数退避）
                     delay = min(self.base_delay * (2 ** attempt), self.max_delay)
-                    print(f"[Retry] 尝试 {attempt + 1} 失败，{delay:.1f}秒后重试: {error_msg[:100]}")
+                    logger.warning(f"重试 {attempt + 1} 失败，{delay:.1f}秒后重试: {error_msg[:100]}")
                     import asyncio
                     await asyncio.sleep(delay)
                 else:
@@ -484,9 +488,9 @@ class EvolutionSystem:
         if MEMORY_AVAILABLE:
             try:
                 self.memory = PersistentMemory(memory_dir)
-                print(f"[Evolution] Connected to PersistentMemory: {memory_dir}")
+                logger.info(f"已连接 PersistentMemory: {memory_dir}")
             except Exception as e:
-                print(f"[Evolution] Failed to init PersistentMemory: {e}")
+                logger.warning(f"初始化 PersistentMemory 失败: {e}")
                 self.memory = None
         else:
             self.memory = None
@@ -553,7 +557,7 @@ class EvolutionSystem:
                 complexity=result.task_model.complexity
             )
         except Exception as e:
-            print(f"[Evolution] Failed to record success: {e}")
+            logger.error(f"记录成功失败: {e}")
 
     def _record_to_memory_failure(self, result: ExecutionResult):
         """记录失败到持久化记忆"""
@@ -566,7 +570,7 @@ class EvolutionSystem:
                 skills=result.task_model.required_skills
             )
         except Exception as e:
-            print(f"[Evolution] Failed to record failure: {e}")
+            logger.error(f"记录失败失败: {e}")
 
     def _extract_success_pattern(self, result: ExecutionResult):
         """提取成功模式"""
@@ -583,7 +587,7 @@ class EvolutionSystem:
     def _analyze_failure(self, result: ExecutionResult):
         """分析失败原因"""
         for error in result.errors:
-            print(f"[Evolution] 失败分析: {error}")
+            logger.warning(f"失败分析: {error}")
             self._save_pattern({
                 "type": "failure",
                 "error_type": ErrorClassifier().classify(error).value,
@@ -597,7 +601,7 @@ class EvolutionSystem:
             try:
                 self.memory.add_pattern(pattern.get("type", "unknown"), pattern)
             except Exception as e:
-                print(f"[Evolution] Failed to save pattern: {e}")
+                logger.error(f"保存模式失败: {e}")
 
     def get_stats(self) -> Dict:
         """获取统计信息"""

@@ -151,20 +151,17 @@ class CodeSandbox:
 
     def _create_safe_python_wrapper(self, user_code: str, input_file_path: str) -> str:
         """创建安全的 Python 代码包装器"""
-        return f'''
-# -*- coding: utf-8 -*-
-# 安全沙箱环境
-
+        import json as _json_module
+        safe_path = _json_module.dumps(input_file_path)
+        return f'''# -*- coding: utf-8 -*-
 import sys
 import json
 import traceback
 
-# 重定向危险函数
 _original_open = open
 _open_allowed_dirs = set()
 
 def _safe_open(file, mode='r', *args, **kwargs):
-    # 只允许在当前目录或临时目录
     if hasattr(file, 'name'):
         file = file.name
     if isinstance(file, str):
@@ -172,22 +169,19 @@ def _safe_open(file, mode='r', *args, **kwargs):
             raise SecurityError("禁止绝对路径")
     return _original_open(file, mode, *args, **kwargs)
 
-# 限制 builtins
 _safe_builtins = {{}}
 _unsafe_builtins = ['__import__', 'eval', 'exec', 'compile', 'reload', 'open']
 for name in dir(__builtins__):
     if name not in _unsafe_builtins:
         _safe_builtins[name] = getattr(__builtins__, name)
 
-# 读取输入数据
 try:
-    with open('{input_file_path}', 'r', encoding='utf-8') as _f:
+    with open({safe_path}, 'r', encoding='utf-8') as _f:
         INPUT_DATA = json.load(_f)
 except Exception as _e:
     INPUT_DATA = {{}}
     print(json.dumps({{"error": f"输入数据读取失败: {{_e}}"}}, ensure_ascii=False), file=sys.stderr)
 
-# 用户代码执行
 try:
 {user_code}
 except SecurityError as _se:
@@ -197,7 +191,6 @@ except Exception as _e:
     print(json.dumps({{"error": f"执行错误: {{_e}}"}}, ensure_ascii=False))
     sys.exit(1)
 
-# 输出结果
 if 'result' in dir():
     print(json.dumps({{"result": result, "status": "ok"}}, ensure_ascii=False))
 else:
@@ -227,7 +220,7 @@ else:
                 code_file_fd, code_file_path = tempfile.mkstemp(suffix='.py', prefix='user_')
                 try:
                     with os.fdopen(code_file_fd, 'w', encoding='utf-8') as f:
-                        f.write(self._create_safe_python_wrapper(code, input_file_path.replace('\\', '\\\\')))
+                        f.write(self._create_safe_python_wrapper(code, input_file_path))
 
                     # 构建安全的执行命令
                     # 使用 -u 取消缓冲，使用 -B 避免写入 .pyc
@@ -322,21 +315,19 @@ else:
 
     def _create_safe_js_wrapper(self, user_code: str, input_file_path: str) -> str:
         """创建安全的 JavaScript 代码包装器"""
-        return f'''
-// 安全沙箱环境
-const fs = require('fs');
+        import json as _json_module
+        safe_path = _json_module.dumps(input_file_path)
+        return f'''const fs = require('fs');
 const vm = require('vm');
 
-// 读取输入数据
 let INPUT_DATA = {{}};
 try {{
-    const inputContent = fs.readFileSync('{input_file_path.replace('\\\\', '\\\\\\\\')}', 'utf-8');
+    const inputContent = fs.readFileSync({safe_path}, 'utf-8');
     INPUT_DATA = JSON.parse(inputContent);
 }} catch (e) {{
     console.error(JSON.stringify({{error: "输入数据读取失败: " + e.message}}));
 }}
 
-// 限制危险的全局对象
 const safeConsole = {{
     log: (...args) => console.log(...args),
     error: (...args) => console.error(...args),
@@ -344,19 +335,17 @@ const safeConsole = {{
     info: (...args) => console.info(...args),
 }};
 
-// 创建安全的上下文
 const context = {{
     INPUT_DATA,
     console: safeConsole,
-    require: undefined,  // 禁用 require
-    process: undefined,  // 禁用 process
-    Buffer: undefined,   // 禁用 Buffer
+    require: undefined,
+    process: undefined,
+    Buffer: undefined,
     setTimeout: undefined,
     setInterval: undefined,
     setImmediate: undefined,
 }};
 
-// 用户代码执行
 try {{
 {user_code}
 }} catch (e) {{
@@ -364,7 +353,6 @@ try {{
     process.exit(1);
 }}
 
-// 输出结果
 if (typeof result !== 'undefined') {{
     console.log(JSON.stringify({{result, status: "ok"}}, null, 2));
 }} else {{
@@ -413,7 +401,7 @@ if (typeof result !== 'undefined') {{
                 code_file_fd, code_file_path = tempfile.mkstemp(suffix='.js', prefix='user_')
                 try:
                     with os.fdopen(code_file_fd, 'w', encoding='utf-8') as f:
-                        f.write(self._create_safe_js_wrapper(code, input_file_path.replace('\\', '\\\\')))
+                        f.write(self._create_safe_js_wrapper(code, input_file_path))
 
                     # 使用 node 的安全选项
                     cmd = [
