@@ -2,7 +2,7 @@ name: Deploy to Railway
 
 on:
   push:
-    branches: [main]
+    branches: [main, trae]
     tags:
       - 'v*'
 
@@ -32,10 +32,11 @@ jobs:
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
         run: |
-          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          docker build -t ${{ secrets.DOCKER_REGISTRY }}/tianwen-agi:${{ github.sha }} .
-          docker push ${{ secrets.DOCKER_REGISTRY }}/tianwen-agi:${{ github.sha }}
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin "$DOCKER_REGISTRY"
+          docker build -t $DOCKER_REGISTRY/tianwen-agi:${{ github.sha }} .
+          docker push $DOCKER_REGISTRY/tianwen-agi:${{ github.sha }}
 
       - name: Deploy to Railway
         env:

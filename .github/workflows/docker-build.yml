@@ -2,7 +2,11 @@ name: Build and Push to Registry
 
 on:
   push:
-    branches: [main]
+    branches: [main, trae]
+
+permissions:
+  contents: write
+  packages: write
 
 jobs:
   build:
@@ -43,9 +47,15 @@ jobs:
 
       - name: Update Docker Compose image reference
         run: |
-          SHA=${{ github.sha }}
-          sed -i "s|image: tianwen-agi:latest|image: ghcr.io/${{ github.repository }}:${SHA}|" docker-compose.yml
+          SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-7)
+          IMAGE_TAG="ghcr.io/${{ github.repository }}:${SHA_SHORT}"
+          sed -i "s|image: tianwen-agi:latest|image: ${IMAGE_TAG}|" docker-compose.yml
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git commit -m "chore: update docker-compose to use ghcr.io image"
-          git push || echo "No changes to commit"
+          if git diff --quiet; then
+            echo "No changes to commit"
+          else
+            git add docker-compose.yml
+            git commit -m "chore: update docker-compose image to ${IMAGE_TAG}"
+            git push
+          fi

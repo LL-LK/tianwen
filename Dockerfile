@@ -5,18 +5,18 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
+    make \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements file first
 COPY runtime/requirements.txt /app/
 
-# Install Python dependencies in user space
 RUN python -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
-RUN pip install --no-cache-dir --upgrade pip && \
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r /app/requirements.txt
 
 # =============================================================================
@@ -24,34 +24,27 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # =============================================================================
 FROM python:3.11-slim
 
-# Create non-root user for security (CIS Docker Benchmark)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd -g 1000 pyapp && useradd -u 1000 -g pyapp -m pyapp
 
 WORKDIR /app
 
-# Copy Python virtual environment from builder
 COPY --from=builder /app/venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
-# Copy only necessary files (multi-stage optimization)
-COPY runtime/requirements.txt /app/
-COPY runtime/server.py /app/runtime/
-COPY runtime/main.py /app/runtime/
-COPY runtime/*.py /app/runtime/
+COPY runtime/ /app/runtime/
 COPY web /app/web
 
-# Install runtime dependencies only
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN mkdir -p /app/data && chown -R pyapp:pyapp /app
 
-# Switch to non-root user
 USER pyapp
 
-# Expose port
 EXPOSE 5000
 
-# Health check (CIS Docker Benchmark)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')" || exit 1
 
-# Run as non-root user
 CMD ["python", "runtime/server.py"]
