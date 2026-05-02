@@ -20,13 +20,14 @@ import psutil
 # 添加runtime路径
 sys.path.insert(0, str(Path(__file__).parent))
 
-from quart import Quart, jsonify, request, render_template
+from quart import Quart, jsonify, request, render_template, websocket
 from quart_cors import cors
 import uuid
 import json
 import time
+import random
 from threading import Lock
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
 
 # 日志配置
@@ -427,17 +428,331 @@ async def stats_json():
     stats = dashboard.get_summary_stats()
     return jsonify(stats)
 
+# ============ WebSocket 连接管理 ============
+
+class WebSocketManager:
+    """WebSocket 连接管理器"""
+
+    def __init__(self):
+        self._connections: dict = {}
+        self._lock = Lock()
+
+    def register(self, client_id: str, ws):
+        with self._lock:
+            self._connections[client_id] = ws
+        logger.info(f"WebSocket client connected: {client_id} (total: {len(self._connections)})")
+
+    def unregister(self, client_id: str):
+        with self._lock:
+            self._connections.pop(client_id, None)
+        logger.info(f"WebSocket client disconnected: {client_id} (total: {len(self._connections)})")
+
+    async def broadcast(self, message: dict):
+        data = json.dumps(message, ensure_ascii=False, default=str)
+        dead = []
+        for cid, ws in list(self._connections.items()):
+            try:
+                await ws.send(data)
+            except Exception:
+                dead.append(cid)
+        for cid in dead:
+            self.unregister(cid)
+
+    async def broadcast_status(self):
+        while True:
+            await asyncio.sleep(2)
+            status = _build_observatory_status()
+            await self.broadcast({"type": "status_update", "data": status})
+
+    @property
+    def connection_count(self):
+        return len(self._connections)
+
+
+ws_manager = WebSocketManager()
+
+# ============ 模拟数据生成 ============
+
+_observatory_state = {
+    "status": "observing",
+    "uptime_hours": 72.5,
+    "discoveries": 3,
+    "hypotheses": 15,
+    "current_target": {
+        "name": "M31 仙女座星系",
+        "ra": "00h42m44s",
+        "dec": "+41°16'09\"",
+        "type": "星系",
+        "magnitude": 3.44,
+        "exposure": "300s × 12帧",
+        "progress": 78,
+    },
+    "queue": [
+        {"id": "q1", "priority": "P0", "target": "SN2024X", "type": "超新星", "window": "22:30-22:45", "duration": "15min", "status": "进行中"},
+        {"id": "q2", "priority": "P1", "target": "HD209458", "type": "系外行星", "window": "23:00-01:00", "duration": "120min", "status": "等待中"},
+        {"id": "q3", "priority": "P2", "target": "NGC2244", "type": "星团", "window": "01:00-01:30", "duration": "30min", "status": "等待中"},
+        {"id": "q4", "priority": "P1", "target": "M42", "type": "星云", "window": "01:30-02:00", "duration": "30min", "status": "等待中"},
+        {"id": "q5", "priority": "P2", "target": "Jupiter", "type": "行星", "window": "02:00-02:30", "duration": "30min", "status": "等待中"},
+    ],
+    "devices": {
+        "telescope": {"name": "Seestar S50", "status": "tracking", "connected": True},
+        "camera": {"name": "IMX462", "status": "exposing", "gain": 120, "exposure_ms": 300000},
+        "filter_wheel": {"name": "ZWO EFW", "status": "idle", "current": "Luminance"},
+        "dome": {"name": "远程圆顶", "status": "open", "azimuth": 45},
+        "weather": {"cloud_cover": 12, "humidity": 45, "temperature": 18.5, "wind_speed": 3.2, "seeing": 1.8},
+    },
+    "research_loop": {
+        "cycle_id": "cycle_a3f8b2c1",
+        "cycle_number": 42,
+        "topic": "M31旋臂中未编目HII区搜索",
+        "steps": [
+            {"name": "文献检索", "status": "completed", "progress": 100},
+            {"name": "假说生成", "status": "completed", "progress": 100, "detail": "生成5个假说"},
+            {"name": "假说检验", "status": "running", "progress": 65},
+            {"name": "发现确认", "status": "pending", "progress": 0},
+            {"name": "观测调度", "status": "pending", "progress": 0},
+            {"name": "自我进化", "status": "pending", "progress": 0},
+        ],
+        "current_hypothesis": "M31旋臂中存在未编目HII区",
+        "confidence": 67.3,
+        "estimated_completion": "23:15",
+    },
+    "detections": {
+        "stage1": {"total": 234, "stars": 180, "galaxies": 45, "qsos": 9},
+        "stage2": {"classified_stars": 178, "classified_galaxies": 43, "classified_qsos": 8, "unknown": 5},
+        "stage3": {"nebula": 2, "comet": 1, "galaxy": 0, "globular_cluster": 0},
+    },
+    "latest_image": {
+        "id": "img_20260502_223015",
+        "target": "M31",
+        "exposure": 300,
+        "filter": "L",
+        "timestamp": "2026-05-02T22:30:15",
+        "size_kb": 8192,
+    },
+}
+
+_alerts = [
+    {"id": "a1", "level": "discovery", "time": "22:28", "message": "可能发现新瞬变源 SN2024X", "read": False},
+    {"id": "a2", "level": "warning", "time": "22:15", "message": "云量增加至40%，建议暂停观测", "read": False},
+    {"id": "a3", "level": "success", "time": "22:00", "message": "M31观测完成，12帧已入库", "read": True},
+    {"id": "a4", "level": "info", "time": "21:45", "message": "假说检验通过 (p<0.01)", "read": True},
+    {"id": "a5", "level": "info", "time": "21:30", "message": "Cycle #41 完成，发现1个候选天体", "read": True},
+]
+
+_log_entries = [
+    {"time": "22:28:15", "level": "DISCOVERY", "message": "新瞬变源检测: SN2024X候选"},
+    {"time": "22:28:10", "level": "ASTROPIPE", "message": "Stage III YOLO检测完成"},
+    {"time": "22:27:55", "level": "SCHEDULER", "message": "目标切换至 SN2024X"},
+    {"time": "22:27:30", "level": "CAMERA", "message": "曝光300s完成，图像已保存"},
+    {"time": "22:22:30", "level": "TELESCOPE", "message": "望远镜指向 M31 (00h42m44s +41°16')"},
+    {"time": "22:22:00", "level": "RESEARCH", "message": "假说检验进度: 65%"},
+    {"time": "22:20:00", "level": "WEATHER", "message": "天气更新: 云量12%, 视宁度1.8\""},
+    {"time": "22:15:00", "level": "SYSTEM", "message": "自动观测循环启动"},
+]
+
+_lightcurve_data = {
+    "time": [f"22:{i:02d}" for i in range(0, 31)],
+    "magnitude": [15.2 + 0.3 * (i % 5) + random.uniform(-0.05, 0.05) for i in range(31)],
+    "error": [0.02 + random.uniform(0, 0.01) for _ in range(31)],
+}
+
+_cycle_history = []
+for i in range(1, 43):
+    _cycle_history.append({
+        "id": f"cycle_{uuid.uuid4().hex[:8]}",
+        "number": i,
+        "topic": f"自动研究周期 #{i}",
+        "started_at": (datetime.now() - timedelta(hours=72 - i * 1.7)).isoformat(),
+        "completed_at": (datetime.now() - timedelta(hours=72 - i * 1.7 - 0.5)).isoformat() if i < 42 else None,
+        "status": "completed" if i < 42 else "running",
+        "discoveries": random.randint(0, 2),
+        "hypotheses": random.randint(1, 8),
+    })
+
+
+def _build_observatory_status():
+    state = _observatory_state.copy()
+    state["timestamp"] = datetime.now().isoformat()
+    state["ws_clients"] = ws_manager.connection_count
+    return state
+
+
+# ============ WebSocket 端点 ============
+
+@app.websocket('/ws/observatory')
+async def observatory_ws():
+    client_id = str(uuid.uuid4())
+    ws_manager.register(client_id, websocket._get_current_object())
+    try:
+        while True:
+            data = await websocket.receive()
+            if data == "ping":
+                await websocket.send("pong")
+            elif data == "get_status":
+                status = _build_observatory_status()
+                await websocket.send(json.dumps({"type": "status_update", "data": status}, ensure_ascii=False, default=str))
+    except Exception:
+        pass
+    finally:
+        ws_manager.unregister(client_id)
+
+
+# ============ 观测站 API ============
+
+@app.route("/api/observatory/status", methods=["GET"])
+async def observatory_status():
+    return jsonify(_build_observatory_status())
+
+
+@app.route("/api/observatory/queue", methods=["GET"])
+async def observatory_queue():
+    return jsonify({"queue": _observatory_state["queue"]})
+
+
+@app.route("/api/observatory/queue", methods=["POST"])
+async def observatory_queue_add():
+    data = await request.get_json()
+    if not data or not data.get("target"):
+        return jsonify({"error": "目标名称不能为空"}), 400
+    new_item = {
+        "id": f"q{uuid.uuid4().hex[:6]}",
+        "priority": data.get("priority", "P2"),
+        "target": data["target"],
+        "type": data.get("type", "未知"),
+        "window": data.get("window", "待定"),
+        "duration": data.get("duration", "30min"),
+        "status": "等待中",
+    }
+    _observatory_state["queue"].append(new_item)
+    await ws_manager.broadcast({"type": "queue_update", "data": _observatory_state["queue"]})
+    return jsonify({"success": True, "item": new_item})
+
+
+@app.route("/api/observatory/queue/<item_id>", methods=["DELETE"])
+async def observatory_queue_remove(item_id):
+    _observatory_state["queue"] = [q for q in _observatory_state["queue"] if q["id"] != item_id]
+    await ws_manager.broadcast({"type": "queue_update", "data": _observatory_state["queue"]})
+    return jsonify({"success": True})
+
+
+@app.route("/api/observatory/control", methods=["POST"])
+async def observatory_control():
+    data = await request.get_json()
+    action = data.get("action", "")
+    valid_actions = ["start", "stop", "pause", "resume"]
+    if action not in valid_actions:
+        return jsonify({"error": f"无效操作: {action}，支持: {valid_actions}"}), 400
+
+    status_map = {"start": "observing", "stop": "idle", "pause": "paused", "resume": "observing"}
+    _observatory_state["status"] = status_map[action]
+    _log_entries.insert(0, {"time": datetime.now().strftime("%H:%M:%S"), "level": "SYSTEM", "message": f"观测站状态变更: {action}"})
+    await ws_manager.broadcast({"type": "status_update", "data": _build_observatory_status()})
+    return jsonify({"success": True, "status": _observatory_state["status"]})
+
+
+# ============ 设备 API ============
+
+@app.route("/api/devices/status", methods=["GET"])
+async def devices_status():
+    return jsonify(_observatory_state["devices"])
+
+
+# ============ 数据 API ============
+
+@app.route("/api/data/detections/latest", methods=["GET"])
+async def data_detections_latest():
+    return jsonify(_observatory_state["detections"])
+
+
+@app.route("/api/data/images/latest", methods=["GET"])
+async def data_images_latest():
+    return jsonify(_observatory_state["latest_image"])
+
+
+@app.route("/api/data/lightcurve", methods=["GET"])
+async def data_lightcurve():
+    target = request.args.get("target", "M31")
+    return jsonify({"target": target, "data": _lightcurve_data})
+
+
+# ============ 研究闭环 API ============
+
+@app.route("/api/research/status", methods=["GET"])
+async def research_status():
+    return jsonify(_observatory_state["research_loop"])
+
+
+@app.route("/api/research/cycles", methods=["GET"])
+async def research_cycles():
+    page = int(request.args.get("page", 1))
+    per_page = int(request.args.get("per_page", 20))
+    start = (page - 1) * per_page
+    end = start + per_page
+    return jsonify({
+        "cycles": _cycle_history[::-1][start:end],
+        "total": len(_cycle_history),
+        "page": page,
+        "per_page": per_page,
+    })
+
+
+# ============ 告警 API ============
+
+@app.route("/api/alerts", methods=["GET"])
+async def alerts_list():
+    unread_only = request.args.get("unread", "false").lower() == "true"
+    result = [a for a in _alerts if not unread_only or not a["read"]]
+    return jsonify({"alerts": result, "unread_count": sum(1 for a in _alerts if not a["read"])})
+
+
+@app.route("/api/alerts/<alert_id>/read", methods=["PUT"])
+async def alerts_mark_read(alert_id):
+    for a in _alerts:
+        if a["id"] == alert_id:
+            a["read"] = True
+            return jsonify({"success": True})
+    return jsonify({"error": "告警不存在"}), 404
+
+
+# ============ 日志 API ============
+
+@app.route("/api/logs", methods=["GET"])
+async def logs_list():
+    level = request.args.get("level", "")
+    limit = int(request.args.get("limit", 50))
+    result = _log_entries
+    if level:
+        result = [e for e in result if e["level"].upper() == level.upper()]
+    return jsonify({"logs": result[:limit]})
+
+
+# ============ 统计 API ============
+
+@app.route("/api/stats/summary", methods=["GET"])
+async def stats_summary():
+    return jsonify({
+        "total_cycles": len(_cycle_history),
+        "completed_cycles": sum(1 for c in _cycle_history if c["status"] == "completed"),
+        "total_discoveries": sum(c["discoveries"] for c in _cycle_history),
+        "total_hypotheses": sum(c["hypotheses"] for c in _cycle_history),
+        "uptime_hours": _observatory_state["uptime_hours"],
+        "active_ws_clients": ws_manager.connection_count,
+    })
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
 
     logger.info("=" * 50)
-    logger.info("Hermes-AGI Web API Server")
+    logger.info("天问-AGI 全自动天文观测站 API Server")
     logger.info("=" * 50)
     logger.info(f"Debug mode: {DEBUG}")
     logger.info(f"API Key configured: {'Yes' if API_KEY else 'No (auth disabled)'}")
     logger.info(f"CORS Origins: {CORS_ORIGINS or 'All (debug mode)'}")
     logger.info(f"Local:    http://localhost:{port}")
     logger.info(f"API Docs: http://localhost:{port}/api/health")
+    logger.info(f"WebSocket: ws://localhost:{port}/ws/observatory")
     logger.info("=" * 50)
 
     app.run(host="0.0.0.0", port=port, debug=DEBUG)
