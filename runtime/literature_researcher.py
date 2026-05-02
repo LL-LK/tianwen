@@ -26,6 +26,10 @@ from urllib.parse import urlencode
 import urllib.request
 import urllib.error
 
+from runtime_logger import get_logger
+
+logger = get_logger(__name__)
+
 # PDF解析 - pdfplumber用于表格和文本提取
 try:
     import pdfplumber
@@ -146,10 +150,10 @@ class ArxivAPI:
             return self._parse_xml(xml_content)
 
         except urllib.error.HTTPError as e:
-            print(f"[ArXiv] HTTP Error: {e.code} - {e.reason}")
+            logger.warning(f"ArXiv HTTP Error: {e.code} - {e.reason}")
             return []
         except Exception as e:
-            print(f"[ArXiv] Search error: {e}")
+            logger.error(f"ArXiv Search error: {e}")
             return []
 
     async def search_by_author(self, author: str, max_results: int = 30) -> List[Paper]:
@@ -178,7 +182,7 @@ class ArxivAPI:
             return papers[0] if papers else None
 
         except Exception as e:
-            print(f"[ArXiv] Get paper error: {e}")
+            logger.error(f"ArXiv Get paper error: {e}")
             return None
 
     async def get_related_papers(self, arxiv_id: str, max_results: int = 5) -> List[Paper]:
@@ -260,7 +264,7 @@ class ArxivAPI:
                 ))
 
             except Exception as e:
-                print(f"[ArXiv] Parse entry error: {e}")
+                logger.warning(f"ArXiv Parse entry error: {e}")
                 continue
 
         return papers

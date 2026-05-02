@@ -34,6 +34,10 @@ from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 
+from runtime_logger import get_logger
+
+logger = get_logger(__name__)
+
 # v3.6.0 新增模块导入
 try:
     from astro_pipeline import AstroPipeline, process_astro_image
@@ -125,7 +129,7 @@ class AfterTaskHook:
         success = task_result.get("success", False)
         output = task_result.get("output", "")
 
-        print(f"[Hook] 任务 {task_id} 完成: success={success}")
+        logger.info(f"任务 {task_id} 完成: success={success}")
 
         # 记录任务历史
         self.task_history.append({
@@ -149,7 +153,7 @@ class AfterTaskHook:
         )
 
         if needs_review:
-            print(f"[Hook] 触发自我复盘 for {task_result.get('task_id')}")
+            logger.info(f"触发自我复盘 for {task_result.get('task_id')}")
             # 提取教训
             lesson = self._extract_lesson(task_result)
             if lesson:
@@ -177,17 +181,17 @@ class AfterTaskHook:
 
     async def _update_knowledge_base(self, lesson: str) -> bool:
         """更新知识库"""
-        print(f"[Hook] 更新知识库: {lesson}")
+        logger.info(f"更新知识库: {lesson}")
         # 这里可以集成 memory_persistence.py 来持久化
         return True
 
     async def on_hypothesis_generated(self, hypothesis: Any) -> bool:
         """假说生成时自动触发"""
-        print(f"[Hook] 假说生成: {hypothesis.id if hasattr(hypothesis, 'id') else 'unknown'}")
+        logger.info(f"假说生成: {hypothesis.id if hasattr(hypothesis, 'id') else 'unknown'}")
 
         # 立即触发验证（如果配置了自动验证）
         if self.research_loop and self.research_loop.auto_verify:
-            print("[Hook] 触发自动验证")
+            logger.info("触发自动验证")
             return True
 
         return False
@@ -195,11 +199,11 @@ class AfterTaskHook:
     async def on_verification_complete(self, test_report: Any) -> bool:
         """验证完成时自动触发"""
         result = test_report.overall_result.value if hasattr(test_report, 'overall_result') else "unknown"
-        print(f"[Hook] 验证完成: {result}")
+        logger.info(f"验证完成: {result}")
 
         # 如果是重要发现，触发学习
         if result == "confirmed" and hasattr(test_report, 'evidence_for'):
-            print("[Hook] 发现被证实，触发知识更新")
+            logger.info("发现被证实，触发知识更新")
             await self._update_from_discovery(test_report)
             return True
 
@@ -207,7 +211,7 @@ class AfterTaskHook:
 
     async def _update_from_discovery(self, test_report: Any) -> bool:
         """从发现中学习"""
-        print("[Hook] 从验证结果中提取模式")
+        logger.info("从验证结果中提取模式")
         return True
 
     def get_statistics(self) -> Dict:
@@ -312,9 +316,9 @@ class ResearchLoop:
         cycle_id = f"cycle_{uuid.uuid4().hex[:8]}"
         started_at = datetime.now().isoformat()
 
-        print(f"\n{'='*60}")
-        print(f"[ResearchLoop] 开始闭环: {topic}")
-        print(f"{'='*60}\n")
+        logger.info(f"{'='*60}")
+        logger.info(f"开始闭环: {topic}")
+        logger.info(f"{'='*60}")
 
         result = CycleResult(
             topic=topic,
@@ -324,38 +328,38 @@ class ResearchLoop:
 
         try:
             # ========== 步骤1: 文献调研 ==========
-            print(f"[Step 1/5] 文献调研: {topic}")
+            logger.info(f"[Step 1/5] 文献调研: {topic}")
             if self.literature_researcher:
                 result.literature_review = await self.literature_researcher.research(
                     topic, max_papers=20
                 )
-                print(f"  → 获取了 {len(result.literature_review.papers) if result.literature_review else 0} 篇论文")
+                logger.info(f"  → 获取了 {len(result.literature_review.papers) if result.literature_review else 0} 篇论文")
 
             # ========== 步骤2: 假说生成 ==========
-            print(f"\n[Step 2/5] 假说生成")
+            logger.info(f"\n[Step 2/5] 假说生成")
             if self.hypothesis_generator and result.literature_review:
                 result.hypotheses = await self.hypothesis_generator.generate_from_research(
                     result.literature_review
                 )
-                print(f"  → 生成了 {len(result.hypotheses)} 个假说")
+                logger.info(f"  → 生成了 {len(result.hypotheses)} 个假说")
 
                 # 触发钩子
                 for hypo in result.hypotheses:
                     await self.hook.on_hypothesis_generated(hypo)
 
             # ========== 步骤3: 假说验证 ==========
-            print(f"\n[Step 3/5] 假说验证")
+            logger.info(f"\n[Step 3/5] 假说验证")
             for hypo in result.hypotheses[:3]:  # 限制验证数量
                 if self.hypothesis_tester:
                     report = await self.hypothesis_tester.test_hypothesis(hypo)
                     result.test_reports.append(report)
-                    print(f"  → {hypo.id}: {report.overall_result.value}")
+                    logger.info(f"  → {hypo.id}: {report.overall_result.value}")
 
                     # 触发钩子
                     await self.hook.on_verification_complete(report)
 
             # ========== 步骤4: 追踪记录 ==========
-            print(f"\n[Step 4/5] 追踪记录")
+            logger.info(f"\n[Step 4/5] 追踪记录")
             if self.discovery_tracker:
                 for hypo in result.hypotheses:
                     await self.discovery_tracker.track_hypothesis(hypo)
@@ -373,11 +377,11 @@ class ResearchLoop:
                             )
 
                 stats = await self.discovery_tracker.get_statistics()
-                print(f"  → 追踪统计: {stats}")
+                logger.info(f"  → 追踪统计: {stats}")
 
             # ========== [v3.6.0 新增] 步骤4.5: 天体检测 ==========
             if self.astro_pipeline and targets:
-                print(f"\n[Step 4.5/7] 天体检测 (AstroPipeline)")
+                logger.info(f"\n[Step 4.5/7] 天体检测 (AstroPipeline)")
                 detection_results = []
                 for target in targets[:3]:  # 限制检测数量
                     try:
@@ -386,17 +390,17 @@ class ResearchLoop:
                         if isinstance(target, str) and target.endswith(('.fits', '.jpg', '.png')):
                             detection = await self.astro_pipeline.analyze(target)
                             detection_results.append(detection)
-                            print(f"  → {target}: 检测到 {len(detection.get('sources', []))} 个点源")
+                            logger.info(f"  → {target}: 检测到 {len(detection.get('sources', []))} 个点源")
                         else:
-                            print(f"  → {target}: 跳过（非图像文件）")
+                            logger.info(f"  → {target}: 跳过（非图像文件）")
                     except Exception as e:
-                        print(f"  → {target}: 检测失败 - {e}")
+                        logger.warning(f"  → {target}: 检测失败 - {e}")
                 result.detection_results = detection_results
                 self.cycle_statistics["total_images_processed"] += len(detection_results)
 
             # ========== [v3.6.0 新增] 步骤5: 观测调度 ==========
             if self.scheduler and targets:
-                print(f"\n[Step 5/7] 观测调度 (EnhancedObservationScheduler)")
+                logger.info(f"\n[Step 5/7] 观测调度 (EnhancedObservationScheduler)")
                 scheduled_observations = []
                 for target in targets[:3]:
                     try:
@@ -423,15 +427,15 @@ class ResearchLoop:
                                 "visibility_windows": len(windows),
                                 "score": score
                             })
-                            print(f"  → {target}: 评分 {score:.1f}, 可见窗口 {len(windows)}")
+                            logger.info(f"  → {target}: 评分 {score:.1f}, 可见窗口 {len(windows)}")
                     except Exception as e:
-                        print(f"  → {target}: 调度失败 - {e}")
+                        logger.warning(f"  → {target}: 调度失败 - {e}")
                 result.scheduled_observations = scheduled_observations
                 self.cycle_statistics["total_observations_scheduled"] += len(scheduled_observations)
 
             # ========== [v3.6.0 新增] 步骤6: 系外行星凌星检测 ==========
             if self.kepler_client and targets:
-                print(f"\n[Step 6/7] 系外行星凌星检测 (KeplerExoplanetClient)")
+                logger.info(f"\n[Step 6/7] 系外行星凌星检测 (KeplerExoplanetClient)")
                 transit_signals = []
                 for target in targets[:3]:
                     if isinstance(target, str) and ('kepler' in target.lower() or ' exoplanet' in target.lower()):
@@ -439,15 +443,15 @@ class ResearchLoop:
                             time, flux = await self.kepler_client.get_lightcurve(target, "Kepler")
                             signals = await self.kepler_client.detect_transit_signal(time, flux)
                             transit_signals.extend(signals)
-                            print(f"  → {target}: 检测到 {len(signals)} 个凌星信号")
+                            logger.info(f"  → {target}: 检测到 {len(signals)} 个凌星信号")
                         except Exception as e:
-                            print(f"  → {target}: 凌星检测失败 - {e}")
+                            logger.warning(f"  → {target}: 凌星检测失败 - {e}")
                 result.transit_signals = transit_signals
                 self.cycle_statistics["total_transit_signals_detected"] += len(transit_signals)
 
             # ========== [v3.6.0 新增] 步骤6.5: 数据挖掘与假说生成 ==========
             if self.data_miner and targets:
-                print(f"\n[Step 6.5/8] 数据挖掘与假说生成 (DataMiner)")
+                logger.info(f"\n[Step 6.5/8] 数据挖掘与假说生成 (DataMiner)")
                 # 为每个目标生成模拟光变曲线数据进行挖掘
                 mining_data = []
                 for target in targets[:3]:
@@ -468,33 +472,33 @@ class ResearchLoop:
                     try:
                         mining_report = await self.data_miner.mine(mining_data, source_type="light_curve")
                         result.mining_report = mining_report
-                        print(f"  → 提取特征: {len(mining_report.features)} 个")
-                        print(f"  → 发现模式: {len(mining_report.patterns)} 个")
-                        print(f"  → 生成假说候选: {len(mining_report.hypotheses_generated)} 个")
+                        logger.info(f"  → 提取特征: {len(mining_report.features)} 个")
+                        logger.info(f"  → 发现模式: {len(mining_report.patterns)} 个")
+                        logger.info(f"  → 生成假说候选: {len(mining_report.hypotheses_generated)} 个")
                     except Exception as e:
-                        print(f"  → 数据挖掘失败 - {e}")
+                        logger.warning(f"  → 数据挖掘失败 - {e}")
 
             # ========== 步骤7: 原指导观测 (保留兼容性) ==========
-            print(f"\n[Step 7/7] 指导观测")
+            logger.info(f"\n[Step 7/7] 指导观测")
             if self.linker and targets:
                 linked_plan = await self.linker.link(topic, targets)
                 result.discoveries = linked_plan.gap_filled_targets
-                print(f"  → 调整了 {len(linked_plan.linked_observations)} 个观测目标优先级")
+                logger.info(f"  → 调整了 {len(linked_plan.linked_observations)} 个观测目标优先级")
 
             result.success = True
             result.completed_at = datetime.now().isoformat()
 
         except Exception as e:
-            print(f"\n[Error] 闭环执行出错: {e}")
+            logger.error(f"闭环执行出错: {e}")
             result.success = False
             result.completed_at = datetime.now().isoformat()
 
         # 记录到历史
         self.cycle_history.append(result)
 
-        print(f"\n{'='*60}")
-        print(f"[ResearchLoop] 闭环完成: {'成功' if result.success else '失败'}")
-        print(f"{'='*60}\n")
+        logger.info(f"{'='*60}")
+        logger.info(f"闭环完成: {'成功' if result.success else '失败'}")
+        logger.info(f"{'='*60}")
 
         return result
 
@@ -551,7 +555,7 @@ class ResearchLoop:
             self._adaptive_state["correction_history"].append(correction)
             self._adaptive_state["total_iterations"] += 1
 
-            print(f"[Self-Correct] hypothesis={correction['hypothesis_id']}, "
+            logger.info(f"Self-Correct hypothesis={correction['hypothesis_id']}, "
                   f"type={correction['correction_type']}, "
                   f"new_confidence={correction['adjusted_confidence']:.2f}")
 

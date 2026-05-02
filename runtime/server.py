@@ -24,8 +24,10 @@ from quart import Quart, jsonify, request, render_template
 from quart_cors import cors
 import uuid
 import json
+import time
 from threading import Lock
 from datetime import datetime
+from collections import defaultdict
 
 # 日志配置
 logging.basicConfig(
@@ -64,6 +66,35 @@ import httpx
 # 全局Agent实例
 agent = HermesAGI()
 dashboard = CycleStatisticsDashboard()
+
+# 速率限制配置
+RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", 60))
+RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", 30))
+_rate_limit_store: dict = defaultdict(list)
+
+
+def _check_rate_limit(client_ip: str) -> bool:
+    now = time.time()
+    window_start = now - RATE_LIMIT_WINDOW
+    _rate_limit_store[client_ip] = [
+        t for t in _rate_limit_store[client_ip] if t > window_start
+    ]
+    if len(_rate_limit_store[client_ip]) >= RATE_LIMIT_MAX_REQUESTS:
+        return False
+    _rate_limit_store[client_ip].append(now)
+    return True
+
+
+@app.after_request
+async def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if not DEBUG:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 
 def require_api_key(f):
@@ -189,6 +220,10 @@ async def chat():
 
     if not message:
         return jsonify({"error": "消息不能为空"}), 400
+
+    client_ip = request.remote_addr or "unknown"
+    if not _check_rate_limit(client_ip):
+        return jsonify({"error": "请求过于频繁，请稍后再试", "code": "RATE_LIMITED"}), 429
 
     # 创建新会话或使用现有会话
     if session_id and session_id in sessions:
