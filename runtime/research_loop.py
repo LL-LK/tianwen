@@ -238,6 +238,11 @@ class ResearchLoop:
         self.observation_location = observation_location  # 观测站位置
         self.observation_executor = ObservationExecutor() if OBSERVATION_EXECUTOR_AVAILABLE else None
 
+        # Issue #75: 打通数据流 - 新增子模块实例保存
+        self.hypothesis_generator_instance = hypothesis_generator if HYPOTHESIS_GENERATOR_AVAILABLE else None
+        self.discovery_tracker_instance = discovery_tracker if DISCOVERY_TRACKER_AVAILABLE else None
+        self.observatory_linker_instance = linker if OBSERVATORY_LINKER_AVAILABLE else None
+
         # 闭环统计
         self.cycle_statistics = {
             "total_images_processed": 0,

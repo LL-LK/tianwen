@@ -75,6 +75,157 @@ RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", 30))
 _rate_limit_store: dict = defaultdict(list)
 
 
+# ============ Redis Session 存储 (安全修复) ============
+# 问题: database.type: in-memory，重启数据丢失，多实例不同步
+# 修复: 添加Redis Session持久化支持，通过环境变量REDIS_URL配置
+
+class RedisSessionStore:
+    """Redis会话存储，支持持久化和多实例共享"""
+
+    def __init__(self, redis_url: str, ttl: int = 3600):
+        self.redis_url = redis_url
+        self.ttl = ttl
+        self._redis = None
+        self._connected = False
+        self._connect()
+
+    def _connect(self):
+        """建立Redis连接"""
+        try:
+            import redis
+            self._redis = redis.from_url(self.redis_url, decode_responses=True)
+            self._redis.ping()
+            self._connected = True
+            logger.info(f"[Session] Redis connected: {self.redis_url}")
+        except ImportError:
+            self._connected = False
+            self._redis = None
+            logger.warning("[Session] redis package not installed, using in-memory store")
+        except Exception as e:
+            self._connected = False
+            self._redis = None
+            logger.warning(f"[Session] Redis connection failed, using in-memory store: {e}")
+
+    @property
+    def is_available(self) -> bool:
+        """检查Redis是否可用"""
+        if not self._redis:
+            return False
+        try:
+            self._redis.ping()
+            return True
+        except Exception:
+            self._connected = False
+            return False
+
+    async def get(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """获取会话"""
+        if not self.is_available:
+            return None
+        try:
+            data = self._redis.get(f"session:{session_id}")
+            if data:
+                return json.loads(data)
+            return None
+        except Exception as e:
+            logger.error(f"[Session] Redis get failed: {e}")
+            return None
+
+    async def set(self, session_id: str, data: Dict[str, Any], ttl: Optional[int] = None) -> bool:
+        """保存会话"""
+        if not self.is_available:
+            return False
+        try:
+            expire = ttl if ttl is not None else self.ttl
+            self._redis.setex(f"session:{session_id}", expire, json.dumps(data, ensure_ascii=False, default=str))
+            return True
+        except Exception as e:
+            logger.error(f"[Session] Redis set failed: {e}")
+            return False
+
+    async def delete(self, session_id: str) -> bool:
+        """删除会话"""
+        if not self.is_available:
+            return False
+        try:
+            self._redis.delete(f"session:{session_id}")
+            return True
+        except Exception as e:
+            logger.error(f"[Session] Redis delete failed: {e}")
+            return False
+
+    async def exists(self, session_id: str) -> bool:
+        """检查会话是否存在"""
+        if not self.is_available:
+            return False
+        try:
+            return bool(self._redis.exists(f"session:{session_id}"))
+        except Exception:
+            return False
+
+    async def all(self) -> Dict[str, Dict[str, Any]]:
+        """获取所有会话"""
+        if not self.is_available:
+            return {}
+        try:
+            keys = self._redis.keys("session:*")
+            result = {}
+            for key in keys:
+                data = self._redis.get(key)
+                if data:
+                    session_id = key.replace("session:", "")
+                    result[session_id] = json.loads(data)
+            return result
+        except Exception as e:
+            logger.error(f"[Session] Redis all failed: {e}")
+            return {}
+
+
+class InMemorySessionStore:
+    """内存会话存储（回退方案）"""
+
+    def __init__(self):
+        self._store: Dict[str, Dict[str, Any]] = {}
+
+    async def get(self, session_id: str) -> Optional[Dict[str, Any]]:
+        return self._store.get(session_id)
+
+    async def set(self, session_id: str, data: Dict[str, Any], ttl: Optional[int] = None) -> bool:
+        self._store[session_id] = data
+        return True
+
+    async def delete(self, session_id: str) -> bool:
+        self._store.pop(session_id, None)
+        return True
+
+    async def exists(self, session_id: str) -> bool:
+        return session_id in self._store
+
+    async def all(self) -> Dict[str, Dict[str, Any]]:
+        return self._store.copy()
+
+
+# 初始化Session存储
+def _init_session_store():
+    """根据环境变量初始化会话存储"""
+    redis_url = os.environ.get("REDIS_URL", "")
+    if redis_url:
+        store = RedisSessionStore(redis_url)
+        if store.is_available:
+            logger.info("[Session] Using Redis session store")
+            return store
+        else:
+            logger.warning("[Session] Redis unavailable, falling back to in-memory store")
+            return InMemorySessionStore()
+    else:
+        logger.info("[Session] REDIS_URL not set, using in-memory store")
+        return InMemorySessionStore()
+
+
+_session_store = _init_session_store()
+_session_store_type = "redis" if isinstance(_session_store, RedisSessionStore) and _session_store.is_available else "in-memory"
+
+
 def _check_rate_limit(client_ip: str) -> bool:
     now = time.time()
     window_start = now - RATE_LIMIT_WINDOW
@@ -400,96 +551,79 @@ async def evolution_stats():
 
 @app.route("/api/health", methods=["GET"])
 async def health():
-    """健康检查 - 包含运行时依赖检查"""
-    health_data = {
-        "status": "ok",
-        "version": "2.2.0",
-        "build_id": "trae-cors-fix-20260503",
-        "timestamp": datetime.now().isoformat(),
-        "system": {
-            "memory": {
-                "total_mb": psutil.virtual_memory().total / (1024 * 1024),
-                "available_mb": psutil.virtual_memory().available / (1024 * 1024),
-                "percent": psutil.virtual_memory().percent,
+    """健康检查"""
+    # 生产环境隐藏敏感系统信息
+    if DEBUG:
+        # DEBUG模式：返回完整信息
+        health_data = {
+            "status": "ok",
+            "version": "2.2.0",
+            "build_id": "trae-cors-fix-20260503",
+            "timestamp": datetime.now().isoformat(),
+            "system": {
+                "memory": {
+                    "total_mb": psutil.virtual_memory().total / (1024 * 1024),
+                    "available_mb": psutil.virtual_memory().available / (1024 * 1024),
+                    "percent": psutil.virtual_memory().percent,
+                },
+                "cpu": {
+                    "count": psutil.cpu_count(),
+                    "percent": psutil.cpu_percent(interval=0.1),
+                },
+                "process": {
+                    "pid": os.getpid(),
+                    "threads": psutil.Process().num_threads(),
+                    "memory_mb": psutil.Process().memory_info().rss / (1024 * 1024),
+                }
             },
-            "cpu": {
-                "count": psutil.cpu_count(),
-                "percent": psutil.cpu_percent(interval=0.1),
+            "dependencies": {
+                "agent_initialized": agent is not None,
+                "cognitive_engine": agent.cognitive is not None if agent else False,
+                "planning_engine": agent.planning is not None if agent else False,
+                "execution_engine": agent.execution is not None if agent else False,
+                "evolution_system": agent.evolution is not None if agent else False,
             },
-            "process": {
-                "pid": os.getpid(),
-                "threads": psutil.Process().num_threads(),
-                "memory_mb": psutil.Process().memory_info().rss / (1024 * 1024),
+            "sessions": {
+                "active_count": len(sessions),
+            },
+            "database": {
+                "type": "in-memory",
+                "status": "connected",
+                "sessions_count": len(sessions),
+            },
+            "external_apis": {
+                "minimax_configured": bool(os.environ.get("MINIMAX_API_KEY") and os.environ.get("MINIMAX_GROUP_ID")),
+                "deepseek_configured": bool(os.environ.get("DEEPSEEK_API_KEY")),
             }
-        },
-        "dependencies": {
-            "agent_initialized": agent is not None,
-            "cognitive_engine": agent.cognitive is not None if agent else False,
-            "planning_engine": agent.planning is not None if agent else False,
-            "execution_engine": agent.execution is not None if agent else False,
-            "evolution_system": agent.evolution is not None if agent else False,
-        },
-        "sessions": {
-            "active_count": len(sessions),
         }
-    }
-
-    # 检查数据库连接 (内存数据库，无需外部依赖)
-    health_data["database"] = {
-        "type": "in-memory",
-        "status": "connected",
-        "sessions_count": len(sessions),
-    }
-
-    # 检查外部API配置状态
-    def _check_api_config(name: str, required_vars: list[str]) -> dict:
-        """检查单个外部API的配置状态"""
-        missing = [v for v in required_vars if not os.environ.get(v)]
-        if missing:
-            return {
-                "configured": False,
-                "missing_vars": missing,
-                "hint": f"请设置环境变量: {', '.join(missing)}"
+        # DEBUG模式：内部检查高负载
+        if psutil.virtual_memory().percent > 90 or psutil.cpu_percent(interval=0.1) > 95:
+            health_data["status"] = "degraded"
+    else:
+        # 生产环境：隐藏敏感信息，只返回基本状态
+        health_data = {
+            "status": "ok",
+            "version": "2.2.0",
+            "timestamp": datetime.now().isoformat(),
+            "dependencies": {
+                "agent_initialized": agent is not None,
+                "cognitive_engine": agent.cognitive is not None if agent else False,
+                "planning_engine": agent.planning is not None if agent else False,
+                "execution_engine": agent.execution is not None if agent else False,
+                "evolution_system": agent.evolution is not None if agent else False,
+            },
+            "sessions": {
+                "active_count": len(sessions),
+            },
+            "database": {
+                "type": "in-memory",
+                "status": "connected",
             }
-        return {
-            "configured": True,
-            "hint": f"{name} API已配置"
         }
 
-    minimax_config = _check_api_config(
-        "MiniMax",
-        ["MINIMAX_API_KEY", "MINIMAX_GROUP_ID"]
-    )
-    deepseek_config = _check_api_config(
-        "DeepSeek",
-        ["DEEPSEEK_API_KEY"]
-    )
-
-    # 汇总外部API状态
-    all_apis = {"minimax": minimax_config, "deepseek": deepseek_config}
-    any_configured = any(api["configured"] for api in all_apis.values())
-
-    health_data["external_apis"] = {
-        "status": "configured" if any_configured else "not_configured",
-        "apis": all_apis,
-        "all_configured": all_configured,
-        "message": "有外部API已配置" if any_configured else "无外部API已配置，请在环境变量中设置 API密钥",
-        "setup_hints": [
-            "DeepSeek: export DEEPSEEK_API_KEY=your_key" if not os.environ.get("DEEPSEEK_API_KEY") else None,
-            "MiniMax: export MINIMAX_API_KEY=your_key && export MINIMAX_GROUP_ID=your_group_id" if not os.environ.get("MINIMAX_API_KEY") or not os.environ.get("MINIMAX_GROUP_ID") else None,
-        ]
-    }
-
-    # 汇总状态
-    overall_healthy = True
-    if health_data["system"]["memory"]["percent"] > 90:
-        overall_healthy = False
-    if health_data["system"]["cpu"]["percent"] > 95:
-        overall_healthy = False
+    # 检查依赖项健康状况
     if not all(health_data["dependencies"].values()):
-        overall_healthy = False
-
-    health_data["status"] = "ok" if overall_healthy else "degraded"
+        health_data["status"] = "degraded"
 
     return jsonify(health_data)
 
