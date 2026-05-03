@@ -426,6 +426,7 @@ class NINAXMLGenerator:
     """
     生成 N.I.N.A. 望远镜控制 XML 序列
     移植自 StarWhisper N.I.N.A. capture sequence generation
+    完全对齐 StarWhisper PlanObservation3.py create_capture_sequence_xml() 格式
     """
 
     @staticmethod
@@ -436,81 +437,155 @@ class NINAXMLGenerator:
         binning: int = 1,
         gain: int = 139,
         cooling: bool = True,
-        target_temp: int = -20
+        target_temp: int = -20,
+        auto_focus_on_start: bool = False,
+        auto_focus_on_finish: bool = False,
+        dither: bool = False,
+        dither_amount: float = 1.0,
+        filter_name: str = "L"
     ) -> str:
         """
-        生成 N.I.N.A. 拍摄序列 XML
+        生成 N.I.N.A. 拍摄序列 XML（StarWhisper格式）
 
-        参数:
-        target: 观测目标
-        location: 观测位置
-        num_exposures: 曝光帧数
-        binning: 像元合并
-        gain: 增益
-        cooling: 是否制冷
-        target_temp: 目标温度（摄氏度）
-
-        返回: XML 字符串
+        对齐: StarWhisper PlanObservation3.py create_capture_sequence_xml() 第163-317行
+        - CaptureSequenceList 作为根元素
+        - RA 以小时为单位 (HH + MM/60 + SS/3600)
+        - Dec 分正负值处理
+        - FilterType 含 FlatWizardFilterSettings / AutoFocusBinning / AutoFocusGain/Offset
+        - AutoFocusOnStart / AutoFocusOnFinish
+        - NegativeDec 元素
         """
-        root = ET.Element("Sequences")
+        # RA: 度 -> 时分秒
+        ra_total_hours = target.ra / 15.0
+        ra_h = int(ra_total_hours)
+        ra_m = int((ra_total_hours - ra_h) * 60)
+        ra_s = ((ra_total_hours - ra_h) * 60 - ra_m) * 60
 
-        # 拍摄序列
-        seq = SubElement(root, "Sequence")
-        seq.set("Name", target.name)
-        seq.set("XmlCreated", datetime.utcnow().isoformat())
+        # Dec: 度 -> 度分秒 (处理负值)
+        dec_is_negative = target.dec < 0
+        dec_abs = abs(target.dec)
+        dec_d = int(dec_abs)
+        dec_m = int((dec_abs - dec_d) * 60)
+        dec_s = ((dec_abs - dec_d) * 60 - dec_m) * 60
 
-        # 设备设置
-        device = SubElement(seq, "DeviceSettings")
-        SubElement(device, "Camera").text = "ZWO ASI2600MC Pro"
-        SubElement(device, "Telescope").text = "SkyWatcher EQ6-R"
-        SubElement(device, "FocalLength").text = str(target.exposure_time * 10)  # 估算焦距
-        SubElement(device, "Binning").text = str(binning)
-        SubElement(device, "Gain").text = str(gain)
+        # 根元素（StarWhisper使用CaptureSequenceList）
+        capture_sequence_list = ET.Element("CaptureSequenceList")
+        capture_sequence_list.set("SlewToTarget", "true")
+
+        # Sequence 元素
+        seq_elem = SubElement(capture_sequence_list, "Sequence")
+        seq_elem.set("Name", target.name)
+        seq_elem.set("XmlCreated", datetime.utcnow().isoformat())
+
+        # DeviceSettings
+        device_elem = SubElement(seq_elem, "DeviceSettings")
+        SubElement(device_elem, "Camera").text = "ZWO ASI2600MC Pro"
+        SubElement(device_elem, "Telescope").text = "SkyWatcher EQ6-R"
+        SubElement(device_elem, "FocalLength").text = str(target.exposure_time * 10)
+        SubElement(device_elem, "Binning").text = str(binning)
+        SubElement(device_elem, "Gain").text = str(gain)
+        SubElement(device_elem, "Offset").text = "-1"
 
         if cooling:
-            cooler = SubElement(device, "Cooling")
+            cooler = SubElement(device_elem, "Cooling")
             cooler.set("Enabled", "true")
             cooler.set("TargetTemp", str(target_temp))
             cooler.set("CoolerOn", "true")
 
-        # 目标设置
-        target_elem = SubElement(seq, "Target")
+        # AutoFocusSettings
+        af_elem = SubElement(seq_elem, "AutoFocusSettings")
+        SubElement(af_elem, "AutoFocusOnStart").text = str(auto_focus_on_start).lower()
+        SubElement(af_elem, "AutoFocusOnFinish").text = str(auto_focus_on_finish).lower()
+        SubElement(af_elem, "AutoFocusExposureTime").text = "-1"
+        SubElement(af_elem, "AutoFocusFilter").text = "true"
+
+        # Target 元素
+        target_elem = SubElement(seq_elem, "Target")
         SubElement(target_elem, "Name").text = target.name
-        SubElement(target_elem, "RA").text = str(target.ra)
-        SubElement(target_elem, "Dec").text = str(target.dec)
-        SubElement(target_elem, "Coordinates").set(
-            "System", "J2000"
-        )
+        SubElement(target_elem, "RA").text = target.name  # StarWhisper实际写name占位
+        SubElement(target_elem, "Dec").text = target.name
+        coords = SubElement(target_elem, "Coordinates")
+        coords.set("System", "J2000")
+        SubElement(coords, "RA").text = f"{ra_h + ra_m/60 + ra_s/3600:.6f}"
+        SubElement(coords, "Dec").text = f"{dec_d + dec_m/60 + dec_s/3600:.6f}"
+        SubElement(coords, "Epoch").text = "J2000"
         SubElement(target_elem, "MinimumAltitude").text = str(target.min_altitude)
         SubElement(target_elem, "MinimumMoonDistance").text = str(target.moon_distance_min)
+        SubElement(target_elem, "Rotation").text = "0"
 
-        # 位置信息
-        loc_elem = SubElement(seq, "Location")
+        # CaptureSequenceList（StarWhisper的关键结构）
+        csl_elem = SubElement(seq_elem, "CaptureSequenceList")
+
+        # 单个拍摄序列
+        capture_sequence = SubElement(csl_elem, "CaptureSequence")
+        SubElement(capture_sequence, "Name").text = f"{target.name}_Sequence"
+        SubElement(capture_sequence, "ExposureTime").text = str(target.exposure_time)
+        SubElement(capture_sequence, "ImageType").text = "LIGHT"
+
+        # FilterType（含StarWhisper的所有子元素）
+        filter_type_elem = SubElement(capture_sequence, "FilterType")
+        SubElement(filter_type_elem, "Name").text = filter_name
+        SubElement(filter_type_elem, "FocusOffset").text = "0"
+        SubElement(filter_type_elem, "Position").text = "1"
+        SubElement(filter_type_elem, "AutoFocusExposureTime").text = "-1"
+        SubElement(filter_type_elem, "AutoFocusFilter").text = "true"
+
+        # FlatWizardFilterSettings（StarWhisper格式）
+        flatwizard = SubElement(filter_type_elem, "FlatWizardFilterSettings")
+        SubElement(flatwizard, "FlatWizardMode").text = "DYNAMICEXPOSURE"
+        SubElement(flatwizard, "HistogramMeanTarget").text = "0.5"
+        SubElement(flatwizard, "HistogramTolerance").text = "0.1"
+        SubElement(flatwizard, "MaxFlatExposureTime").text = "20"
+        SubElement(flatwizard, "MinFlatExposureTime").text = "0.01"
+        SubElement(flatwizard, "MaxAbsoluteFlatDeviceBrightness").text = "1"
+        SubElement(flatwizard, "MinAbsoluteFlatDeviceBrightness").text = "0"
+        SubElement(flatwizard, "Gain").text = "-1"
+        SubElement(flatwizard, "Offset").text = "-1"
+        bin_fw = SubElement(flatwizard, "Binning")
+        SubElement(bin_fw, "X").text = "1"
+        SubElement(bin_fw, "Y").text = "1"
+
+        # AutoFocusBinning
+        af_bin = SubElement(filter_type_elem, "AutoFocusBinning")
+        SubElement(af_bin, "X").text = "1"
+        SubElement(af_bin, "Y").text = "1"
+        SubElement(filter_type_elem, "AutoFocusGain").text = "-1"
+        SubElement(filter_type_elem, "AutoFocusOffset").text = "-1"
+
+        # Binning in CaptureSequence
+        bin_cs = SubElement(capture_sequence, "Binning")
+        SubElement(bin_cs, "X").text = str(binning)
+        SubElement(bin_cs, "Y").text = str(binning)
+
+        SubElement(capture_sequence, "Gain").text = str(gain)
+        SubElement(capture_sequence, "Offset").text = "-1"
+        SubElement(capture_sequence, "TotalExposureCount").text = str(num_exposures)
+        SubElement(capture_sequence, "ProgressExposureCount").text = "0"
+        SubElement(capture_sequence, "Dither").text = str(dither).lower()
+        SubElement(capture_sequence, "DitherAmount").text = str(dither_amount)
+
+        # Coordinates（与StarWhisper一致）
+        coords2 = SubElement(csl_elem, "Coordinates")
+        SubElement(coords2, "RA").text = f"{ra_h + ra_m/60 + ra_s/3600:.6f}"
+        SubElement(coords2, "Dec").text = f"{dec_d + dec_m/60 + dec_s/3600:.6f}"
+        SubElement(coords2, "Epoch").text = "J2000"
+        SubElement(csl_elem, "NegativeDec").text = "true" if dec_is_negative else "false"
+
+        # Location
+        loc_elem = SubElement(seq_elem, "Location")
         SubElement(loc_elem, "Latitude").text = str(location.lat)
         SubElement(loc_elem, "Longitude").text = str(location.lon)
         SubElement(loc_elem, "Elevation").text = str(location.elevation)
         SubElement(loc_elem, "Timezone").text = location.timezone
 
-        # 拍摄任务
-        exposures_elem = SubElement(seq, "Exposures")
-        for i in range(num_exposures):
-            exp = SubElement(exposures_elem, "Exposure")
-            exp.set("Index", str(i + 1))
-            SubElement(exp, "Duration").text = str(target.exposure_time)
-            SubElement(exp, "Filter").text = target.filters[0] if target.filters else "L"
-            SubElement(exp, "Binning").text = str(binning)
-            SubElement(exp, "Gain").text = str(gain)
-            SubElement(exp, "Type").text = "Light"
-            SubElement(exp, "Completed").text = "false"
-
-        # 保存路径
-        save_elem = SubElement(seq, "SaveSettings")
+        # SaveSettings
+        save_elem = SubElement(seq_elem, "SaveSettings")
         SubElement(save_elem, "Directory").text = f"./data/{target.name}"
         SubElement(save_elem, "Prefix").text = target.name.replace(" ", "_")
         SubElement(save_elem, "Format").text = "SER"
         SubElement(save_elem, "Overwrite").text = "false"
 
-        xml_str = ET.tostring(root, encoding="unicode")
+        xml_str = ET.tostring(capture_sequence_list, encoding="unicode")
         return f'<?xml version="1.0" encoding="UTF-8"?>\n{xml_str}'
 
     @staticmethod

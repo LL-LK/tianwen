@@ -37,12 +37,12 @@ class SkySurvey(Enum):
     DSS2_COLOR = "DSS2/color"      # DSS2 彩色版本
     DSS2_RED = "DSS2/red"          # DSS2 红通道
     DSS2_BLUE = "DSS2/blue"        # DSS2 蓝通道
-    2MASS_J = "2MASS/J"            # 2微米全天巡视 J波段
-    2MASS_H = "2MASS/H"            # 2微米全天巡视 H波段
-    2MASS_K = "2MASS/K"            # 2微米全天巡视 K波段
+    TMASS_J = "2MASS/J"            # 2微米全天巡视 J波段
+    TMASS_H = "2MASS/H"            # 2微米全天巡视 H波段
+    TMASS_K = "2MASS/K"            # 2微米全天巡视 K波段
     SDSS_R = "SDSS/r"              # 斯隆数字巡天 r波段
-    IRAS = "IRIS"                 # IRAS红外图像
-    HST = "HST"                   # 哈勃太空望远镜 (需特殊处理)
+    IRIS = "IRIS"                  # IRAS红外图像
+    HST = "HST"                    # 哈勃太空望远镜 (需特殊处理)
 
 
 @dataclass
@@ -157,11 +157,15 @@ class NASA_SkyView_API:
     
     async def fetch(self, request: SkyChartRequest) -> SkyChartResult:
         """
-        从 NASA SkyView 获取星图
-        
+        从 NASA SkyView 获取星图（离线优先模式）
+
+        策略：
+        1. 尝试 NASA SkyView API
+        2. 如果失败/离线，使用本地星图生成 + 内置星表
+
         Args:
             request: 星图请求
-            
+
         Returns:
             SkyChartResult: 包含图像和元数据的结果
         """
@@ -169,13 +173,13 @@ class NASA_SkyView_API:
         coords = parse_coordinates(request.target)
         if coords is None:
             raise ValueError(f"Cannot resolve target: {request.target}")
-        
+
         ra, dec = coords
-        
+
         # 生成缓存键
         cache_key = self._cache_key(request, ra, dec)
         cached_path = CACHE_DIR / f"{cache_key}.json"
-        
+
         # 检查缓存
         if request.cached and cached_path.exists():
             try:
@@ -187,14 +191,14 @@ class NASA_SkyView_API:
                 return result
             except Exception as e:
                 print(f"[SkyView] Cache read error: {e}")
-        
+
         # 构建API请求
         print(f"[SkyView] Fetching: {request.target} RA={ra:.4f} Dec={dec:.4f} Survey={request.survey.value}")
-        
+
         # Step 1: 创建扫描任务
         survey_str = request.survey.value if isinstance(request.survey, SkySurvey) else request.survey
         survey_str = survey_str.replace("/", " ")
-        
+
         post_data = {
             "survey": survey_str,
             "position": f"{ra},{dec}",
@@ -205,30 +209,40 @@ class NASA_SkyView_API:
             "projection": "Tan",
             "resolver": "Simbad",
         }
-        
-        # 发起请求
-        task_id = await self._submit_task(post_data)
-        if not task_id:
-            raise RuntimeError("Failed to submit SkyView task")
-        
-        # 等待完成并获取结果
-        result_url = await self._wait_for_completion(task_id)
-        if not result_url:
-            raise RuntimeError("SkyView task did not complete")
-        
-        # 下载图像
-        image_base64, width, height = await self._download_image(result_url)
-        
-        # 检测星源 (简化版，实际可用SExtractor/AstroPy)
-        sources = self._detect_sources_simple(ra, dec, request.size, width, height)
-        
+
+        # 尝试NASA SkyView API
+        try:
+            task_id = await self._submit_task(post_data)
+            if not task_id:
+                raise RuntimeError("Failed to submit SkyView task")
+
+            # 等待完成并获取结果
+            result_url = await self._wait_for_completion(task_id)
+            if not result_url:
+                raise RuntimeError("SkyView task did not complete")
+
+            # 下载图像
+            image_base64, width, height = await self._download_image(result_url)
+            sources = self._detect_sources_simple(ra, dec, request.size, width, height)
+            survey_used = request.survey.value if isinstance(request.survey, SkySurvey) else request.survey
+            image_url = result_url
+
+        except Exception as e:
+            # NASA SkyView 不可用，使用离线星图
+            print(f"[SkyView] NASA API unavailable ({e}), using offline star chart")
+            image_base64, width, height, sources = self._generate_offline_starfield(
+                ra, dec, request.size, request.pixels, survey_str
+            )
+            survey_used = f"{survey_str} (offline)"
+            image_url = ""
+
         result = SkyChartResult(
             target=request.target,
-            survey=request.survey.value if isinstance(request.survey, SkySurvey) else request.survey,
+            survey=survey_used,
             ra=ra,
             dec=dec,
             image_base64=image_base64,
-            image_url=result_url,
+            image_url=image_url,
             width=width,
             height=height,
             timestamp=datetime.now().isoformat(),
@@ -236,14 +250,14 @@ class NASA_SkyView_API:
             fov=request.size / 60.0,  # 转换为度
             catalog_sources=sources
         )
-        
+
         # 保存缓存
         try:
             with open(cached_path, 'w') as f:
                 json.dump(result.__dict__, f)
         except Exception as e:
             print(f"[SkyView] Cache write error: {e}")
-        
+
         return result
     
     def _cache_key(self, request: SkyChartRequest, ra: float, dec: float) -> str:
@@ -398,6 +412,121 @@ class NASA_SkyView_API:
         cos_sep = max(-1.0, min(1.0, cos_sep))
         
         return math.degrees(math.acos(cos_sep))
+
+    def _generate_offline_starfield(
+        self,
+        ra: float,
+        dec: float,
+        size_arcmin: float,
+        pixels: int,
+        survey: str
+    ) -> Tuple[str, int, int, List[Dict]]:
+        """
+        生成离线模拟星图（NASA SkyView不可用时）
+
+        使用 PIL 在黑色背景上绘制:
+        1. 基于内置星表的天体位置绘制圆点（亮度对应星等）
+        2. 模拟星云的模糊云气效果
+        3. 添加坐标系刻度和视场信息
+
+        Args:
+            ra, dec: 中心坐标
+            size_arcmin: 视场大小(角分)
+            pixels: 输出像素
+            survey: 巡天名称
+
+        Returns:
+            (base64_png, width, height, sources)
+        """
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            HAS_PIL = True
+        except ImportError:
+            HAS_PIL = False
+
+        if not HAS_PIL:
+            # 无 PIL 时返回黑色占位图
+            black_img = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82'
+            return base64.b64encode(black_img).decode(), 1, 1, []
+
+        width = height = pixels
+        img = Image.new("RGB", (width, height), (5, 5, 15))
+        draw = ImageDraw.Draw(img)
+
+        fov_deg = size_arcmin / 60.0
+        half_fov = fov_deg / 2.0
+
+        # 绘制背景星场（基于内置星表）
+        drawn = 0
+        for name, obj in BUILTIN_CATALOG.items():
+            sep = self._angular_separation(ra, dec, obj["ra"], obj["dec"])
+            if sep < half_fov * 1.2:
+                # 计算像素位置
+                x = width * (0.5 + (obj["ra"] - ra) / fov_deg * 0.5)
+                y = height * (0.5 - (obj["dec"] - dec) / fov_deg * 0.5)
+
+                if 0 <= x <= width and 0 <= y <= height:
+                    # 星等 -> 亮度映射 (mags: 暗=1px, 亮=12px)
+                    mag = obj.get("mag", 10)
+                    brightness = max(1, int(15 - mag * 1.2))
+
+                    # 颜色: 亮星偏白蓝，亮星偏黄红
+                    obj_type = obj.get("type", "star")
+                    if obj_type == "galaxy":
+                        color = (150, 120, 200)
+                        r = brightness * 3
+                        draw.ellipse([x-r, y-r, x+r, y+r], fill=color)
+                    elif obj_type == "nebula":
+                        color = (80, 60, 150)
+                        r = brightness * 5
+                        draw.ellipse([x-r, y-r, x+r, y+r], fill=color, outline=(100, 80, 200))
+                    else:  # star or cluster
+                        if brightness > 8:
+                            color = (255, 255, 220)
+                        elif brightness > 5:
+                            color = (200, 200, 255)
+                        else:
+                            color = (150, 150, 200)
+                        r = brightness
+                        draw.ellipse([x-r, y-r, x+r, y+r], fill=color)
+                    drawn += 1
+
+        # 绘制背景星空噪声
+        import random
+        rng = random.Random(int(ra * 1000 + dec))
+        for _ in range(min(500, int(fov_deg * 2000))):
+            x = rng.randint(0, width - 1)
+            y = rng.randint(0, height - 1)
+            brightness = rng.randint(10, 80)
+            draw.point((x, y), fill=(brightness, brightness, brightness))
+
+        # 绘制视场边框
+        draw.rectangle([0, 0, width-1, height-1], outline=(80, 80, 120), width=1)
+
+        # 添加角分刻度（简化）
+        try:
+            tick_color = (100, 100, 140)
+            # 顶部刻度
+            for i in range(0, 101, 25):
+                x = int(width * i / 100)
+                draw.line([x, 0, x, 5], fill=tick_color)
+            # 左侧刻度
+            for i in range(0, 101, 25):
+                y = int(height * i / 100)
+                draw.line([0, y, 5, y], fill=tick_color)
+        except Exception:
+            pass
+
+        # 转base64
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        image_bytes = buffer.getvalue()
+        image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        # 检测到的源
+        sources = self._detect_sources_simple(ra, dec, size_arcmin, width, height)
+
+        return image_base64, width, height, sources
 
 
 # ============ 主接口 ============

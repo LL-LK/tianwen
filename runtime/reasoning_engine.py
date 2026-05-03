@@ -378,11 +378,21 @@ class OllamaAdapter(BaseAdapter):
     - 支持多种开源模型 (Llama2, Mistral, Qwen, etc.)
     - API兼容OpenAI格式
     - 隐私友好
+
+    WSL集成: 通过 subprocess 调用 ollama.exe CLI (直接执行，不走HTTP)
+    Windows路径: C:\\Users\\22140\\AppData\\Local\\Programs\\Ollama\\ollama.exe
     """
+
+    # Windows Ollama CLI 路径 (WSL可直接执行)
+    OLLAMA_CLI_PATH = "/mnt/c/Users/22140/AppData/Local/Programs/Ollama/ollama.exe"
 
     def __init__(self, config: ModelConfig):
         super().__init__(config)
-        self.client = httpx.AsyncClient(timeout=120.0)
+        # WSL通过subprocess CLI调用Ollama，不走HTTP API
+
+    def _ollama_cli(self) -> str:
+        """返回ollama.exe路径 (WSL可直行)"""
+        return self.OLLAMA_CLI_PATH
 
     async def think(
         self,
@@ -395,6 +405,9 @@ class OllamaAdapter(BaseAdapter):
         """
         执行Ollama推理
 
+        WSL环境下优先使用subprocess调用ollama.exe CLI (不走HTTP API)
+        因为WSL无法直接访问Windows localhost的Ollama服务
+
         Args:
             prompt: 用户输入
             system_prompt: 系统提示
@@ -403,58 +416,64 @@ class OllamaAdapter(BaseAdapter):
             thinking: 是否启用思维链模式 (部分模型支持)
         """
         import time
+        import subprocess
+        import asyncio
         start_time = time.time()
 
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ]
-
-        payload = {
-            "model": self.config.name,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "stream": False
-        }
-
-        # 部分模型支持thinking参数
-        if thinking:
-            payload["options"] = {"thinking": True}
+        full_prompt = f"{system_prompt}\n\nUser: {prompt}"
 
         try:
-            response = await self.client.post(
-                f"{self.config.endpoint}/api/chat",
-                json=payload
+            # 优先使用subprocess调用CLI (WSL可直行ollama.exe)
+            ollama_args = [
+                self._ollama_cli(), "run",
+                self.config.name,
+                full_prompt
+            ]
+            if thinking:
+                ollama_args.extend(["--think", "high"])
+
+            process = await asyncio.create_subprocess_exec(
+                *ollama_args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
-            response.raise_for_status()
-            result = response.json()
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=150.0)
+            raw_output = stdout.decode("utf-8", errors="replace").strip()
 
-            content = result.get("message", {}).get("content", "")
-            tokens = result.get("eval_count", 0)
-
-            # 提取思维过程 (如果模型返回)
+            # 解析输出 (可能包含"Thinking..."块)
             thinking_process = ""
-            if "<thinking>" in content:
-                match = re.search(r'<thinking>(.*?)</thinking>', content, re.DOTALL)
-                if match:
-                    thinking_process = match.group(1).strip()
-                    content = content.replace(f"<thinking>{thinking_process}</thinking>", "").strip()
+            content = raw_output
+
+            # qwen3-vl等模型会输出Thinking...块
+            if "Thinking..." in content:
+                parts = content.split("...done thinking.")
+                if len(parts) > 1:
+                    thinking_process = parts[0].replace("Thinking...", "").strip()
+                    content = parts[1].strip()
+                content = content.replace("...done thinking.", "").strip()
 
             return ReasoningResult(
                 content=content,
                 thinking_process=thinking_process,
                 model_used=f"Ollama-{self.config.name}",
                 complexity="high" if thinking else "medium",
-                tokens_used=tokens,
+                tokens_used=len(content) // 4,  # 粗略估算
                 latency_ms=(time.time() - start_time) * 1000
             )
 
+        except asyncio.TimeoutError:
+            return ReasoningResult(
+                content=f"Ollama推理超时 (>{150}s)，模型可能正在加载或响应缓慢",
+                model_used=f"Ollama-{self.config.name}",
+                complexity="medium",
+                latency_ms=(time.time() - start_time) * 1000
+            )
         except Exception as e:
             return ReasoningResult(
                 content=f"Ollama推理出错: {str(e)}",
                 model_used=f"Ollama-{self.config.name}",
-                complexity="medium"
+                complexity="medium",
+                latency_ms=(time.time() - start_time) * 1000
             )
 
     async def analyze(self, content: str, analysis_type: str = "general") -> Dict:
@@ -486,16 +505,29 @@ class OllamaAdapter(BaseAdapter):
         }
 
     @staticmethod
-    def list_models(endpoint: str = "http://localhost:11434") -> List[Dict]:
-        """列出Ollama可用的模型"""
-        import httpx
+    def list_models() -> List[Dict]:
+        """列出Ollama可用的模型 (通过subprocess调用ollama ps)"""
+        import subprocess
         try:
-            client = httpx.Client(timeout=10.0)
-            response = client.get(f"{endpoint}/api/tags")
-            response.raise_for_status()
-            data = response.json()
-            return data.get("models", [])
-        except Exception as e:
+            ollama_path = "/mnt/c/Users/22140/AppData/Local/Programs/Ollama/ollama.exe"
+            result = subprocess.run(
+                [ollama_path, "ps"],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode != 0:
+                return []
+            lines = result.stdout.strip().split("\n")
+            models = []
+            for line in lines[1:]:  # 跳过表头
+                if line.strip():
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        models.append({
+                            "name": parts[0],
+                            "size": parts[2] if len(parts) > 2 else "unknown"
+                        })
+            return models
+        except Exception:
             return []
 
 
