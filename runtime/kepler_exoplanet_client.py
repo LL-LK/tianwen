@@ -61,7 +61,9 @@ class KeplerExoplanetClient:
     def _build_tap_url(self, query: str, format_json: bool = True) -> str:
         """构建TAP查询URL"""
         format_param = "json" if format_json else "ipac"
-        encoded_query = query.replace(" ", "+").replace(",", "%2C")
+        # 规范化查询：移除换行和多余空白
+        normalized_query = " ".join(query.split())
+        encoded_query = normalized_query.replace(" ", "+").replace(",", "%2C")
         return f"{self.TAP_BASE}?query={encoded_query}&format={format_param}"
 
     async def search_planets(

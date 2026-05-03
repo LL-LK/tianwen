@@ -15,7 +15,7 @@ Date: 2026/05/01
 
 import os
 import asyncio
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Set
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
@@ -134,6 +134,137 @@ class ResearchOutput:
 
 
 # ============================================================================
+# 备份恢复和增量索引
+# ============================================================================
+
+class BackupManager:
+    """ChromaDB备份管理器"""
+
+    def __init__(self, persist_directory: str):
+        self.persist_directory = persist_directory
+        self.backup_dir = os.path.join(os.path.dirname(persist_directory), "chroma_backups")
+
+    def create_backup(self, backup_name: Optional[str] = None) -> Optional[str]:
+        """创建备份"""
+        if not os.path.exists(self.persist_directory):
+            print("错误: 持久化目录不存在，无法备份")
+            return None
+
+        if backup_name is None:
+            backup_name = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        backup_path = os.path.join(self.backup_dir, backup_name)
+
+        try:
+            import shutil
+            os.makedirs(self.backup_dir, exist_ok=True)
+
+            # 复制整个持久化目录
+            if os.path.exists(backup_path):
+                shutil.rmtree(backup_path)
+            shutil.copytree(self.persist_directory, backup_path)
+
+            print(f"备份创建成功: {backup_path}")
+            return backup_path
+        except Exception as e:
+            print(f"备份创建失败: {e}")
+            return None
+
+    def restore_backup(self, backup_name: str) -> bool:
+        """恢复备份"""
+        backup_path = os.path.join(self.backup_dir, backup_name)
+
+        if not os.path.exists(backup_path):
+            print(f"错误: 备份不存在: {backup_path}")
+            return False
+
+        try:
+            import shutil
+
+            # 备份当前数据
+            current_backup = self.persist_directory + "_old"
+            if os.path.exists(self.persist_directory):
+                if os.path.exists(current_backup):
+                    shutil.rmtree(current_backup)
+                shutil.copytree(self.persist_directory, current_backup)
+
+            # 恢复备份
+            shutil.rmtree(self.persist_directory)
+            shutil.copytree(backup_path, self.persist_directory)
+
+            print(f"备份恢复成功: {backup_path}")
+            return True
+        except Exception as e:
+            print(f"备份恢复失败: {e}")
+            return False
+
+    def list_backups(self) -> List[str]:
+        """列出所有备份"""
+        if not os.path.exists(self.backup_dir):
+            return []
+        return sorted(os.listdir(self.backup_dir))
+
+    def delete_backup(self, backup_name: str) -> bool:
+        """删除备份"""
+        backup_path = os.path.join(self.backup_dir, backup_name)
+        try:
+            if os.path.exists(backup_path):
+                import shutil
+                shutil.rmtree(backup_path)
+                return True
+            return False
+        except Exception as e:
+            print(f"删除备份失败: {e}")
+            return False
+
+
+class IncrementalIndexer:
+    """增量索引管理器 - 追踪已索引的文档避免重复"""
+
+    def __init__(self, index_file: str = "runtime/data/chroma_db/.index_state"):
+        self.index_file = index_file
+        self.indexed_ids: Set[str] = set()
+        self._load_state()
+
+    def _load_state(self):
+        """加载索引状态"""
+        if os.path.exists(self.index_file):
+            try:
+                with open(self.index_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.indexed_ids = set(data.get('indexed_ids', []))
+            except Exception:
+                self.indexed_ids = set()
+
+    def _save_state(self):
+        """保存索引状态"""
+        try:
+            os.makedirs(os.path.dirname(self.index_file), exist_ok=True)
+            with open(self.index_file, 'w', encoding='utf-8') as f:
+                json.dump({'indexed_ids': list(self.indexed_ids)}, f)
+        except Exception as e:
+            print(f"保存索引状态失败: {e}")
+
+    def mark_indexed(self, doc_ids: List[str]):
+        """标记文档已索引"""
+        self.indexed_ids.update(doc_ids)
+        self._save_state()
+
+    def is_indexed(self, doc_id: str) -> bool:
+        """检查文档是否已索引"""
+        return doc_id in self.indexed_ids
+
+    def get_unindexed(self, doc_ids: List[str]) -> List[str]:
+        """获取未索引的文档ID列表"""
+        return [id for id in doc_ids if id not in self.indexed_ids]
+
+    def reset(self):
+        """重置索引状态"""
+        self.indexed_ids = set()
+        self._save_state()
+
+
+# ============================================================================
 # ChromaDB向量存储类
 # ============================================================================
 
@@ -220,7 +351,8 @@ class ChromaVectorStore:
         self,
         documents: List[str],
         metadatas: List[Dict],
-        ids: List[str]
+        ids: List[str],
+        skip_existing: bool = True
     ) -> bool:
         """
         添加文档到向量存储
@@ -229,6 +361,7 @@ class ChromaVectorStore:
             documents: 文档内容列表
             metadatas: 元数据列表
             ids: 文档ID列表
+            skip_existing: 是否跳过已存在的文档ID
 
         Returns:
             bool: 添加是否成功
@@ -242,6 +375,20 @@ class ChromaVectorStore:
             return False
 
         try:
+            # 过滤已存在的文档（支持增量索引）
+            if skip_existing:
+                existing_ids = set(self.collection.get(ids=ids)['ids'])
+                new_indices = [i for i, id in enumerate(ids) if id not in existing_ids]
+                if len(new_indices) < len(ids):
+                    print(f"跳过 {len(ids) - len(new_indices)} 个已存在的文档")
+                    documents = [documents[i] for i in new_indices]
+                    metadatas = [metadatas[i] for i in new_indices]
+                    ids = [ids[i] for i in new_indices]
+
+            if not documents:
+                print("所有文档已存在，无需添加")
+                return True
+
             # 生成嵌入向量
             if self.embedding_function:
                 embeddings = self.embedding_function.encode(documents).tolist()
@@ -395,6 +542,16 @@ class ChromaVectorStore:
     def is_initialized(self) -> bool:
         """检查是否已初始化"""
         return self._is_initialized
+
+    def get_backup_manager(self) -> BackupManager:
+        """获取备份管理器"""
+        return BackupManager(self.persist_directory)
+
+    def get_incremental_indexer(self) -> IncrementalIndexer:
+        """获取增量索引器"""
+        return IncrementalIndexer(
+            index_file=os.path.join(self.persist_directory, ".index_state")
+        )
 
 
 # ============================================================================
@@ -785,6 +942,137 @@ async def run_tests():
     print("\n" + "=" * 60)
     print("测试完成")
     print("=" * 60)
+
+
+# ============================================================================
+# 备份恢复和增量索引
+# ============================================================================
+
+class BackupManager:
+    """ChromaDB备份管理器"""
+
+    def __init__(self, persist_directory: str):
+        self.persist_directory = persist_directory
+        self.backup_dir = os.path.join(os.path.dirname(persist_directory), "chroma_backups")
+
+    def create_backup(self, backup_name: Optional[str] = None) -> Optional[str]:
+        """创建备份"""
+        if not os.path.exists(self.persist_directory):
+            print("错误: 持久化目录不存在，无法备份")
+            return None
+
+        if backup_name is None:
+            backup_name = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        backup_path = os.path.join(self.backup_dir, backup_name)
+
+        try:
+            import shutil
+            os.makedirs(self.backup_dir, exist_ok=True)
+
+            # 复制整个持久化目录
+            if os.path.exists(backup_path):
+                shutil.rmtree(backup_path)
+            shutil.copytree(self.persist_directory, backup_path)
+
+            print(f"备份创建成功: {backup_path}")
+            return backup_path
+        except Exception as e:
+            print(f"备份创建失败: {e}")
+            return None
+
+    def restore_backup(self, backup_name: str) -> bool:
+        """恢复备份"""
+        backup_path = os.path.join(self.backup_dir, backup_name)
+
+        if not os.path.exists(backup_path):
+            print(f"错误: 备份不存在: {backup_path}")
+            return False
+
+        try:
+            import shutil
+
+            # 备份当前数据
+            current_backup = self.persist_directory + "_old"
+            if os.path.exists(self.persist_directory):
+                if os.path.exists(current_backup):
+                    shutil.rmtree(current_backup)
+                shutil.copytree(self.persist_directory, current_backup)
+
+            # 恢复备份
+            shutil.rmtree(self.persist_directory)
+            shutil.copytree(backup_path, self.persist_directory)
+
+            print(f"备份恢复成功: {backup_path}")
+            return True
+        except Exception as e:
+            print(f"备份恢复失败: {e}")
+            return False
+
+    def list_backups(self) -> List[str]:
+        """列出所有备份"""
+        if not os.path.exists(self.backup_dir):
+            return []
+        return sorted(os.listdir(self.backup_dir))
+
+    def delete_backup(self, backup_name: str) -> bool:
+        """删除备份"""
+        backup_path = os.path.join(self.backup_dir, backup_name)
+        try:
+            if os.path.exists(backup_path):
+                import shutil
+                shutil.rmtree(backup_path)
+                return True
+            return False
+        except Exception as e:
+            print(f"删除备份失败: {e}")
+            return False
+
+
+class IncrementalIndexer:
+    """增量索引管理器 - 追踪已索引的文档避免重复"""
+
+    def __init__(self, index_file: str = "runtime/data/chroma_db/.index_state"):
+        self.index_file = index_file
+        self.indexed_ids: Set[str] = set()
+        self._load_state()
+
+    def _load_state(self):
+        """加载索引状态"""
+        if os.path.exists(self.index_file):
+            try:
+                with open(self.index_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.indexed_ids = set(data.get('indexed_ids', []))
+            except Exception:
+                self.indexed_ids = set()
+
+    def _save_state(self):
+        """保存索引状态"""
+        try:
+            os.makedirs(os.path.dirname(self.index_file), exist_ok=True)
+            with open(self.index_file, 'w', encoding='utf-8') as f:
+                json.dump({'indexed_ids': list(self.indexed_ids)}, f)
+        except Exception as e:
+            print(f"保存索引状态失败: {e}")
+
+    def mark_indexed(self, doc_ids: List[str]):
+        """标记文档已索引"""
+        self.indexed_ids.update(doc_ids)
+        self._save_state()
+
+    def is_indexed(self, doc_id: str) -> bool:
+        """检查文档是否已索引"""
+        return doc_id in self.indexed_ids
+
+    def get_unindexed(self, doc_ids: List[str]) -> List[str]:
+        """获取未索引的文档ID列表"""
+        return [id for id in doc_ids if id not in self.indexed_ids]
+
+    def reset(self):
+        """重置索引状态"""
+        self.indexed_ids = set()
+        self._save_state()
 
 
 # ============================================================================

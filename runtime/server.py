@@ -671,6 +671,8 @@ async def api_docs():
             },
             "websocket": {
                 "WS   /ws/observatory": "观测站实时推送 (status_update, queue_update, new_alert)",
+                "WS   /ws/agent_status": "Agent状态实时推送 (cognitive, planning, execution状态)",
+                "WS   /ws/observation": "观测状态实时推送 (设备状态, 队列状态)",
             },
         },
         "realtime_bridge": "available" if _REALTIME_BRIDGE_AVAILABLE else "unavailable",
@@ -721,6 +723,198 @@ async def observatory_ws():
             _conn_manager.unregister(client_id)
         else:
             ws_manager.unregister(client_id)
+
+
+@app.websocket('/ws/agent_status')
+async def agent_status_ws():
+    """
+    WebSocket端点：实时Agent状态推送
+    - 心跳检测：每30秒发送ping，客户端需响应pong
+    - 断线重连：客户端自动重连机制
+    - 状态推送：Agent认知/规划/执行状态实时推送
+    """
+    client_id = str(uuid.uuid4())
+    ws = websocket._get_current_object()
+
+    if _REALTIME_BRIDGE_AVAILABLE:
+        _conn_manager.register(client_id, ws)
+    else:
+        ws_manager.register(client_id, ws)
+
+    heartbeat_count = 0
+    last_heartbeat = time.time()
+
+    try:
+        # 发送连接成功消息
+        await websocket.send(json.dumps({
+            "type": "connected",
+            "client_id": client_id,
+            "timestamp": datetime.now().isoformat(),
+            "heartbeat_interval": 30,
+        }, ensure_ascii=False, default=str))
+
+        while True:
+            try:
+                # 30秒心跳检测
+                data = await asyncio.wait_for(websocket.receive(), timeout=30)
+                last_heartbeat = time.time()
+                heartbeat_count += 1
+
+                if data == "ping":
+                    await websocket.send("pong")
+                    if _REALTIME_BRIDGE_AVAILABLE:
+                        _conn_manager.heartbeat(client_id)
+                elif data == "pong":
+                    # 客户端响应心跳
+                    pass
+                elif data == "get_status":
+                    # 返回Agent完整状态
+                    status = _build_agent_status()
+                    await websocket.send(json.dumps({
+                        "type": "agent_status",
+                        "data": status,
+                    }, ensure_ascii=False, default=str))
+                elif data and data.startswith("{"):
+                    try:
+                        msg = json.loads(data)
+                        msg_type = msg.get("type", "")
+                        if msg_type == "ping":
+                            await websocket.send(json.dumps({
+                                "type": "pong",
+                                "timestamp": datetime.now().isoformat(),
+                            }, ensure_ascii=False, default=str))
+                        elif msg_type == "subscribe":
+                            # 订阅特定事件
+                            event = msg.get("event", "")
+                            if event and _REALTIME_BRIDGE_AVAILABLE:
+                                def make_forward(ev):
+                                    async def forward(evt_type, data):
+                                        try:
+                                            await websocket.send(MessageSerializer.serialize_event(evt_type, data))
+                                        except Exception:
+                                            pass
+                                    return forward
+                                _event_bus.subscribe(event, make_forward(event))
+                    except json.JSONDecodeError:
+                        pass
+            except asyncio.TimeoutError:
+                # 心跳超时，发送ping检测连接
+                await websocket.send(json.dumps({
+                    "type": "heartbeat",
+                    "timestamp": datetime.now().isoformat(),
+                    "uptime_seconds": int(time.time() - last_heartbeat),
+                }, ensure_ascii=False, default=str))
+
+    except Exception:
+        pass
+    finally:
+        if _REALTIME_BRIDGE_AVAILABLE:
+            _conn_manager.unregister(client_id)
+        else:
+            ws_manager.unregister(client_id)
+
+
+@app.websocket('/ws/observation')
+async def observation_ws():
+    """
+    WebSocket端点：观测状态实时推送
+    - 望远镜/相机/滤镜轮状态
+    - 观测队列状态
+    - 设备健康状态
+    """
+    client_id = str(uuid.uuid4())
+    ws = websocket._get_current_object()
+
+    if _REALTIME_BRIDGE_AVAILABLE:
+        _conn_manager.register(client_id, ws)
+    else:
+        ws_manager.register(client_id, ws)
+
+    try:
+        await websocket.send(json.dumps({
+            "type": "connected",
+            "channel": "observation",
+            "timestamp": datetime.now().isoformat(),
+        }, ensure_ascii=False, default=str))
+
+        while True:
+            try:
+                data = await asyncio.wait_for(websocket.receive(), timeout=30)
+
+                if data == "ping":
+                    await websocket.send("pong")
+                    if _REALTIME_BRIDGE_AVAILABLE:
+                        _conn_manager.heartbeat(client_id)
+                elif data == "get_observation_status":
+                    status = _build_observation_status()
+                    await websocket.send(json.dumps({
+                        "type": "observation_status",
+                        "data": status,
+                    }, ensure_ascii=False, default=str))
+                elif data == "get_device_status":
+                    devices = _observatory_state.get("devices", {})
+                    await websocket.send(json.dumps({
+                        "type": "device_status",
+                        "data": devices,
+                    }, ensure_ascii=False, default=str))
+                elif data == "get_queue":
+                    queue = _observatory_state.get("queue", [])
+                    await websocket.send(json.dumps({
+                        "type": "queue_status",
+                        "data": queue,
+                    }, ensure_ascii=False, default=str))
+            except asyncio.TimeoutError:
+                await websocket.send(json.dumps({
+                    "type": "heartbeat",
+                    "channel": "observation",
+                    "timestamp": datetime.now().isoformat(),
+                }, ensure_ascii=False, default=str))
+    except Exception:
+        pass
+    finally:
+        if _REALTIME_BRIDGE_AVAILABLE:
+            _conn_manager.unregister(client_id)
+        else:
+            ws_manager.unregister(client_id)
+
+
+def _build_agent_status():
+    """构建Agent状态数据"""
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "cognitive": {
+            "status": "active" if agent and agent.cognitive else "inactive",
+            "intent": "observation",
+            "complexity": "medium",
+        },
+        "planning": {
+            "status": "active" if agent and agent.planning else "inactive",
+            "current_task": _observatory_state.get("research_loop", {}).get("topic", "未知"),
+            "cycle_id": _observatory_state.get("research_loop", {}).get("cycle_id", "N/A"),
+        },
+        "execution": {
+            "status": _observatory_state.get("status", "idle"),
+            "current_target": _observatory_state.get("current_target", {}),
+        },
+        "evolution": {
+            "status": "active" if agent and agent.evolution else "inactive",
+            "discoveries": _observatory_state.get("discoveries", 0),
+            "hypotheses": _observatory_state.get("hypotheses", 0),
+        },
+        "ws_clients": ws_manager.connection_count,
+    }
+
+
+def _build_observation_status():
+    """构建观测状态数据"""
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "status": _observatory_state.get("status", "idle"),
+        "current_target": _observatory_state.get("current_target", {}),
+        "devices": _observatory_state.get("devices", {}),
+        "queue_size": len(_observatory_state.get("queue", [])),
+        "weather": _observatory_state.get("devices", {}).get("weather", {}),
+    }
 
 
 # ============ 观测站 API ============
@@ -898,6 +1092,8 @@ if __name__ == "__main__":
     logger.info(f"API Docs: http://localhost:{port}/api/docs")
     logger.info(f"Health:   http://localhost:{port}/api/health")
     logger.info(f"WebSocket: ws://localhost:{port}/ws/observatory")
+    logger.info(f"Agent Status WS: ws://localhost:{port}/ws/agent_status")
+    logger.info(f"Observation WS: ws://localhost:{port}/ws/observation")
     logger.info("=" * 50)
 
     if _REALTIME_BRIDGE_AVAILABLE:
