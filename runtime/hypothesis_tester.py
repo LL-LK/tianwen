@@ -25,7 +25,7 @@ from typing import Dict, List, Any, Optional, Literal, Tuple, Union
 from dataclasses import dataclass, field
 from enum import Enum
 from scipy import stats
-from scipy.stats import bayes_empirical_posterior as bep
+from scipy.stats import bayes_mvs
 
 
 class TestResult(Enum):
