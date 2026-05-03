@@ -383,6 +383,7 @@ async def health():
     health_data = {
         "status": "ok",
         "version": "2.2.0",
+        "build_id": "trae-cors-fix-20260503",
         "timestamp": datetime.now().isoformat(),
         "system": {
             "memory": {
