@@ -256,10 +256,14 @@ class QwenAdapter(BaseAdapter):
     - thinking模式: 启用思维链，逐步推理
     - non-thinking模式: 快速响应
     """
-
     def __init__(self, config: ModelConfig):
         super().__init__(config)
-        self.client = httpx.AsyncClient(timeout=120.0)
+        self._ollama_exe = "/mnt/c/Users/22140/AppData/Local/Programs/Ollama/ollama.exe"
+        # WSL无法访问Windows Ollama HTTP API，走subprocess CLI模式
+
+    def _ollama_cli(self) -> str:
+        """返回ollama.exe路径"""
+        return self._ollama_exe
 
     async def think(
         self,
@@ -269,7 +273,9 @@ class QwenAdapter(BaseAdapter):
         temperature: float = 0.7
     ) -> ReasoningResult:
         """
-        执行推理
+        执行推理 - subprocess CLI模式 (WSL调用Windows Ollama)
+
+        通过subprocess调用ollama.exe CLI，绕过WSL无法访问Windows HTTP API的限制。
 
         Args:
             prompt: 输入提示
@@ -278,65 +284,71 @@ class QwenAdapter(BaseAdapter):
             temperature: 温度参数
         """
         import time
+        import asyncio
         start_time = time.time()
 
-        # 构建消息
-        messages = [{"role": "user", "content": prompt}]
-
-        # 添加thinking模式提示
+        # 构建prompt
+        full_prompt = prompt
         if thinking:
-            thinking_instruction = """
-请使用思维链(Chain-of-Thought)来逐步分析这个问题。
-先展示你的推理过程（用<thinking>标签包裹），然后给出最终答案。
+            thinking_instruction = """请使用思维链(Chain-of-Thought)来逐步分析这个问题。
+先展示你的推理过程，然后给出最终答案。
 """
-            messages[0]["content"] = thinking_instruction + prompt
-
-        # 构建请求
-        payload = {
-            "model": "qwen",
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
-
-        # 添加thinking参数（vLLM格式）
-        if thinking:
-            payload["extra_body"] = {"thinking_enabled": True}
+            full_prompt = thinking_instruction + prompt
 
         try:
-            response = await self.client.post(
-                f"{self.config.endpoint}/v1/chat/completions",
-                json=payload,
-                headers={"Authorization": f"Bearer {self.config.api_key or 'dummy'}"}
+            # subprocess调用ollama.exe CLI (WSL可直行Windows程序)
+            ollama_args = [
+                self._ollama_cli(), "run",
+                self.config.name or "qwen3:8b",
+                full_prompt
+            ]
+
+            # 添加thinking参数 (qwen3支持--think high/medium/low)
+            if thinking:
+                ollama_args.extend(["--think", "high"])
+
+            process = await asyncio.create_subprocess_exec(
+                *ollama_args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
-            response.raise_for_status()
-            result = response.json()
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=150.0)
+            raw_output = stdout.decode("utf-8", errors="replace").strip()
 
-            content = result["choices"][0]["message"]["content"]
-            tokens = result.get("usage", {}).get("total_tokens", 0)
-
-            # 提取思维过程
+            # 解析输出 (可能包含"Thinking..."块)
             thinking_process = ""
-            if thinking and "<thinking>" in content:
-                match = re.search(r'<thinking>(.*?)</thinking>', content, re.DOTALL)
-                if match:
-                    thinking_process = match.group(1).strip()
-                    content = content.replace(f"<thinking>{thinking_process}</thinking>", "").strip()
+            content = raw_output
+
+            # qwen3-vl等模型会输出"Thinking..."块
+            if "Thinking..." in content:
+                parts = content.split("...done thinking.")
+                if len(parts) > 1:
+                    thinking_process = parts[0].replace("Thinking...", "").strip()
+                    content = parts[1].strip()
+                content = content.replace("...done thinking.", "").strip()
 
             return ReasoningResult(
                 content=content,
                 thinking_process=thinking_process,
-                model_used=f"Qwen3 (thinking={thinking})",
+                model_used=f"Qwen3-subprocess (thinking={thinking})",
                 complexity="high" if thinking else "low",
-                tokens_used=tokens,
+                tokens_used=len(content) // 4,  # 粗略估算
                 latency_ms=(time.time() - start_time) * 1000
             )
 
+        except asyncio.TimeoutError:
+            return ReasoningResult(
+                content=f"Qwen推理超时 (>{150}s)，模型可能正在加载或响应缓慢",
+                model_used="Qwen3-subprocess",
+                complexity="high" if thinking else "low",
+                latency_ms=(time.time() - start_time) * 1000
+            )
         except Exception as e:
             return ReasoningResult(
                 content=f"Qwen推理出错: {str(e)}",
-                model_used="Qwen3",
-                complexity="high" if thinking else "low"
+                model_used="Qwen3-subprocess",
+                complexity="high" if thinking else "low",
+                latency_ms=(time.time() - start_time) * 1000
             )
 
     async def analyze(self, text: str, analysis_type: str = "general") -> Dict:
@@ -506,12 +518,12 @@ class OllamaAdapter(BaseAdapter):
 
     @staticmethod
     def list_models() -> List[Dict]:
-        """列出Ollama可用的模型 (通过subprocess调用ollama ps)"""
+        """列出Ollama所有已下载的模型 (使用ollama list而非ollama ps)"""
         import subprocess
         try:
             ollama_path = "/mnt/c/Users/22140/AppData/Local/Programs/Ollama/ollama.exe"
             result = subprocess.run(
-                [ollama_path, "ps"],
+                [ollama_path, "list"],
                 capture_output=True, text=True, timeout=10
             )
             if result.returncode != 0:
@@ -521,10 +533,10 @@ class OllamaAdapter(BaseAdapter):
             for line in lines[1:]:  # 跳过表头
                 if line.strip():
                     parts = line.split()
-                    if len(parts) >= 2:
+                    if len(parts) >= 3:
                         models.append({
                             "name": parts[0],
-                            "size": parts[2] if len(parts) > 2 else "unknown"
+                            "size": parts[2]
                         })
             return models
         except Exception:
