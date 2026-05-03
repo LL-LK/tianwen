@@ -1183,18 +1183,19 @@ class DataMiner:
 
         # 2. 如果有 hypothesis_tester，测试生成的假说
         if self.hypothesis_tester and mining_report.hypotheses_generated:
-            from hypothesis_generator import Hypothesis, HypothesisStatus
+            from runtime.data_models import Hypothesis, HypothesisStatus
 
             test_reports = []
             for hypo_data in mining_report.hypotheses_generated[:3]:  # 限制测试数量
                 hypothesis = Hypothesis(
                     id=f"hypo_mined_{uuid.uuid4().hex[:8]}",
-                    statement=hypo_data["statement"],
+                    content=hypo_data["statement"],
+                    confidence=hypo_data["confidence"],
+                    status=HypothesisStatus.PENDING,
+                    source="data_mining",
                     premises=hypo_data["premises"],
                     predictions=hypo_data["predictions"],
-                    verification_method="data_mining",
-                    confidence=hypo_data["confidence"],
-                    status=HypothesisStatus.PENDING.value
+                    verification_method="data_mining"
                 )
 
                 test_report = await self.hypothesis_tester.test_hypothesis(

@@ -130,15 +130,16 @@ class HypothesisGenerator:
 
         return Hypothesis(
             id=hypo_id,
-            statement=statement,
+            content=statement,
+            confidence=0.7,
+            status=HypothesisStatus.PENDING,
+            source="paper_cluster",
             premises=[p.title for p in papers],
             predictions=[
                 f"该聚类中的论文在主题上具有高相关性",
                 f"后续研究应考虑该聚类中论文的联合引用"
             ],
-            verification_method="论文共引分析 + 主题建模",
-            confidence=0.7,
-            status=HypothesisStatus.PENDING.value
+            verification_method="论文共引分析 + 主题建模"
         )
 
     async def _generate_from_observation(
@@ -176,15 +177,16 @@ class HypothesisGenerator:
 
         return Hypothesis(
             id=hypo_id,
-            statement=statement,
+            content=statement,
+            confidence=0.5,
+            status=HypothesisStatus.PENDING,
+            source="observation",
             premises=[f"观测目标: {target}", f"观测类型: {obs_type}"],
             predictions=[
                 f"该观测支持{target}的某种物理特性",
                 f"独立观测应能复现相同模式"
             ],
-            verification_method=verification_method,
-            confidence=0.5,
-            status=HypothesisStatus.PENDING.value
+            verification_method=verification_method
         )
 
     async def generate_scientific_hypothesis(
@@ -218,12 +220,13 @@ class HypothesisGenerator:
 
         return Hypothesis(
             id=hypo_id,
-            statement=statement,
+            content=statement,
+            confidence=confidence,
+            status=HypothesisStatus.PENDING,
+            source="scientific",
             premises=evidence + (prior_knowledge or []),
             predictions=predictions,
-            verification_method="待指定",
-            confidence=confidence,
-            status=HypothesisStatus.PENDING.value
+            verification_method="待指定"
         )
 
     def export_hypotheses(self, hypotheses: List[Hypothesis], format: str = "json") -> str:
@@ -243,7 +246,7 @@ class HypothesisGenerator:
             lines = ["# 假说列表\n"]
             for h in hypotheses:
                 lines.append(f"## {h.id}: {h.status}")
-                lines.append(f"\n**陈述**: {h.statement}")
+                lines.append(f"\n**陈述**: {h.content}")
                 lines.append(f"\n**置信度**: {h.confidence:.0%}")
                 lines.append(f"\n**前提**:")
                 for p in h.premises:

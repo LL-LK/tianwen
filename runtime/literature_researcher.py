@@ -1675,28 +1675,50 @@ class LiteratureResearcher:
 
     async def research(self, topic: str, max_papers: int = 30) -> ResearchState:
         """
-        执行完整文献调研
+        执行完整文献调研 (RAG增强)
 
         Args:
             topic: 研究主题/关键词
             max_papers: 最大搜索论文数 (总数量，多源时会分配)
 
         Returns:
-            ResearchState: 研究现状分析结果
+            ResearchState: 研究现状分析结果 (包含relevant_documents字段)
         """
         print(f"\n🔍 开始文献调研: {topic}")
         print(f"   使用数据源: {', '.join(self.sources_used) if self.sources_used else '无'}")
+
+        # 0. RAG增强: 在向量存储中搜索已有文献
+        existing_docs = []
+        rag_used = False
+        if self.use_vector_store:
+            try:
+                existing_docs = await self.search_vector_store(topic, n_results=10)
+                if existing_docs:
+                    rag_used = True
+                    print(f"   [RAG] 向量存储中找到 {len(existing_docs)} 篇已有文献")
+            except Exception as e:
+                print(f"   [RAG] 向量搜索失败 (非致命): {e}")
+                existing_docs = []
 
         # 1. 搜索论文 (多数据源)
         papers = await self.search_all(topic, max_results=max_papers)
         print(f"   找到 {len(papers)} 篇相关论文 (去重后)")
 
-        if not papers:
+        if not papers and not existing_docs:
             return ResearchState(
                 query=topic, total_results=0, papers=[],
                 key_themes=[], research_gaps=[],
                 timeline={}, top_authors=[], sources_used=self.sources_used
             )
+
+        # 1.5. RAG增强: 将新论文索引到向量存储 (增量索引)
+        if papers and self.use_vector_store:
+            try:
+                await self.index_papers(papers, skip_existing=True)
+                if rag_used:
+                    print(f"   [RAG] 已将 {len(papers)} 篇新论文索引到向量存储")
+            except Exception as e:
+                print(f"   [RAG] 索引论文失败 (非致命): {e}")
 
         # 2. 深度主题提取
         themes = self._extract_themes_advanced(papers)
@@ -1759,7 +1781,8 @@ class LiteratureResearcher:
             trend_direction=trend,
             summary=summary,
             sources_used=self.sources_used,
-            hypotheses=hypotheses
+            hypotheses=hypotheses,
+            relevant_documents=existing_docs  # RAG检索结果
         )
 
     def _extract_themes_advanced(self, papers: List[Paper], top_n: int = 15) -> List[str]:

@@ -17,6 +17,7 @@ import traceback
 from pathlib import Path
 from functools import wraps
 import psutil
+from typing import Optional, Dict, Any
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -45,7 +46,15 @@ app.config["TEMPLATES_AUTO_RELOAD"] = DEBUG
 
 @app.after_request
 async def add_cors_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
+    # 生产环境CORS白名单控制
+    origin = request.headers.get("Origin", "")
+    if DEBUG or CORS_ORIGINS == "*":
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    elif CORS_ORIGINS and origin:
+        allowed_origins = [o.strip() for o in CORS_ORIGINS.split(",")]
+        if origin in allowed_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-API-Key"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     response.headers["Access-Control-Max-Age"] = "86400"
@@ -54,10 +63,12 @@ async def add_cors_headers(response):
 from main import HermesAGI, CognitiveEngine, PlanningEngine
 from cycle_statistics_dashboard import CycleStatisticsDashboard
 from reasoning_engine import ModelConfig
+from hypothesis_tester import HypothesisTester, generate_mock_observation_data, generate_mock_literature_evidence
 import httpx
 
 agent = HermesAGI()
 dashboard = CycleStatisticsDashboard()
+hypothesis_tester = HypothesisTester()
 
 RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", 60))
 RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", 30))
@@ -106,7 +117,15 @@ async def method_not_allowed(e):
 
 @app.errorhandler(500)
 async def internal_error(e):
-    logger.error(f"Internal server error: {traceback.format_exc()}")
+    # 生产环境：记录详细错误但返回通用消息
+    error_trace = traceback.format_exc()
+    logger.error(f"Internal server error: {error_trace}")
+    if DEBUG:
+        return jsonify({
+            "error": "服务器内部错误",
+            "code": "INTERNAL_ERROR",
+            "detail": error_trace
+        }), 500
     return jsonify({"error": "服务器内部错误", "code": "INTERNAL_ERROR"}), 500
 
 
@@ -126,12 +145,9 @@ def require_api_key(f):
     @wraps(f)
     async def decorated(*args, **kwargs):
         provided_key = request.headers.get("X-API-Key") or request.args.get("api_key")
-        # DEBUG模式下仍需API_KEY验证，除非明确设置SKIP_AUTH=true
-        if DEBUG and os.environ.get("SKIP_AUTH", "").lower() in ("true", "1", "yes"):
-            logger.warning("[SECURITY] Auth skipper active in DEBUG mode")
-            return await f(*args, **kwargs)
+        # 生产环境：API_KEY必须配置
         if not API_KEY:
-            logger.error("[SECURITY] API_KEY not configured but auth is required")
+            logger.error("[SECURITY] API_KEY not configured - authentication is required")
             return jsonify({"error": "Server misconfigured: API_KEY not set", "code": "CONFIG_ERROR"}), 500
         if not provided_key:
             return jsonify({"error": "API Key required", "code": "MISSING_KEY"}), 401
@@ -425,10 +441,43 @@ async def health():
         "sessions_count": len(sessions),
     }
 
-    # 检查外部API可达性 (模拟检查)
+    # 检查外部API配置状态
+    def _check_api_config(name: str, required_vars: list[str]) -> dict:
+        """检查单个外部API的配置状态"""
+        missing = [v for v in required_vars if not os.environ.get(v)]
+        if missing:
+            return {
+                "configured": False,
+                "missing_vars": missing,
+                "hint": f"请设置环境变量: {', '.join(missing)}"
+            }
+        return {
+            "configured": True,
+            "hint": f"{name} API已配置"
+        }
+
+    minimax_config = _check_api_config(
+        "MiniMax",
+        ["MINIMAX_API_KEY", "MINIMAX_GROUP_ID"]
+    )
+    deepseek_config = _check_api_config(
+        "DeepSeek",
+        ["DEEPSEEK_API_KEY"]
+    )
+
+    # 汇总外部API状态
+    all_apis = {"minimax": minimax_config, "deepseek": deepseek_config}
+    any_configured = any(api["configured"] for api in all_apis.values())
+
     health_data["external_apis"] = {
-        "status": "not_configured",
-        "message": "无外部API依赖",
+        "status": "configured" if any_configured else "not_configured",
+        "apis": all_apis,
+        "all_configured": all_configured,
+        "message": "有外部API已配置" if any_configured else "无外部API已配置，请在环境变量中设置 API密钥",
+        "setup_hints": [
+            "DeepSeek: export DEEPSEEK_API_KEY=your_key" if not os.environ.get("DEEPSEEK_API_KEY") else None,
+            "MiniMax: export MINIMAX_API_KEY=your_key && export MINIMAX_GROUP_ID=your_group_id" if not os.environ.get("MINIMAX_API_KEY") or not os.environ.get("MINIMAX_GROUP_ID") else None,
+        ]
     }
 
     # 汇总状态
@@ -757,6 +806,8 @@ async def api_docs():
             "research": {
                 "GET  /api/research/status": "研究闭环状态",
                 "GET  /api/research/cycles?page=1&per_page=20": "历史研究周期",
+                "POST /api/hypothesis/test": "假说验证 (需要hypothesis对象，可选提供观测数据和文献证据)",
+                "GET  /api/hypothesis/generate-test-data?target=M31&count=5": "生成测试数据",
             },
             "alerts": {
                 "GET  /api/alerts?unread=true": "告警列表",
@@ -1297,6 +1348,128 @@ async def research_cycles():
         "total": len(_cycle_history),
         "page": page,
         "per_page": per_page,
+    })
+
+
+# ============ 假说验证 API ============
+
+@app.route("/api/hypothesis/test", methods=["POST"])
+@require_api_key
+async def test_hypothesis():
+    """
+    假说验证端点
+
+    请求体:
+    {
+        "hypothesis": {
+            "id": "hypo_xxx",
+            "statement": "如果...那么...",
+            "premises": [...],
+            "predictions": [...],
+            "verification_method": "...",
+            "confidence": 0.7
+        },
+        "observation_data": [...],  // 可选，默认自动生成
+        "literature_evidence": [...]  // 可选，默认自动生成
+    }
+
+    返回:
+    {
+        "hypothesis_id": "...",
+        "overall_result": "confirmed|rejected|inconclusive|revised",
+        "confidence_change": 0.x,
+        "evidence_for": [...],
+        "evidence_against": [...],
+        "recommendation": "...",
+        "confidence_interval": [...],
+        "cross_validation_score": 0.x,
+        "statistical_confidence": {...}
+    }
+    """
+    data = await request.get_json()
+
+    if not data or "hypothesis" not in data:
+        return jsonify({"error": "缺少 hypothesis 字段"}), 400
+
+    hypo_data = data["hypothesis"]
+    observation_data = data.get("observation_data")
+    literature_evidence = data.get("literature_evidence")
+
+    # 构造假说对象
+    from hypothesis_generator import Hypothesis
+    hypo = Hypothesis(
+        id=hypo_data.get("id", f"hypo_{uuid.uuid4().hex[:8]}"),
+        statement=hypo_data.get("statement", ""),
+        premises=hypo_data.get("premises", []),
+        predictions=hypo_data.get("predictions", []),
+        verification_method=hypo_data.get("verification_method", "待指定"),
+        confidence=hypo_data.get("confidence", 0.5),
+        status="待验证"
+    )
+
+    # 如果没有提供观测数据，自动生成
+    if not observation_data:
+        target = hypo_data.get("target", "未知目标")
+        observation_data = generate_mock_observation_data(target, count=5)
+        logger.info(f"[HypothesisTest] 自动生成 {len(observation_data)} 条模拟观测数据")
+
+    # 如果没有提供文献证据，自动生成
+    if not literature_evidence:
+        literature_evidence = generate_mock_literature_evidence(hypo.statement)
+        logger.info(f"[HypothesisTest] 自动生成 {len(literature_evidence)} 条模拟文献证据")
+
+    try:
+        report = await hypothesis_tester.test_hypothesis(hypo, observation_data, literature_evidence)
+
+        logger.info(f"[HypothesisTest] 验证完成: hypothesis={hypo.id}, result={report.overall_result.value}")
+
+        return jsonify({
+            "hypothesis_id": report.hypothesis_id,
+            "overall_result": report.overall_result.value,
+            "confidence_change": round(report.confidence_change, 3),
+            "evidence_for": report.evidence_for,
+            "evidence_against": report.evidence_against,
+            "recommendation": report.recommendation,
+            "timestamp": report.timestamp,
+            "confidence_interval": list(report.confidence_interval) if report.confidence_interval else None,
+            "cross_validation_score": round(report.cross_validation_score, 3) if report.cross_validation_score else None,
+            "statistical_confidence": report.statistical_confidence,
+            "test_cases": [
+                {
+                    "id": tc.id,
+                    "test_method": tc.test_method,
+                    "passed": tc.passed,
+                    "actual_outcome": tc.actual_outcome
+                }
+                for tc in report.test_cases
+            ]
+        })
+    except Exception as e:
+        logger.error(f"[HypothesisTest] 验证失败: {e}")
+        return jsonify({"error": f"验证失败: {str(e)}"}), 500
+
+
+@app.route("/api/hypothesis/generate-test-data", methods=["GET"])
+async def generate_test_data():
+    """
+    生成测试数据端点 - 供前端调试用
+
+    Query params:
+    - target: 观测目标名称 (默认 "M31")
+    - count: 观测数据数量 (默认 5)
+
+    返回生成的模拟数据
+    """
+    target = request.args.get("target", "M31")
+    count = int(request.args.get("count", 5))
+
+    observation_data = generate_mock_observation_data(target, count)
+    literature_evidence = generate_mock_literature_evidence(f"关于{target}的假说")
+
+    return jsonify({
+        "target": target,
+        "observation_data": observation_data,
+        "literature_evidence": literature_evidence
     })
 
 
