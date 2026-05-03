@@ -456,18 +456,49 @@ async def stats_json():
     stats = dashboard.get_summary_stats()
     return jsonify(stats)
 
-# ============ WebSocket 连接管理 ============
+# ============ WebSocket 连接管理 (增强版 - 心跳检测) ============
+
+class HeartbeatConfig:
+    """心跳检测配置"""
+    HEARTBEAT_INTERVAL = 30  # 发送心跳间隔(秒)
+    HEARTBEAT_TIMEOUT = 60   # 心跳超时时间(秒)
+    RECONNECT_DELAY = 3       # 重连延迟(秒)
+    MAX_RECONNECT_ATTEMPTS = 10  # 最大重连次数
+
+
+class WebSocketClient:
+    """单个WebSocket客户端状态"""
+    def __init__(self, client_id: str, ws):
+        self.client_id = client_id
+        self.ws = ws
+        self.last_heartbeat = time.time()
+        self.last_message = time.time()
+        self.reconnect_attempts = 0
+        self.is_alive = True
+
+    def update_heartbeat(self):
+        """更新心跳时间戳"""
+        self.last_heartbeat = time.time()
+        self.last_message = time.time()
+        self.is_alive = True
+
+    def check_timeout(self, timeout: float) -> bool:
+        """检查是否超时"""
+        return (time.time() - self.last_heartbeat) > timeout
+
 
 class WebSocketManager:
-    """WebSocket 连接管理器"""
+    """WebSocket 连接管理器 (增强版 - 心跳检测与断线重连)"""
 
     def __init__(self):
         self._connections: dict = {}
         self._lock = Lock()
+        self._heartbeat_task = None
+        self._config = HeartbeatConfig()
 
     def register(self, client_id: str, ws):
         with self._lock:
-            self._connections[client_id] = ws
+            self._connections[client_id] = WebSocketClient(client_id, ws)
         logger.info(f"WebSocket client connected: {client_id} (total: {len(self._connections)})")
 
     def unregister(self, client_id: str):
@@ -475,22 +506,99 @@ class WebSocketManager:
             self._connections.pop(client_id, None)
         logger.info(f"WebSocket client disconnected: {client_id} (total: {len(self._connections)})")
 
+    def heartbeat(self, client_id: str):
+        """更新客户端心跳"""
+        with self._lock:
+            if client_id in self._connections:
+                self._connections[client_id].update_heartbeat()
+
     async def broadcast(self, message: dict):
         data = json.dumps(message, ensure_ascii=False, default=str)
         dead = []
-        for cid, ws in list(self._connections.items()):
+        for cid, client in list(self._connections.items()):
             try:
-                await ws.send(data)
+                await client.ws.send(data)
+                client.last_message = time.time()
             except Exception:
                 dead.append(cid)
         for cid in dead:
             self.unregister(cid)
+
+    async def send_heartbeat(self):
+        """发送心跳ping到所有客户端"""
+        heartbeat_count = 0
+        dead_clients = []
+
+        with self._lock:
+            current_time = time.time()
+            for cid, client in list(self._connections.items()):
+                try:
+                    # 检查心跳超时
+                    if client.check_timeout(self._config.HEARTBEAT_TIMEOUT):
+                        logger.warning(f"Client {cid} heartbeat timeout")
+                        client.is_alive = False
+                        dead_clients.append(cid)
+                        continue
+
+                    # 发送ping
+                    await client.ws.send(json.dumps({
+                        "type": "heartbeat",
+                        "timestamp": current_time,
+                        "client_id": cid
+                    }))
+                    client.last_heartbeat = current_time
+                    heartbeat_count += 1
+                except Exception:
+                    dead_clients.append(cid)
+
+        # 清理断开的客户端
+        for cid in dead_clients:
+            self.unregister(cid)
+
+        if heartbeat_count > 0:
+            logger.debug(f"Heartbeat sent to {heartbeat_count} clients")
+
+    async def start_heartbeat_loop(self):
+        """启动心跳循环"""
+        while True:
+            await asyncio.sleep(self._config.HEARTBEAT_INTERVAL)
+            await self.send_heartbeat()
 
     async def broadcast_status(self):
         while True:
             await asyncio.sleep(2)
             status = _build_observatory_status()
             await self.broadcast({"type": "status_update", "data": status})
+
+    def get_client_info(self, client_id: str) -> Optional[Dict[str, Any]]:
+        """获取客户端信息"""
+        with self._lock:
+            if client_id in self._connections:
+                client = self._connections[client_id]
+                return {
+                    "client_id": client_id,
+                    "is_alive": client.is_alive,
+                    "last_heartbeat": client.last_heartbeat,
+                    "last_message": client.last_message,
+                    "uptime_seconds": time.time() - client.last_heartbeat,
+                    "reconnect_attempts": client.reconnect_attempts
+                }
+        return None
+
+    def get_connection_stats(self) -> Dict[str, Any]:
+        """获取连接统计"""
+        with self._lock:
+            total = len(self._connections)
+            alive = sum(1 for c in self._connections.values() if c.is_alive)
+            dead = total - alive
+
+            return {
+                "total_connections": total,
+                "alive_connections": alive,
+                "dead_connections": dead,
+                "heartbeat_interval": self._config.HEARTBEAT_INTERVAL,
+                "heartbeat_timeout": self._config.HEARTBEAT_TIMEOUT
+            }
 
     @property
     def connection_count(self):
@@ -679,33 +787,76 @@ async def api_docs():
     })
 
 
-# ============ WebSocket 端点 ============
+# ============ WebSocket 端点 (增强版 - 心跳检测与断线重连) ============
 
 @app.websocket('/ws/observatory')
 async def observatory_ws():
+    """
+    WebSocket端点：观测站实时状态推送
+
+    心跳机制:
+    - 客户端应定期发送ping，服务器响应pong
+    - 服务器定期发送heartbeat消息检测客户端存活
+    - 超时配置: HEARTBEAT_TIMEOUT=60秒
+
+    断线重连:
+    - 前端应实现自动重连逻辑 (见web/index.html)
+    - 重连延迟: RECONNECT_DELAY=3秒
+    - 最大重连次数: MAX_RECONNECT_ATTEMPTS=10
+    """
     client_id = str(uuid.uuid4())
+    ws = websocket._get_current_object()
+
+    # 创建心跳任务
+    heartbeat_task = asyncio.create_task(_heartbeat_loop(client_id, ws))
+
     if _REALTIME_BRIDGE_AVAILABLE:
-        _conn_manager.register(client_id, websocket._get_current_object())
+        _conn_manager.register(client_id, ws)
     else:
-        ws_manager.register(client_id, websocket._get_current_object())
+        ws_manager.register(client_id, ws)
 
     try:
         while True:
             data = await websocket.receive()
+
+            # 心跳响应
             if data == "ping":
-                await websocket.send("pong")
                 if _REALTIME_BRIDGE_AVAILABLE:
                     _conn_manager.heartbeat(client_id)
+                else:
+                    ws_manager.heartbeat(client_id)
+                await websocket.send("pong")
+
+            # 获取状态
             elif data == "get_status":
                 status = _build_observatory_status()
                 await websocket.send(json.dumps(
                     {"type": "status_update", "data": status},
                     ensure_ascii=False, default=str
                 ))
+
+            # JSON格式消息
             elif data and data.startswith("{"):
                 try:
                     msg = json.loads(data)
-                    if msg.get("type") == "subscribe" and _REALTIME_BRIDGE_AVAILABLE:
+                    msg_type = msg.get("type", "")
+
+                    if msg_type == "ping":
+                        # 客户端JSON格式ping
+                        if _REALTIME_BRIDGE_AVAILABLE:
+                            _conn_manager.heartbeat(client_id)
+                        else:
+                            ws_manager.heartbeat(client_id)
+                        await websocket.send(json.dumps({"type": "pong", "timestamp": time.time()}))
+
+                    elif msg_type == "pong":
+                        # 客户端响应pong
+                        if _REALTIME_BRIDGE_AVAILABLE:
+                            _conn_manager.heartbeat(client_id)
+                        else:
+                            ws_manager.heartbeat(client_id)
+
+                    elif msg_type == "subscribe" and _REALTIME_BRIDGE_AVAILABLE:
                         event_type = msg.get("event", "")
                         if event_type:
                             async def _forward(event_type_inner, event_data):
@@ -714,27 +865,142 @@ async def observatory_ws():
                                 except Exception:
                                     pass
                             _event_bus.subscribe(event_type, _forward)
+
+                    elif msg_type == "get_client_info":
+                        # 获取客户端信息
+                        if _REALTIME_BRIDGE_AVAILABLE:
+                            info = _conn_manager.get_client_info(client_id)
+                        else:
+                            info = ws_manager.get_client_info(client_id)
+                        await websocket.send(json.dumps({"type": "client_info", "data": info}))
+
                 except json.JSONDecodeError:
                     pass
     except Exception:
         pass
     finally:
+        heartbeat_task.cancel()
         if _REALTIME_BRIDGE_AVAILABLE:
             _conn_manager.unregister(client_id)
         else:
             ws_manager.unregister(client_id)
 
 
+async def _heartbeat_loop(client_id: str, ws):
+    """客户端心跳循环"""
+    while True:
+        try:
+            await asyncio.sleep(HeartbeatConfig.HEARTBEAT_INTERVAL)
+            await ws.send(json.dumps({
+                "type": "heartbeat",
+                "timestamp": time.time(),
+                "client_id": client_id
+            }))
+        except Exception:
+            break
+
+
 @app.websocket('/ws/agent_status')
 async def agent_status_ws():
     """
     WebSocket端点：实时Agent状态推送
-    - 心跳检测：每30秒发送ping，客户端需响应pong
-    - 断线重连：客户端自动重连机制
-    - 状态推送：Agent认知/规划/执行状态实时推送
+
+    心跳检测:
+    - 每30秒发送ping，客户端需响应pong
+    - 心跳超时时间: 60秒
+    - 客户端信息: GET /api/ws/clients/<client_id>
+
+    断线重连:
+    - 客户端应实现自动重连机制
+    - 建议重连延迟: 3秒
+    - 最大重连次数: 10次
     """
     client_id = str(uuid.uuid4())
     ws = websocket._get_current_object()
+
+    # 创建心跳任务
+    heartbeat_task = asyncio.create_task(_heartbeat_loop(client_id, ws))
+
+    ws_manager.register(client_id, ws)
+
+    try:
+        while True:
+            data = await websocket.receive()
+
+            if data == "ping":
+                ws_manager.heartbeat(client_id)
+                await websocket.send("pong")
+
+            elif data == "get_status":
+                status = _build_observatory_status()
+                await websocket.send(json.dumps(
+                    {"type": "status_update", "data": status},
+                    ensure_ascii=False, default=str
+                ))
+
+            elif data and data.startswith("{"):
+                try:
+                    msg = json.loads(data)
+                    msg_type = msg.get("type", "")
+
+                    if msg_type == "subscribe":
+                        event_type = msg.get("event", "")
+                        if event_type and _REALTIME_BRIDGE_AVAILABLE:
+                            async def _forward(event_type_inner, event_data):
+                                try:
+                                    await websocket.send(MessageSerializer.serialize_event(event_type_inner, event_data))
+                                except Exception:
+                                    pass
+                            _event_bus.subscribe(event_type, _forward)
+
+                except json.JSONDecodeError:
+                    pass
+    except Exception:
+        pass
+    finally:
+        heartbeat_task.cancel()
+        ws_manager.unregister(client_id)
+
+
+# ============ WebSocket管理API ============
+
+@app.route("/api/ws/clients", methods=["GET"])
+async def ws_clients_list():
+    """获取所有WebSocket客户端信息"""
+    stats = ws_manager.get_connection_stats()
+
+    clients = []
+    for cid in list(ws_manager._connections.keys()):
+        info = ws_manager.get_client_info(cid)
+        if info:
+            clients.append(info)
+
+    return jsonify({
+        "stats": stats,
+        "clients": clients
+    })
+
+
+@app.route("/api/ws/clients/<client_id>", methods=["GET"])
+async def ws_client_info(client_id):
+    """获取指定WebSocket客户端信息"""
+    info = ws_manager.get_client_info(client_id)
+    if not info:
+        return jsonify({"error": "Client not found"}), 404
+
+    return jsonify(info)
+
+
+@app.route("/api/ws/config", methods=["GET"])
+async def ws_config():
+    """获取WebSocket配置信息"""
+    return jsonify({
+        "heartbeat_interval": HeartbeatConfig.HEARTBEAT_INTERVAL,
+        "heartbeat_timeout": HeartbeatConfig.HEARTBEAT_TIMEOUT,
+        "reconnect_delay": HeartbeatConfig.RECONNECT_DELAY,
+        "max_reconnect_attempts": HeartbeatConfig.MAX_RECONNECT_ATTEMPTS,
+        "realtime_bridge_available": _REALTIME_BRIDGE_AVAILABLE
+    })
 
     if _REALTIME_BRIDGE_AVAILABLE:
         _conn_manager.register(client_id, ws)
@@ -1102,5 +1368,11 @@ if __name__ == "__main__":
             asyncio.ensure_future(start_heartbeat_loop(_conn_manager))
             asyncio.ensure_future(start_broadcast_loop(_conn_manager, _state_bridge))
             logger.info("Realtime bridge background tasks started")
+
+    # 启动WebSocket心跳循环
+    @app.before_serving
+    async def start_ws_heartbeat():
+        asyncio.ensure_future(ws_manager.start_heartbeat_loop())
+        logger.info("WebSocket heartbeat loop started")
 
     app.run(host="0.0.0.0", port=port, debug=DEBUG)
