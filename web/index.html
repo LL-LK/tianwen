@@ -396,7 +396,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 
 <script>
 var BACKEND_URL = 'https://tianwen-agi-production-fa3e.up.railway.app';
-var API_BASE = BACKEND_URL + '/api';
+var API_BASE = '/api';
 var WS_URL = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws/observatory';
 
 var ws = null;
@@ -953,7 +953,7 @@ async function testConnectivity(){
   var startTime = performance.now();
 
   try {
-    var r = await fetch(BACKEND_URL + '/api/health');
+    var r = await fetch(API_BASE + '/health');
     var latency = Math.round(performance.now() - startTime);
 
     if (r.ok) {
