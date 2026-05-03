@@ -85,8 +85,17 @@ class AstrometrySolver:
                 ["astrometry-engine", "--version"],
                 capture_output=True, text=True, timeout=5
             )
-            return result.returncode == 0
-        except (subprocess.SubprocessError, FileNotFoundError):
+            if result.returncode == 0:
+                version = result.stdout.strip().split('\n')[0] if result.stdout else "unknown"
+                print(f"astrometry-engine 可用: {version}")
+                return True
+            return False
+        except FileNotFoundError:
+            print(f"[INSTALL REQUIRED] astrometry-engine 未找到")
+            print(f"  安装命令: sudo apt-get install astrometry-net")
+            print(f"  或访问: https://github.com/dstndstn/astrometry.net")
+            return False
+        except (subprocess.SubprocessError):
             return False
     
     def _get_index_files(self) -> List[str]:
