@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "description": "将所有 /api/* 请求路由到 Cloudflare Pages Functions 代理至 Railway 后端",
+  "include": ["/api/*"],
+  "exclude": []
+}
