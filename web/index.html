@@ -1049,7 +1049,11 @@ function initAladin(){
       reticleColor: '#3b82f6',
       reticleSize: 32,
     });
-  } catch(e) { console.log('Aladin init delayed:', e.message); }
+  } catch(e) {
+    console.log('Aladin Lite unavailable:', e.message);
+    var div = document.getElementById('aladin-lite-div');
+    if (div) div.innerHTML = '<div class="empty-state"><div class="icon">🔭</div><div>Aladin Lite 星图不可用</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px">请使用支持 WebGL 的浏览器查看</div></div>';
+  }
 }
 
 $$('.tab-btn').forEach(function(btn){
