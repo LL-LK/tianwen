@@ -526,24 +526,26 @@ async def cognitive_preview():
 @app.route("/api/sessions", methods=["GET"])
 async def list_sessions():
     """获取所有会话"""
+    all_sessions = await _session_store.all()
     return jsonify({
         "sessions": [
             {
                 "id": s["id"],
-                "created_at": s["created_at"],
-                "message_count": len(s["messages"]),
+                "created_at": s.get("created_at", ""),
+                "message_count": len(s.get("messages", [])),
             }
-            for s in sessions.values()
+            for s in all_sessions.values()
         ]
     })
 
 @app.route("/api/sessions/<session_id>", methods=["GET"])
 async def get_session(session_id):
     """获取指定会话"""
-    if session_id not in sessions:
+    session = await _session_store.get(session_id)
+    if not session:
         return jsonify({"error": "会话不存在"}), 404
 
-    return jsonify(sessions[session_id])
+    return jsonify(session)
 
 @app.route("/api/evolution/stats", methods=["GET"])
 async def evolution_stats():
@@ -589,7 +591,7 @@ async def health():
                 "active_count": len(sessions),
             },
             "database": {
-                "type": "in-memory",
+                "type": _session_store_type,
                 "status": "connected",
                 "sessions_count": len(sessions),
             },
@@ -618,7 +620,7 @@ async def health():
                 "active_count": len(sessions),
             },
             "database": {
-                "type": "in-memory",
+                "type": _session_store_type,
                 "status": "connected",
             }
         }
@@ -2064,6 +2066,7 @@ if __name__ == "__main__":
     logger.info(f"Debug mode: {DEBUG}")
     logger.info(f"API Key configured: {'Yes' if API_KEY else 'No (auth disabled)'}")
     logger.info(f"CORS Origins: {CORS_ORIGINS or 'All (debug mode)'}")
+    logger.info(f"Session Store: {_session_store_type} (REDIS_URL: {'set' if os.environ.get('REDIS_URL') else 'not set'})")
     logger.info(f"Realtime Bridge: {'Available' if _REALTIME_BRIDGE_AVAILABLE else 'Unavailable (legacy mode)'}")
     logger.info(f"Local:    http://localhost:{port}")
     logger.info(f"API Docs: http://localhost:{port}/api/docs")
