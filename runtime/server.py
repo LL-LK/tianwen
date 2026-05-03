@@ -420,17 +420,19 @@ async def chat():
     if not _check_rate_limit(client_ip):
         return jsonify({"error": "请求过于频繁，请稍后再试", "code": "RATE_LIMITED"}), 429
 
-    # 创建新会话或使用现有会话
-    if session_id and session_id in sessions:
-        session = sessions[session_id]
-    else:
+    # 创建新会话或使用现有会话（优先使用Redis Session存储）
+    session = await _session_store.get(session_id) if session_id else None
+    if not session:
         session_id = str(uuid.uuid4())
-        sessions[session_id] = {
+        session = {
             "id": session_id,
             "created_at": datetime.now().isoformat(),
             "messages": [],
         }
-        session = sessions[session_id]
+    else:
+        # 确保是字典类型
+        if not isinstance(session, dict):
+            session = {"id": session_id, "created_at": datetime.now().isoformat(), "messages": []}
 
     # 记录用户消息
     session["messages"].append({
@@ -487,8 +489,8 @@ async def chat():
             "data": response_data,
         })
 
-        # 保存会话到磁盘
-        save_sessions()
+        # 保存会话到Redis或内存存储
+        await _session_store.set(session_id, session)
 
         return jsonify(response_data)
 
