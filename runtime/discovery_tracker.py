@@ -482,7 +482,7 @@ class DiscoveryTracker:
 
         await self.chroma.add_hypothesis(
             props["id"],
-            props.get("statement", "")
+            props.get("content", props.get("statement", ""))
         )
 
         return result
@@ -1032,7 +1032,7 @@ class DiscoveryTracker:
 
 async def demo():
     """演示发现追踪流程"""
-    from hypothesis_generator import HypothesisGenerator, Hypothesis, HypothesisStatus
+    from runtime.data_models import Hypothesis, HypothesisStatus
 
     tracker = DiscoveryTracker()
 
@@ -1044,12 +1044,13 @@ async def demo():
 
     hypo = Hypothesis(
         id="hypo_001",
-        statement="如果M42存在多波段辐射差异，那么这种差异反映了不同年龄的恒星群体",
+        content="如果M42存在多波段辐射差异，那么这种差异反映了不同年龄的恒星群体",
+        confidence=0.7,
+        status=HypothesisStatus.PENDING,
+        source="astronomy",
         premises=["已有研究显示M42存在温度梯度"],
         predictions=["红外波段强度应与年龄负相关"],
-        verification_method="对比WISE红外数据与Chandra X射线数据",
-        confidence=0.7,
-        status=HypothesisStatus.PENDING.value
+        verification_method="对比WISE红外数据与Chandra X射线数据"
     )
 
     await tracker.track_hypothesis(hypo)

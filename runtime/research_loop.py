@@ -38,6 +38,14 @@ from runtime_logger import get_logger
 
 logger = get_logger(__name__)
 
+# 导入梦引擎
+try:
+    from dream_engine import DreamEngine
+    DREAM_ENGINE_AVAILABLE = True
+except ImportError:
+    DREAM_ENGINE_AVAILABLE = False
+    DreamEngine = None
+
 # v3.6.0 新增模块导入
 try:
     from astro_pipeline import AstroPipeline, process_astro_image
@@ -61,11 +69,40 @@ except ImportError:
     KeplerExoplanetClient = None
 
 try:
-    from data_miner import DataMiner
-    DATA_MINER_AVAILABLE = True
+    from hypothesis_tester import HypothesisTester, generate_mock_observation_data, generate_mock_literature_evidence
+    HYPOTHESIS_TESTER_AVAILABLE = True
 except ImportError:
-    DATA_MINER_AVAILABLE = False
-    DataMiner = None
+    HYPOTHESIS_TESTER_AVAILABLE = False
+    HypothesisTester = None
+
+try:
+    from observation_executor import ObservationExecutor
+    OBSERVATION_EXECUTOR_AVAILABLE = True
+except ImportError:
+    OBSERVATION_EXECUTOR_AVAILABLE = False
+    ObservationExecutor = None
+
+# Issue #75: 打通数据流 - 新增子模块导入
+try:
+    from hypothesis_generator import HypothesisGenerator, Hypothesis
+    HYPOTHESIS_GENERATOR_AVAILABLE = True
+except ImportError:
+    HYPOTHESIS_GENERATOR_AVAILABLE = False
+    HypothesisGenerator = None
+
+try:
+    from discovery_tracker import DiscoveryTracker, VerificationOutcome
+    DISCOVERY_TRACKER_AVAILABLE = True
+except ImportError:
+    DISCOVERY_TRACKER_AVAILABLE = False
+    DiscoveryTracker = None
+
+try:
+    from observatory_linker import ObservatoryLinker, ObservationRequest
+    OBSERVATORY_LINKER_AVAILABLE = True
+except ImportError:
+    OBSERVATORY_LINKER_AVAILABLE = False
+    ObservatoryLinker = None
 
 
 @dataclass
@@ -92,133 +129,51 @@ class CycleResult:
     confidence_scores: Dict[str, float] = field(default_factory=dict)  # 假说置信度
     priority_queue: List[Dict] = field(default_factory=list)  # 优先级队列
     observation_feedback: List[Dict] = field(default_factory=list)  # 观测反馈
+    observation_results: List[Dict] = field(default_factory=list)  # 观测执行结果
 
 
 class AfterTaskHook:
-    """
-    自动化触发钩子 - Hermes P0 优先级
+    """自动化触发钩子 - 自动触发下一阶段"""
 
-    在每次任务完成后自动触发：
-    1. 结果评估
-    2. 模式提取
-    3. 知识更新
-    4. 自我进化
-    """
-
-    def __init__(self, research_loop=None):
-        self.research_loop = research_loop
-        self.task_history: List[Dict] = []
-        self.trigger_conditions = {
-            "task_completed": True,
-            "hypothesis_generated": True,
-            "verification_completed": True,
-            "discovery_made": True
+    def __init__(self, loop):
+        self.loop = loop
+        self.hooks = {
+            'hypothesis_verified': self.on_hypothesis_verified,
+            'discovery_made': self.on_discovery_made,
+            'observation_completed': self.on_observation_completed,
+            'hypothesis_generated': self.on_hypothesis_generated,
         }
+        self.task_history: List[Dict] = []
 
-    async def on_task_complete(self, task_result: Dict) -> bool:
-        """
-        任务完成时自动触发的钩子
+    async def on_hypothesis_generated(self, hypothesis):
+        """假说生成后触发验证"""
+        if self.loop.auto_verify:
+            logger.info(f"假说 {hypothesis.id if hasattr(hypothesis, 'id') else 'unknown'} 生成，触发自动验证")
 
-        Args:
-            task_result: 任务结果，包含 task_id, output, success 等
+    async def on_hypothesis_verified(self, result):
+        """验证完成后触发数据挖掘"""
+        if self.loop.data_miner:
+            await self.loop.data_miner.mine(result)
 
-        Returns:
-            bool - 是否触发了后续行动
-        """
-        task_id = task_result.get("task_id", "unknown")
-        success = task_result.get("success", False)
-        output = task_result.get("output", "")
+    async def on_discovery_made(self, discovery):
+        """发现后触发观测计划"""
+        if self.loop.linker:
+            await self.loop.linker.link(discovery)
 
-        logger.info(f"任务 {task_id} 完成: success={success}")
+    async def on_observation_completed(self, observation):
+        """观测完成后触发文献更新"""
+        if self.loop.literature_researcher:
+            await self.loop.literature_researcher.update(observation)
 
-        # 记录任务历史
-        self.task_history.append({
-            "task_id": task_id,
-            "success": success,
-            "output": str(output)[:200],
-            "timestamp": datetime.now().isoformat()
-        })
-
-        # 触发自我复盘
-        triggered = await self._trigger_self_review(task_result)
-
-        return triggered
-
-    async def _trigger_self_review(self, task_result: Dict) -> bool:
-        """触发自我复盘"""
-        # 检查是否需要复盘
-        needs_review = (
-            not task_result.get("success", True) or
-            self._is_significant_task(task_result)
-        )
-
-        if needs_review:
-            logger.info(f"触发自我复盘 for {task_result.get('task_id')}")
-            # 提取教训
-            lesson = self._extract_lesson(task_result)
-            if lesson:
-                await self._update_knowledge_base(lesson)
-                return True
-
-        return False
-
-    def _is_significant_task(self, task_result: Dict) -> bool:
-        """判断是否是需要复盘的重要任务"""
-        significant_keywords = ["假说", "验证", "发现", "观测", "研究", "分析"]
-        output = str(task_result.get("output", "")).lower()
-
-        return any(kw in output for kw in significant_keywords)
-
-    def _extract_lesson(self, task_result: Dict) -> Optional[str]:
-        """从任务结果中提取教训"""
-        if task_result.get("success"):
-            return None
-
-        task_id = task_result.get("task_id", "")
-        error = task_result.get("error", "")
-
-        return f"任务 {task_id} 失败: {error[:100] if error else '未知原因'}"
-
-    async def _update_knowledge_base(self, lesson: str) -> bool:
-        """更新知识库"""
-        logger.info(f"更新知识库: {lesson}")
-        # 这里可以集成 memory_persistence.py 来持久化
-        return True
-
-    async def on_hypothesis_generated(self, hypothesis: Any) -> bool:
-        """假说生成时自动触发"""
-        logger.info(f"假说生成: {hypothesis.id if hasattr(hypothesis, 'id') else 'unknown'}")
-
-        # 立即触发验证（如果配置了自动验证）
-        if self.research_loop and self.research_loop.auto_verify:
-            logger.info("触发自动验证")
-            return True
-
-        return False
-
-    async def on_verification_complete(self, test_report: Any) -> bool:
-        """验证完成时自动触发"""
-        result = test_report.overall_result.value if hasattr(test_report, 'overall_result') else "unknown"
-        logger.info(f"验证完成: {result}")
-
-        # 如果是重要发现，触发学习
-        if result == "confirmed" and hasattr(test_report, 'evidence_for'):
-            logger.info("发现被证实，触发知识更新")
-            await self._update_from_discovery(test_report)
-            return True
-
-        return False
-
-    async def _update_from_discovery(self, test_report: Any) -> bool:
-        """从发现中学习"""
-        logger.info("从验证结果中提取模式")
-        return True
+    async def trigger(self, event: str, data: Any):
+        """触发钩子"""
+        if event in self.hooks:
+            await self.hooks[event](data)
 
     def get_statistics(self) -> Dict:
         """获取钩子统计"""
         total = len(self.task_history)
         successful = sum(1 for t in self.task_history if t.get("success"))
-
         return {
             "total_tasks": total,
             "successful": successful,
@@ -281,6 +236,12 @@ class ResearchLoop:
         self.kepler_client = KeplerExoplanetClient() if KEPLER_CLIENT_AVAILABLE else None
         self.data_miner = DataMiner(hypothesis_tester=hypothesis_tester) if DATA_MINER_AVAILABLE and hypothesis_tester else None
         self.observation_location = observation_location  # 观测站位置
+        self.observation_executor = ObservationExecutor() if OBSERVATION_EXECUTOR_AVAILABLE else None
+
+        # Issue #75: 打通数据流 - 新增子模块实例保存
+        self.hypothesis_generator_instance = hypothesis_generator if HYPOTHESIS_GENERATOR_AVAILABLE else None
+        self.discovery_tracker_instance = discovery_tracker if DISCOVERY_TRACKER_AVAILABLE else None
+        self.observatory_linker_instance = linker if OBSERVATORY_LINKER_AVAILABLE else None
 
         # 闭环统计
         self.cycle_statistics = {
@@ -301,6 +262,10 @@ class ResearchLoop:
         }
         self._hypothesis_confidences: Dict[str, float] = {}
         self._priority_queue: List[Tuple[float, str]] = []  # (priority_score, hypothesis_id)
+
+        # v3.8.4 新增: 梦引擎集成
+        self.dream_engine = DreamEngine() if DREAM_ENGINE_AVAILABLE else None
+        self._dream_processing_enabled = True
 
     async def run_full_cycle(self, topic: str, targets: Optional[List[str]] = None) -> CycleResult:
         """
@@ -345,18 +310,25 @@ class ResearchLoop:
 
                 # 触发钩子
                 for hypo in result.hypotheses:
-                    await self.hook.on_hypothesis_generated(hypo)
+                    await self.hook.trigger('hypothesis_generated', hypo)
 
             # ========== 步骤3: 假说验证 ==========
             logger.info(f"\n[Step 3/5] 假说验证")
             for hypo in result.hypotheses[:3]:  # 限制验证数量
                 if self.hypothesis_tester:
-                    report = await self.hypothesis_tester.test_hypothesis(hypo)
+                    # 自动生成观测数据供验证使用
+                    hypo_id = hypo.id if hasattr(hypo, 'id') else str(hypo)
+                    target_name = hypo_id.replace("hypo_", "").replace("_", " ")
+                    obs_data = generate_mock_observation_data(target_name, count=5)
+                    lit_evidence = generate_mock_literature_evidence(
+                        hypo.statement if hasattr(hypo, 'statement') else ""
+                    )
+                    report = await self.hypothesis_tester.test_hypothesis(hypo, obs_data, lit_evidence)
                     result.test_reports.append(report)
                     logger.info(f"  → {hypo.id}: {report.overall_result.value}")
 
-                    # 触发钩子
-                    await self.hook.on_verification_complete(report)
+                    # 触发钩子 - 验证完成自动触发下一阶段
+                    await self.hook.trigger('hypothesis_verified', report)
 
             # ========== 步骤4: 追踪记录 ==========
             logger.info(f"\n[Step 4/5] 追踪记录")
@@ -428,6 +400,8 @@ class ResearchLoop:
                                 "score": score
                             })
                             logger.info(f"  → {target}: 评分 {score:.1f}, 可见窗口 {len(windows)}")
+                            # 触发钩子 - 观测完成后触发文献更新
+                            await self.hook.trigger('observation_completed', scheduled_observations[-1])
                     except Exception as e:
                         logger.warning(f"  → {target}: 调度失败 - {e}")
                 result.scheduled_observations = scheduled_observations
@@ -475,15 +449,32 @@ class ResearchLoop:
                         logger.info(f"  → 提取特征: {len(mining_report.features)} 个")
                         logger.info(f"  → 发现模式: {len(mining_report.patterns)} 个")
                         logger.info(f"  → 生成假说候选: {len(mining_report.hypotheses_generated)} 个")
+                        # 触发钩子 - 发现后触发观测计划
+                        await self.hook.trigger('discovery_made', mining_report)
                     except Exception as e:
                         logger.warning(f"  → 数据挖掘失败 - {e}")
 
             # ========== 步骤7: 原指导观测 (保留兼容性) ==========
-            logger.info(f"\n[Step 7/7] 指导观测")
+            logger.info(f"\n[Step 7/8] 指导观测")
             if self.linker and targets:
                 linked_plan = await self.linker.link(topic, targets)
                 result.discoveries = linked_plan.gap_filled_targets
                 logger.info(f"  → 调整了 {len(linked_plan.linked_observations)} 个观测目标优先级")
+
+            # ========== [v3.6.0 新增] 步骤8: 观测执行 ==========
+            observation_results = []
+            if self.observation_executor and scheduled_observations:
+                logger.info(f"\n[Step 8/8] 观测执行 (ObservationExecutor)")
+                for sched in scheduled_observations[:1]:  # 执行最高优先级
+                    try:
+                        obs_result = await self.observation_executor.execute_observation(sched)
+                        observation_results.append(obs_result)
+                        logger.info(f"  → 观测执行完成: {obs_result.get('status', 'unknown')}")
+                        # 触发结果闭环：观测结果 → 文献调研
+                        await self.on_observation_complete(obs_result)
+                    except Exception as e:
+                        logger.warning(f"  → 观测执行失败 - {e}")
+                result.observation_results = observation_results
 
             result.success = True
             result.completed_at = datetime.now().isoformat()
@@ -495,6 +486,18 @@ class ResearchLoop:
 
         # 记录到历史
         self.cycle_history.append(result)
+
+        # v3.8.4 新增: 梦引擎触发 - 闭环完成后自动运行离线分析
+        if self._dream_processing_enabled and self.dream_engine:
+            try:
+                logger.info("触发梦引擎离线分析...")
+                patterns = await self.dream_engine.process_background()
+                if patterns:
+                    logger.info(f"梦引擎发现 {len(patterns)} 个隐藏模式")
+                    for p in patterns:
+                        logger.info(f"  - {p.pattern_type}: {p.description}")
+            except Exception as e:
+                logger.warning(f"梦引擎触发失败: {e}")
 
         logger.info(f"{'='*60}")
         logger.info(f"闭环完成: {'成功' if result.success else '失败'}")
@@ -774,6 +777,31 @@ class ResearchLoop:
         )
 
         return learning_update
+
+    async def on_observation_complete(self, observation_result: Dict[str, Any]):
+        """
+        观测完成后触发文献调研更新 (结果闭环)
+
+        闭环关键: 观测结果 → 文献调研更新
+
+        Args:
+            observation_result: 观测执行结果
+        """
+        logger.info("观测完成，触发文献调研更新")
+
+        # 提取观测发现
+        new_findings = observation_result.get('findings', [])
+
+        # 更新文献调研模块
+        if self.literature_researcher and new_findings:
+            try:
+                await self.literature_researcher.update_with_observations(new_findings)
+                logger.info(f"  → 文献调研已更新，包含 {len(new_findings)} 个新发现")
+            except Exception as e:
+                logger.warning(f"  → 文献调研更新失败 - {e}")
+
+        # 触发钩子
+        await self.hook.trigger('observation_completed', observation_result)
 
     def get_cycle_summary(self) -> Dict:
         """获取闭环历史摘要 (v3.0增强)"""

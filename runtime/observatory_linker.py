@@ -37,7 +37,7 @@ import httpx
 import numpy as np
 
 # 导入Seestar MCP客户端
-from seestar_mcp_client import (
+from runtime.seestar_mcp_client import (
     SeestarMCPClient,
     ObservationTarget as SeestarObservationTarget,
     SafetyProtocolManager,

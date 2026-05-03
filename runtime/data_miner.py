@@ -38,6 +38,13 @@ try:
 except ImportError:
     HAS_ASTROPY = False
 
+# Optional: NASA Kepler/TESS exoplanet client
+try:
+    from runtime.kepler_exoplanet_client import KeplerExoplanetClient
+    HAS_KEPLER_CLIENT = True
+except ImportError:
+    HAS_KEPLER_CLIENT = False
+
 
 class MiningResult(Enum):
     """挖掘结果类型"""
@@ -1176,18 +1183,19 @@ class DataMiner:
 
         # 2. 如果有 hypothesis_tester，测试生成的假说
         if self.hypothesis_tester and mining_report.hypotheses_generated:
-            from hypothesis_generator import Hypothesis, HypothesisStatus
+            from runtime.data_models import Hypothesis, HypothesisStatus
 
             test_reports = []
             for hypo_data in mining_report.hypotheses_generated[:3]:  # 限制测试数量
                 hypothesis = Hypothesis(
                     id=f"hypo_mined_{uuid.uuid4().hex[:8]}",
-                    statement=hypo_data["statement"],
+                    content=hypo_data["statement"],
+                    confidence=hypo_data["confidence"],
+                    status=HypothesisStatus.PENDING,
+                    source="data_mining",
                     premises=hypo_data["premises"],
                     predictions=hypo_data["predictions"],
-                    verification_method="data_mining",
-                    confidence=hypo_data["confidence"],
-                    status=HypothesisStatus.PENDING.value
+                    verification_method="data_mining"
                 )
 
                 test_report = await self.hypothesis_tester.test_hypothesis(
@@ -1237,6 +1245,107 @@ class DataMiner:
             self.is_fitted = True
 
         return self.feature_scaler.transform(feature_matrix)
+
+    # ==================== NASA Kepler/TESS 数据集成 ====================
+
+    async def fetch_exoplanet_data(
+        self,
+        max_mass: Optional[float] = None,
+        min_radius: Optional[float] = None,
+        max_distance: Optional[float] = None
+    ) -> List[Dict]:
+        """
+        从NASA Exoplanet Archive获取系外行星数据
+
+        使用KeplerExoplanetClient查询真实的系外行星数据
+
+        参数:
+            max_mass: 最大行星质量 (木星质量)
+            min_radius: 最小行星半径 (地球半径)
+            max_distance: 最大距离 (秒差距)
+
+        返回:
+            系外行星列表
+        """
+        if not HAS_KEPLER_CLIENT:
+            print("警告: KeplerExoplanetClient不可用，返回空列表")
+            return []
+
+        try:
+            client = KeplerExoplanetClient()
+            planets = await client.search_planets(
+                max_mass=max_mass,
+                min_radius=min_radius,
+                max_distance=max_distance
+            )
+            return planets
+        except Exception as e:
+            print(f"获取系外行星数据失败: {e}")
+            return []
+
+    async def fetch_lightcurve(
+        self,
+        planet_name: str,
+        mission: str = "Kepler"
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        获取指定行星的光变曲线数据
+
+        参数:
+            planet_name: 行星名称 (如 "Kepler-90 h")
+            mission: 任务名称 (Kepler/TESS)
+
+        返回:
+            (时间, 通量) tuple
+        """
+        if not HAS_KEPLER_CLIENT:
+            print("警告: KeplerExoplanetClient不可用，返回空数组")
+            return np.array([]), np.array([])
+
+        try:
+            client = KeplerExoplanetClient()
+            times, fluxes = await client.get_lightcurve(planet_name, mission)
+            return times, fluxes
+        except Exception as e:
+            print(f"获取光变曲线失败: {e}")
+            return np.array([]), np.array([])
+
+    async def analyze_exoplanet_system(
+        self,
+        star_name: str,
+        max_mass: float = 10.0
+    ) -> Dict[str, Any]:
+        """
+        分析指定恒星的所有行星系统
+
+        参数:
+            star_name: 恒星名称 (如 "Kepler-90")
+            max_mass: 最大行星质量 (木星质量)
+
+        返回:
+            分析结果字典
+        """
+        if not HAS_KEPLER_CLIENT:
+            return {"error": "KeplerExoplanetClient不可用"}
+
+        try:
+            client = KeplerExoplanetClient()
+
+            # 获取恒星参数
+            stellar_params = await client.get_stellar_params(star_name)
+
+            # 获取该恒星的所有行星
+            planets = await client.search_planets(max_mass=max_mass)
+            star_planets = [p for p in planets if p.get('hostname') == star_name]
+
+            return {
+                "star_name": star_name,
+                "stellar_params": stellar_params,
+                "n_planets": len(star_planets),
+                "planets": star_planets
+            }
+        except Exception as e:
+            return {"error": str(e)}
 
     # ==================== 工具方法 ====================
 

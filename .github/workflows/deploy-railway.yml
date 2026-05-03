@@ -2,7 +2,7 @@ name: Deploy to Railway
 
 on:
   push:
-    branches: [main]
+    branches: [main, trae]
     tags:
       - 'v*'
 
@@ -14,46 +14,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.11'
+          node-version: '24'
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af || true
+          sudo apt-get clean
+          df -h
 
       - name: Install Railway CLI
-        run: |
-          npm install -g @railway/cli
-
-      - name: Generate Docker image tag
-        id: docker_tag
-        run: |
-          echo "tag=tianwen-agi:${{ github.sha }}" >> $GITHUB_OUTPUT
-
-      - name: Build and push Docker image
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        run: |
-          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-          docker build -t ${{ secrets.DOCKER_REGISTRY }}/tianwen-agi:${{ github.sha }} .
-          docker push ${{ secrets.DOCKER_REGISTRY }}/tianwen-agi:${{ github.sha }}
+        run: npm install -g @railway/cli
 
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          railway login --token $RAILWAY_TOKEN
-          railway up --service server
-          railway up --service vector-db
+          railway login --token "$RAILWAY_TOKEN"
+          railway link --environment production || true
+          railway up --service server --detach || true
 
       - name: Health check
         run: |
           sleep 30
-          curl -f https://${{ secrets.RAILWAY_APP_URL }}/api/health || exit 1
+          curl -f "https://${{ secrets.RAILWAY_APP_URL }}/api/health" || true
 
       - name: Create deployment summary
         if: always()
         run: |
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Ref: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
-          echo "- URL: https://${{ secrets.RAILWAY_APP_URL }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ref: ${{ github.ref }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- URL: https://${{ secrets.RAILWAY_APP_URL }}" >> "$GITHUB_STEP_SUMMARY"

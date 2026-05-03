@@ -21,11 +21,12 @@ import uuid
 import re
 import numpy as np
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Literal, Tuple, Union
-from dataclasses import dataclass, field
-from enum import Enum
+from typing import Dict, List, Any, Optional, Tuple
 from scipy import stats
-from scipy.stats import bayes_empirical_posterior as bep
+from scipy.stats import bayes_mvs
+
+# 导入统一数据模型
+from runtime.data_models import TestResult as UnifiedTestResult, Hypothesis
 
 
 class TestResult(Enum):
@@ -33,6 +34,9 @@ class TestResult(Enum):
     REJECTED = "rejected"        # 证伪
     INCONCLUSIVE = "inconclusive" # 不确定
     REVISED = "revised"          # 需要修订
+
+# 别名：保持向后兼容
+TestResultEnum = TestResult
 
 
 @dataclass
@@ -1141,39 +1145,129 @@ class HypothesisTester:
             } for r in reports], ensure_ascii=False, indent=2)
 
 
+# ============ 模拟数据生成器 (供测试用) ============
+
+def generate_mock_observation_data(target: str, count: int = 5) -> List[Dict]:
+    """
+    生成模拟观测数据供假说验证测试
+
+    Args:
+        target: 观测目标名称
+        count: 生成数据点数量
+
+    Returns:
+        List[Dict] - 模拟观测数据
+    """
+    import random
+    import math
+
+    observations = []
+    obs_types = ["optical", "infrared", "xray", "radio", "spectrum"]
+    for i in range(count):
+        obs_type = random.choice(obs_types)
+        if obs_type == "optical":
+            data = {
+                "magnitude": round(random.uniform(10, 18), 2),
+                "flux": round(random.uniform(1e-30, 1e-25), 4),
+                "exposure_time": random.randint(60, 600)
+            }
+        elif obs_type == "infrared":
+            data = {
+                "intensity": round(random.uniform(0.1, 1.0), 3),
+                "wavelength": random.choice(["WISE_12um", "WISE_22um", "IRAC_3.6um"])
+            }
+        elif obs_type == "xray":
+            data = {
+                "counts": random.randint(100, 5000),
+                "energy": random.choice(["Chandra_0.5-2keV", "XMM_2-10keV"])
+            }
+        elif obs_type == "radio":
+            data = {
+                "flux_jy": round(random.uniform(0.01, 100), 3),
+                "frequency_mhz": random.choice([1400, 5000, 8000])
+            }
+        else:  # spectrum
+            data = {
+                "wavelength_angstrom": random.randint(3500, 9000),
+                "flux_density": round(random.uniform(1e-17, 1e-14), 3),
+                "line_width": round(random.uniform(0.1, 5.0), 2)
+            }
+
+        observations.append({
+            "target": target,
+            "type": obs_type,
+            "data": data,
+            "timestamp": datetime.now().isoformat()
+        })
+
+    return observations
+
+
+def generate_mock_literature_evidence(hypothesis_statement: str) -> List[Dict]:
+    """
+    生成模拟文献证据供假说验证测试
+
+    Args:
+        hypothesis_statement: 假说陈述
+
+    Returns:
+        List[Dict] - 模拟文献证据
+    """
+    import random
+
+    evidence_templates = [
+        {
+            "title": "Recent survey of relevant astronomical phenomena",
+            "abstract": "Our findings support the hypothesis that observed patterns correlate with physical mechanisms. Statistical analysis shows p<0.01 significance level.",
+            "year": 2024
+        },
+        {
+            "title": "Theoretical framework for observed phenomena",
+            "abstract": "This work confirms previous observations and provides supporting evidence. Multiple independent observations are consistent with the predicted model.",
+            "year": 2023
+        },
+        {
+            "title": "Critical review and analysis",
+            "abstract": "While some aspects remain unclear, the majority of evidence supports the main predictions. Significant correlations were detected in 85% of observations.",
+            "year": 2024
+        }
+    ]
+
+    # 随机决定支持或反驳
+    supports = random.random() > 0.2  # 80%概率支持
+    papers = []
+    for i, template in enumerate(evidence_templates[:random.randint(1, 3)]):
+        paper = template.copy()
+        paper["supports"] = supports if i == 0 else random.random() > 0.3
+        papers.append(paper)
+
+    return papers
+
+
 async def demo():
     """演示假说验证流程"""
-    from hypothesis_generator import Hypothesis, HypothesisStatus
+    from runtime.data_models import Hypothesis, HypothesisStatus
 
     tester = HypothesisTester()
 
     hypo = Hypothesis(
         id="hypo_demo_001",
-        statement="如果M42猎户座大星云存在多波段辐射差异，那么这种差异反映了不同年龄的恒星群体",
+        content="如果M42猎户座大星云存在多波段辐射差异，那么这种差异反映了不同年龄的恒星群体",
+        confidence=0.7,
+        status=HypothesisStatus.PENDING,
         premises=["已有研究显示M42存在温度梯度"],
         predictions=[
             "红外波段强度应与年龄负相关",
             "X射线应集中在年轻恒星区域"
         ],
-        verification_method="多波段数据对比分析",
-        confidence=0.7,
-        status=HypothesisStatus.PENDING.value
+        verification_method="多波段数据对比分析"
     )
 
-    observation_data = [
-        {
-            "target": "M42中心区域",
-            "type": "infrared",
-            "data": {"intensity": 0.8, "wavelength": "WISE_12um"}
-        },
-        {
-            "target": "M42中心区域",
-            "type": "xray",
-            "data": {"intensity": 0.9, "energy": "Chandra_0.5-2keV"}
-        }
-    ]
+    # 使用模拟数据生成器
+    observation_data = generate_mock_observation_data("M42", count=5)
+    literature_evidence = generate_mock_literature_evidence(hypo.content)
 
-    report = await tester.test_hypothesis(hypo, observation_data)
+    report = await tester.test_hypothesis(hypo, observation_data, literature_evidence)
 
     print(f"验证结果: {report.overall_result.value}")
     print(f"置信度变化: {report.confidence_change:+.0%}")

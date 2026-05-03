@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天问-AGI 轨道可视化</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: #0a0a1a;
+            color: #ecf0f1;
+            overflow: hidden;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .control-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(20, 30, 50, 0.9);
+            border: 1px solid rgba(100, 150, 200, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            min-width: 260px;
+            z-index: 100;
+        }
+
+        .control-panel h2 {
+            color: #3498db;
+            font-size: 16px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(100, 150, 200, 0.3);
+            padding-bottom: 10px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #2c3e50;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #3498db;
+            cursor: pointer;
+        }
+
+        .control-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid rgba(100, 150, 200, 0.3);
+            border-radius: 5px;
+            background: #1a252f;
+            color: #ecf0f1;
+            font-size: 13px;
+        }
+
+        .btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+            margin-right: 5px;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+        }
+
+        .btn-secondary {
+            background: #34495e;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #2c3e50;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(20, 30, 50, 0.9);
+            border: 1px solid rgba(100, 150, 200, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            min-width: 200px;
+            z-index: 100;
+        }
+
+        .info-panel h3 {
+            color: #3498db;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .info-item .label {
+            color: #7f8c8d;
+        }
+
+        .info-item .value {
+            color: #ecf0f1;
+            font-weight: bold;
+        }
+
+        .body-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(20, 30, 50, 0.9);
+            border: 1px solid rgba(100, 150, 200, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            min-width: 250px;
+            max-height: 40vh;
+            overflow-y: auto;
+            z-index: 100;
+        }
+
+        .body-info h3 {
+            color: #3498db;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .body-item {
+            padding: 8px;
+            margin-bottom: 5px;
+            background: rgba(52, 73, 94, 0.5);
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .body-item:hover {
+            background: rgba(52, 152, 219, 0.3);
+        }
+
+        .body-item.selected {
+            background: rgba(52, 152, 219, 0.5);
+            border: 1px solid #3498db;
+        }
+
+        .time-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(20, 30, 50, 0.9);
+            border: 1px solid rgba(100, 150, 200, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            z-index: 100;
+        }
+
+        .time-controls h4 {
+            color: #3498db;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+
+        .time-display {
+            font-size: 16px;
+            text-align: center;
+            margin-bottom: 10px;
+            font-family: monospace;
+            color: #f39c12;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 26, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(100, 150, 200, 0.3);
+            border-top-color: #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="loading" class="loading-overlay">
+            <div class="loading-spinner"></div>
+        </div>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="control-panel">
+            <h2>轨道可视化控制</h2>
+
+            <div class="control-group">
+                <label>显示模式</label>
+                <select id="viewMode">
+                    <option value="solar">太阳系内</option>
+                    <option value="inner">内太阳系</option>
+                    <option value="outer">外太阳系</option>
+                    <option value="exoplanet">系外行星</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>轨道透明度</label>
+                <input type="range" id="orbitOpacity" min="0" max="100" value="50">
+            </div>
+
+            <div class="control-group">
+                <label>轨道宽度</label>
+                <input type="range" id="orbitWidth" min="1" max="5" value="1">
+            </div>
+
+            <div class="control-group">
+                <label>显示标签</label>
+                <select id="showLabels">
+                    <option value="all">全部</option>
+                    <option value="major">仅主要天体</option>
+                    <option value="none">隐藏</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>时间速度</label>
+                <input type="range" id="timeSpeed" min="1" max="100" value="10">
+            </div>
+
+            <div class="control-group">
+                <button class="btn btn-primary" id="resetView">重置视角</button>
+                <button class="btn btn-secondary" id="toggleOrbits">切换轨道</button>
+            </div>
+
+            <div class="control-group" style="margin-top: 15px; border-top: 1px solid rgba(100, 150, 200, 0.3); padding-top: 15px;">
+                <label style="color: #e74c3c;">选择天体:</label>
+                <select id="selectBody">
+                    <option value="sun">太阳</option>
+                    <option value="mercury">水星</option>
+                    <option value="venus">金星</option>
+                    <option value="earth">地球</option>
+                    <option value="mars">火星</option>
+                    <option value="jupiter">木星</option>
+                    <option value="saturn">土星</option>
+                    <option value="uranus">天王星</option>
+                    <option value="neptune">海王星</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="info-panel">
+            <h3>轨道信息</h3>
+            <div class="info-item">
+                <span class="label">选中天体:</span>
+                <span class="value" id="selectedBody">太阳</span>
+            </div>
+            <div class="info-item">
+                <span class="label">距日距离(AU):</span>
+                <span class="value" id="bodyDistance">0</span>
+            </div>
+            <div class="info-item">
+                <span class="label">轨道周期(天):</span>
+                <span class="value" id="orbitalPeriod">0</span>
+            </div>
+            <div class="info-item">
+                <span class="label">轨道离心率:</span>
+                <span class="value" id="eccentricity">0</span>
+            </div>
+            <div class="info-item">
+                <span class="label">当前时间:</span>
+                <span class="value" id="currentDate">-</span>
+            </div>
+        </div>
+
+        <div class="body-info">
+            <h3>太阳系天体</h3>
+            <div class="body-item" data-body="sun">太阳 (Sun)</div>
+            <div class="body-item" data-body="mercury">水星 (Mercury)</div>
+            <div class="body-item" data-body="venus">金星 (Venus)</div>
+            <div class="body-item" data-body="earth">地球 (Earth)</div>
+            <div class="body-item" data-body="mars">火星 (Mars)</div>
+            <div class="body-item" data-body="jupiter">木星 (Jupiter)</div>
+            <div class="body-item" data-body="saturn">土星 (Saturn)</div>
+            <div class="body-item" data-body="uranus">天王星 (Uranus)</div>
+            <div class="body-item" data-body="neptune">海王星 (Neptune)</div>
+        </div>
+
+        <div class="time-controls">
+            <h4>时间控制</h4>
+            <div class="time-display" id="timeDisplay">2026-05-03</div>
+            <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                <button class="btn btn-secondary" id="playPause">暂停</button>
+                <button class="btn btn-secondary" id="stepForward">前进一天</button>
+            </div>
+            <input type="range" id="timeSlider" min="0" max="365" value="0" style="width: 150px;">
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ============ 天体数据 ============
+        const SOLAR_SYSTEM_DATA = {
+            sun: {
+                name: '太阳',
+                nameEn: 'Sun',
+                radius: 5,
+                color: 0xffdd00,
+                orbitRadius: 0,
+                orbitPeriod: 0,
+                eccentricity: 0,
+                inclination: 0
+            },
+            mercury: {
+                name: '水星',
+                nameEn: 'Mercury',
+                radius: 0.5,
+                color: 0xaaaaaa,
+                orbitRadius: 10,
+                orbitPeriod: 88,
+                eccentricity: 0.205,
+                inclination: 7.0
+            },
+            venus: {
+                name: '金星',
+                nameEn: 'Venus',
+                radius: 0.8,
+                color: 0xffeecc,
+                orbitRadius: 15,
+                orbitPeriod: 225,
+                eccentricity: 0.007,
+                inclination: 3.4
+            },
+            earth: {
+                name: '地球',
+                nameEn: 'Earth',
+                radius: 0.9,
+                color: 0x4488ff,
+                orbitRadius: 20,
+                orbitPeriod: 365,
+                eccentricity: 0.017,
+                inclination: 0
+            },
+            mars: {
+                name: '火星',
+                nameEn: 'Mars',
+                radius: 0.7,
+                color: 0xff6644,
+                orbitRadius: 28,
+                orbitPeriod: 687,
+                eccentricity: 0.093,
+                inclination: 1.8
+            },
+            jupiter: {
+                name: '木星',
+                nameEn: 'Jupiter',
+                radius: 2.5,
+                color: 0xffaa66,
+                orbitRadius: 45,
+                orbitPeriod: 4333,
+                eccentricity: 0.049,
+                inclination: 1.3
+            },
+            saturn: {
+                name: '土星',
+                nameEn: 'Saturn',
+                radius: 2.2,
+                color: 0xffdd99,
+                orbitRadius: 60,
+                orbitPeriod: 10759,
+                eccentricity: 0.056,
+                inclination: 2.5,
+                hasRing: true
+            },
+            uranus: {
+                name: '天王星',
+                nameEn: 'Uranus',
+                radius: 1.5,
+                color: 0x66ffee,
+                orbitRadius: 75,
+                orbitPeriod: 30687,
+                eccentricity: 0.046,
+                inclination: 0.8
+            },
+            neptune: {
+                name: '海王星',
+                nameEn: 'Neptune',
+                radius: 1.4,
+                color: 0x4444ff,
+                orbitRadius: 90,
+                orbitPeriod: 60190,
+                eccentricity: 0.010,
+                inclination: 1.8
+            }
+        };
+
+        // ============ 全局变量 ============
+        let scene, camera, renderer, controls;
+        let bodies = {};
+        let orbits = {};
+        let orbitLines = {};
+        let selectedBody = 'sun';
+        let isPlaying = true;
+        let currentDay = 0;
+        let clock = new THREE.Clock();
+
+        // ============ 初始化 ============
+        function init() {
+            const canvas = document.getElementById('canvas');
+
+            // 场景
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a1a);
+
+            // 相机
+            camera = new THREE.PerspectiveCamera(
+                60,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                10000
+            );
+            camera.position.set(0, 80, 150);
+
+            // 渲染器
+            renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                antialias: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // 控制器
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxDistance = 500;
+            controls.minDistance = 20;
+
+            // 添加星空背景
+            createStarfield();
+
+            // 创建太阳系
+            createSolarSystem();
+
+            // 添加太阳光晕
+            createSunGlow();
+
+            // 隐藏加载动画
+            document.getElementById('loading').style.display = 'none';
+
+            // 绑定事件
+            bindEvents();
+
+            // 选中地球作为默认
+            selectBody('earth');
+
+            // 开始动画
+            animate();
+        }
+
+        // ============ 创建星空背景 ============
+        function createStarfield() {
+            const geometry = new THREE.BufferGeometry();
+            const count = 5000;
+            const positions = new Float32Array(count * 3);
+
+            for (let i = 0; i < count * 3; i += 3) {
+                const radius = 2000 + Math.random() * 3000;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+
+                positions[i] = radius * Math.sin(phi) * Math.cos(theta);
+                positions[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
+                positions[i + 2] = radius * Math.cos(phi);
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const material = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 2,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            scene.add(new THREE.Points(geometry, material));
+        }
+
+        // ============ 创建太阳系 ============
+        function createSolarSystem() {
+            // 创建太阳
+            const sunGeometry = new THREE.SphereGeometry(SOLAR_SYSTEM_DATA.sun.radius, 32, 32);
+            const sunMaterial = new THREE.MeshBasicMaterial({
+                color: SOLAR_SYSTEM_DATA.sun.color
+            });
+            bodies.sun = new THREE.Mesh(sunGeometry, sunMaterial);
+            scene.add(bodies.sun);
+
+            // 创建行星
+            Object.entries(SOLAR_SYSTEM_DATA).forEach(([key, data]) => {
+                if (key === 'sun') return;
+
+                // 行星几何体
+                const geometry = new THREE.SphereGeometry(data.radius, 32, 32);
+                const material = new THREE.MeshStandardMaterial({
+                    color: data.color,
+                    roughness: 0.8,
+                    metalness: 0.2
+                });
+                const mesh = new THREE.Mesh(geometry, material);
+                bodies[key] = mesh;
+                scene.add(mesh);
+
+                // 创建轨道线
+                createOrbit(key, data);
+            });
+
+            // 添加光照
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.PointLight(0xffffee, 2, 500);
+            sunLight.position.set(0, 0, 0);
+            scene.add(sunLight);
+        }
+
+        // ============ 创建轨道 ============
+        function createOrbit(bodyKey, data) {
+            if (data.orbitRadius === 0) return;
+
+            const points = [];
+            const segments = 128;
+
+            for (let i = 0; i <= segments; i++) {
+                const angle = (i / segments) * Math.PI * 2;
+                const r = data.orbitRadius * (1 + data.eccentricity * Math.cos(angle));
+                const x = r * Math.cos(angle);
+                const z = r * Math.sin(angle);
+                points.push(new THREE.Vector3(x, 0, z));
+            }
+
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const material = new THREE.LineBasicMaterial({
+                color: 0x3498db,
+                transparent: true,
+                opacity: 0.5
+            });
+
+            const orbit = new THREE.Line(geometry, material);
+            orbits[bodyKey] = orbit;
+            scene.add(orbit);
+        }
+
+        // ============ 创建太阳光晕 ============
+        function createSunGlow() {
+            const glowGeometry = new THREE.SphereGeometry(SOLAR_SYSTEM_DATA.sun.radius * 1.5, 32, 32);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffff00,
+                transparent: true,
+                opacity: 0.3
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            scene.add(glow);
+        }
+
+        // ============ 事件绑定 ============
+        function bindEvents() {
+            window.addEventListener('resize', onWindowResize);
+
+            document.getElementById('resetView').addEventListener('click', resetView);
+            document.getElementById('toggleOrbits').addEventListener('click', toggleOrbits);
+            document.getElementById('playPause').addEventListener('click', togglePlayPause);
+            document.getElementById('stepForward').addEventListener('click', stepForward);
+            document.getElementById('timeSlider').addEventListener('input', onTimeSliderChange);
+            document.getElementById('selectBody').addEventListener('change', (e) => selectBody(e.target.value));
+
+            // 天体选择
+            document.querySelectorAll('.body-item').forEach(item => {
+                item.addEventListener('click', () => selectBody(item.dataset.body));
+            });
+        }
+
+        // ============ 选择天体 ============
+        function selectBody(bodyKey) {
+            selectedBody = bodyKey;
+            const data = SOLAR_SYSTEM_DATA[bodyKey];
+
+            document.getElementById('selectedBody').textContent = data.name;
+            document.getElementById('bodyDistance').textContent = bodyKey === 'sun' ? '0' : data.orbitRadius.toFixed(2);
+            document.getElementById('orbitalPeriod').textContent = data.orbitPeriod;
+            document.getElementById('eccentricity').textContent = data.eccentricity.toFixed(3);
+
+            // 更新选中高亮
+            document.querySelectorAll('.body-item').forEach(item => {
+                item.classList.toggle('selected', item.dataset.body === bodyKey);
+            });
+
+            document.getElementById('selectBody').value = bodyKey;
+        }
+
+        // ============ 窗口调整 ============
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ============ 重置视角 ============
+        function resetView() {
+            camera.position.set(0, 80, 150);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
+
+        // ============ 切换轨道显示 ============
+        function toggleOrbits() {
+            const visible = orbits.earth.visible;
+            Object.values(orbits).forEach(orbit => orbit.visible = !visible);
+        }
+
+        // ============ 播放控制 ============
+        function togglePlayPause() {
+            isPlaying = !isPlaying;
+            document.getElementById('playPause').textContent = isPlaying ? '暂停' : '播放';
+        }
+
+        function stepForward() {
+            currentDay = (currentDay + 1) % 365;
+            updateTimeDisplay();
+        }
+
+        function onTimeSliderChange(e) {
+            currentDay = parseInt(e.target.value);
+            updateTimeDisplay();
+        }
+
+        function updateTimeDisplay() {
+            const date = new Date('2026-05-03');
+            date.setDate(date.getDate() + currentDay);
+            const dateStr = date.toISOString().substring(0, 10);
+            document.getElementById('timeDisplay').textContent = dateStr;
+            document.getElementById('currentDate').textContent = dateStr;
+        }
+
+        // ============ 动画循环 ============
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            // 更新时间
+            if (isPlaying) {
+                const timeSpeed = parseInt(document.getElementById('timeSpeed').value) * 0.01;
+                currentDay = (currentDay + delta * timeSpeed) % 365;
+                document.getElementById('timeSlider').value = currentDay;
+                updateTimeDisplay();
+            }
+
+            // 更新行星位置
+            Object.entries(SOLAR_SYSTEM_DATA).forEach(([key, data]) => {
+                if (key === 'sun' || !bodies[key]) return;
+
+                const angle = (currentDay / data.orbitPeriod) * Math.PI * 2;
+                const r = data.orbitRadius;
+                bodies[key].position.x = r * Math.cos(angle);
+                bodies[key].position.z = r * Math.sin(angle);
+                bodies[key].position.y = data.orbitRadius * Math.sin(data.inclination * Math.PI / 180) * Math.sin(angle);
+            });
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // 初始化
+        init();
+    </script>
+</body>
+</html>

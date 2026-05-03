@@ -42,6 +42,9 @@ except ImportError:
 # 从统一模块导入 Paper 数据模型
 from data_models import Paper
 
+# 假说生成器
+from hypothesis_generator import HypothesisGenerator, Hypothesis as Hyp
+
 @dataclass
 class ResearchGap:
     """研究空白/Gap"""
@@ -78,6 +81,8 @@ class ResearchState:
     trend_direction: str = "stable"  # rising, declining, stable
     summary: str = ""
     sources_used: List[str] = field(default_factory=list)  # 使用的数据源
+    relevant_documents: List[Dict] = field(default_factory=list)  # RAG检索结果
+    hypotheses: List["Hypothesis"] = field(default_factory=list)  # 生成的假说列表
 
 @dataclass
 class LiteratureReview:
@@ -98,10 +103,13 @@ class ObservatoryLink:
     suggested_observations: List[Dict] = field(default_factory=list)
     data_requirements: List[str] = field(default_factory=list)
 
-# ============ ChromaDB向量存储接口 (预留RAG增强) ============
+# ============ ChromaDB向量存储接口 (RAG增强) ============
 
 # 从统一模块导入向量存储实现
 from vector_store import ChromaDBVectorStore
+
+# 异步锁，用于向量存储操作的线程安全
+_vector_store_lock = asyncio.Lock()
 
 # ============ arXiv API 客户端 ============
 
@@ -1252,7 +1260,9 @@ class LiteratureResearcher:
                  use_openalex: bool = False,
                  use_semantic_scholar: bool = False,
                  semantic_scholar_api_key: str = None,
-                 max_results_per_source: int = 30):
+                 max_results_per_source: int = 30,
+                 use_vector_store: bool = True,
+                 vector_persist_dir: str = "runtime/data/chroma_db"):
         """
         初始化文献调研器
 
@@ -1262,11 +1272,14 @@ class LiteratureResearcher:
             use_semantic_scholar: 是否使用Semantic Scholar
             semantic_scholar_api_key: Semantic Scholar API Key
             max_results_per_source: 每个数据源的最大结果数
+            use_vector_store: 是否启用向量存储(RAG增强)
+            vector_persist_dir: 向量存储持久化目录
         """
         self.use_arxiv = use_arxiv
         self.use_openalex = use_openalex
         self.use_semantic_scholar = use_semantic_scholar
         self.max_results_per_source = max_results_per_source
+        self.use_vector_store = use_vector_store
 
         # 初始化各数据源客户端
         self.arxiv = ArxivAPI() if use_arxiv else None
@@ -1274,6 +1287,11 @@ class LiteratureResearcher:
         self.semantic_scholar = SemanticScholarClient(
             api_key=semantic_scholar_api_key
         ) if use_semantic_scholar else None
+
+        # 初始化ChromaDB向量存储 (RAG增强)
+        self._vector_store: Optional[ChromaDBVectorStore] = None
+        self._vector_store_initialized = False
+        self._vector_persist_dir = vector_persist_dir
 
         self._cache: Dict[str, Any] = {}
 
@@ -1288,6 +1306,240 @@ class LiteratureResearcher:
         if self.use_semantic_scholar:
             sources.append('semantic_scholar')
         return sources
+
+    # ============ 向量存储 (ChromaDB RAG增强) ============
+
+    async def _init_vector_store(self) -> bool:
+        """
+        初始化ChromaDB向量存储
+
+        Returns:
+            bool: 初始化是否成功
+        """
+        if not self.use_vector_store:
+            return False
+
+        if self._vector_store_initialized:
+            return True
+
+        async with _vector_store_lock:
+            if self._vector_store_initialized:
+                return True
+
+            try:
+                if self._vector_store is None:
+                    self._vector_store = ChromaDBVectorStore(
+                        persist_directory=self._vector_persist_dir
+                    )
+                result = await self._vector_store.initialize()
+                self._vector_store_initialized = result
+                if result:
+                    print(f"[LiteratureResearcher] ChromaDB向量存储初始化成功: {self._vector_persist_dir}")
+                else:
+                    print("[LiteratureResearcher] ChromaDB向量存储初始化失败")
+                return result
+            except Exception as e:
+                print(f"[LiteratureResearcher] 向量存储初始化异常: {e}")
+                self._vector_store_initialized = False
+                return False
+
+    async def index_papers(self, papers: List[Paper], skip_existing: bool = True) -> bool:
+        """
+        将论文索引到向量存储 (增量索引)
+
+        Args:
+            papers: 论文列表
+            skip_existing: 是否跳过已存在的文档
+
+        Returns:
+            bool: 索引是否成功
+        """
+        if not self.use_vector_store:
+            return False
+
+        if not await self._init_vector_store():
+            return False
+
+        if not papers:
+            return True
+
+        try:
+            # 准备文档数据
+            documents = []
+            metadatas = []
+            ids = []
+
+            for paper in papers:
+                # 构建文档内容 (标题 + 摘要)
+                content = f"{paper.title}\n\n{paper.abstract}"
+                documents.append(content)
+
+                # 构建元数据
+                metadata = {
+                    "paper_id": paper.id,
+                    "title": paper.title,
+                    "authors": ",".join(paper.authors[:5]),  # 限制作者数量
+                    "source": paper.source,
+                    "categories": ",".join(paper.categories[:3]),
+                    "published_date": paper.published_date,
+                    "citations": paper.citations,
+                    "abstract": paper.abstract[:500] if paper.abstract else "",  # 截断摘要
+                }
+                metadatas.append(metadata)
+
+                # 使用论文ID作为向量存储ID
+                ids.append(paper.id)
+
+            # 添加到向量存储
+            result = await self._vector_store.add_documents(
+                documents=documents,
+                metadatas=metadatas,
+                ids=ids,
+                skip_existing=skip_existing
+            )
+
+            if result:
+                print(f"[LiteratureResearcher] 成功索引 {len(papers)} 篇论文到向量存储")
+            return result
+
+        except Exception as e:
+            print(f"[LiteratureResearcher] 索引论文失败: {e}")
+            return False
+
+    async def search_vector_store(self, query: str, n_results: int = 5) -> List[Dict]:
+        """
+        在向量存储中搜索相关论文
+
+        Args:
+            query: 搜索查询
+            n_results: 返回结果数量
+
+        Returns:
+            List[Dict]: 搜索结果
+        """
+        if not self.use_vector_store:
+            return []
+
+        if not await self._init_vector_store():
+            return []
+
+        try:
+            results = await self._vector_store.similarity_search(
+                query=query,
+                n_results=n_results
+            )
+            return results
+        except Exception as e:
+            print(f"[LiteratureResearcher] 向量搜索失败: {e}")
+            return []
+
+    async def get_vector_store_stats(self) -> Dict:
+        """
+        获取向量存储统计信息
+
+        Returns:
+            Dict: 统计信息
+        """
+        if not self.use_vector_store:
+            return {"enabled": False}
+
+        if not await self._init_vector_store():
+            return {"enabled": True, "initialized": False}
+
+        try:
+            stats = await self._vector_store.get_collection_stats()
+            stats["enabled"] = True
+            stats["initialized"] = True
+            return stats
+        except Exception as e:
+            return {"enabled": True, "initialized": False, "error": str(e)}
+
+    async def research_all_with_rag(self, topic: str, max_papers: int = 30) -> ResearchState:
+        """
+        使用RAG增强的完整文献调研
+
+        流程:
+        1. 向量存储语义搜索(已有文献)
+        2. 多数据源API搜索(新文献)
+        3. 将新论文索引到向量存储
+        4. 综合分析
+
+        Args:
+            topic: 研究主题
+            max_papers: 最大论文数
+
+        Returns:
+            ResearchState: 研究状态
+        """
+        print(f"\n🔍 开始RAG增强文献调研: {topic}")
+
+        # 1. 先在向量存储中搜索已有文献
+        existing_docs = await self.search_vector_store(topic, n_results=10)
+        print(f"   向量存储中找到 {len(existing_docs)} 篇已有文献")
+
+        # 2. 多数据源搜索新文献
+        papers = await self.search_all(topic, max_results=max_papers)
+        print(f"   API搜索找到 {len(papers)} 篇论文")
+
+        if not papers and not existing_docs:
+            return ResearchState(
+                query=topic, total_results=0, papers=[],
+                key_themes=[], research_gaps=[],
+                timeline={}, top_authors=[], sources_used=self.sources_used
+            )
+
+        # 3. 将新论文索引到向量存储 (增量索引)
+        if papers:
+            await self.index_papers(papers, skip_existing=True)
+
+        # 4. 综合RAG结果和API结果
+        # 构建研究状态
+        themes = self._extract_themes_advanced(papers)
+        clusters = self._cluster_papers(papers)
+        gaps = self._analyze_gaps_advanced(papers, themes)
+        timeline = self._analyze_timeline(papers)
+        top_authors = self._find_top_authors(papers)
+        trend = self._analyze_trend(timeline)
+        summary = self._generate_summary_advanced(topic, papers, themes, gaps, trend)
+
+        # 5. 生成假说 (使用RAG增强的context)
+        hypotheses = []
+        try:
+            hypo_gen = HypothesisGenerator()
+            # 构建临时的ResearchState用于假说生成
+            temp_state = ResearchState(
+                query=topic,
+                total_results=len(papers),
+                papers=papers,
+                key_themes=themes,
+                research_gaps=gaps,
+                timeline=timeline,
+                top_authors=top_authors,
+                paper_clusters=clusters,
+                relevant_documents=existing_docs
+            )
+            hypotheses = await hypo_gen.generate_from_research(temp_state)
+            logger.info(f"RAG增强假说生成完成，共生成 {len(hypotheses)} 个假说")
+            for h in hypotheses:
+                logger.debug(f"  - {h.id}: {h.statement[:50]}...")
+        except Exception as e:
+            logger.error(f"RAG增强假说生成失败: {e}")
+
+        return ResearchState(
+            query=topic,
+            total_results=len(papers),
+            papers=papers,
+            key_themes=themes,
+            research_gaps=gaps,
+            timeline=timeline,
+            top_authors=top_authors,
+            paper_clusters=clusters,
+            trend_direction=trend,
+            summary=summary,
+            sources_used=self.sources_used,
+            relevant_documents=existing_docs,  # 包含RAG检索结果
+            hypotheses=hypotheses
+        )
 
     async def search_arxiv(self, query: str, max_results: int = None) -> List[Paper]:
         """
@@ -1423,28 +1675,50 @@ class LiteratureResearcher:
 
     async def research(self, topic: str, max_papers: int = 30) -> ResearchState:
         """
-        执行完整文献调研
+        执行完整文献调研 (RAG增强)
 
         Args:
             topic: 研究主题/关键词
             max_papers: 最大搜索论文数 (总数量，多源时会分配)
 
         Returns:
-            ResearchState: 研究现状分析结果
+            ResearchState: 研究现状分析结果 (包含relevant_documents字段)
         """
         print(f"\n🔍 开始文献调研: {topic}")
         print(f"   使用数据源: {', '.join(self.sources_used) if self.sources_used else '无'}")
+
+        # 0. RAG增强: 在向量存储中搜索已有文献
+        existing_docs = []
+        rag_used = False
+        if self.use_vector_store:
+            try:
+                existing_docs = await self.search_vector_store(topic, n_results=10)
+                if existing_docs:
+                    rag_used = True
+                    print(f"   [RAG] 向量存储中找到 {len(existing_docs)} 篇已有文献")
+            except Exception as e:
+                print(f"   [RAG] 向量搜索失败 (非致命): {e}")
+                existing_docs = []
 
         # 1. 搜索论文 (多数据源)
         papers = await self.search_all(topic, max_results=max_papers)
         print(f"   找到 {len(papers)} 篇相关论文 (去重后)")
 
-        if not papers:
+        if not papers and not existing_docs:
             return ResearchState(
                 query=topic, total_results=0, papers=[],
                 key_themes=[], research_gaps=[],
                 timeline={}, top_authors=[], sources_used=self.sources_used
             )
+
+        # 1.5. RAG增强: 将新论文索引到向量存储 (增量索引)
+        if papers and self.use_vector_store:
+            try:
+                await self.index_papers(papers, skip_existing=True)
+                if rag_used:
+                    print(f"   [RAG] 已将 {len(papers)} 篇新论文索引到向量存储")
+            except Exception as e:
+                print(f"   [RAG] 索引论文失败 (非致命): {e}")
 
         # 2. 深度主题提取
         themes = self._extract_themes_advanced(papers)
@@ -1473,6 +1747,28 @@ class LiteratureResearcher:
         # 8. 生成摘要
         summary = self._generate_summary_advanced(topic, papers, themes, gaps, trend)
 
+        # 9. 生成假说
+        hypotheses = []
+        try:
+            hypo_gen = HypothesisGenerator()
+            hypotheses = await hypo_gen.generate_from_research(
+                ResearchState(
+                    query=topic,
+                    total_results=len(papers),
+                    papers=papers,
+                    key_themes=themes,
+                    research_gaps=gaps,
+                    timeline=timeline,
+                    top_authors=top_authors,
+                    paper_clusters=clusters
+                )
+            )
+            logger.info(f"假说生成完成，共生成 {len(hypotheses)} 个假说")
+            for h in hypotheses:
+                logger.debug(f"  - {h.id}: {h.statement[:50]}...")
+        except Exception as e:
+            logger.error(f"假说生成失败: {e}")
+
         return ResearchState(
             query=topic,
             total_results=len(papers),
@@ -1484,7 +1780,9 @@ class LiteratureResearcher:
             paper_clusters=clusters,
             trend_direction=trend,
             summary=summary,
-            sources_used=self.sources_used
+            sources_used=self.sources_used,
+            hypotheses=hypotheses,
+            relevant_documents=existing_docs  # RAG检索结果
         )
 
     def _extract_themes_advanced(self, papers: List[Paper], top_n: int = 15) -> List[str]:
