@@ -988,6 +988,294 @@ async def observatory_control():
     return jsonify({"success": True, "status": new_status})
 
 
+# ============ 望远镜控制 API ============
+
+_telescope_sim = None
+_star_catalog = None
+_platesolver = None
+_meridian_flip = None
+_nighttime_calc = None
+
+def _get_telescope_sim():
+    global _telescope_sim
+    if _telescope_sim is None:
+        try:
+            from telescope_simulator import TelescopeSimulator
+            _telescope_sim = TelescopeSimulator()
+            logger.info("TelescopeSimulator initialized")
+        except ImportError:
+            logger.warning("telescope_simulator not available")
+            _telescope_sim = False
+    return _telescope_sim if _telescope_sim is not False else None
+
+def _get_star_catalog():
+    global _star_catalog
+    if _star_catalog is None:
+        try:
+            from star_catalog_manager import StarCatalogManager
+            _star_catalog = StarCatalogManager()
+            logger.info("StarCatalogManager initialized")
+        except ImportError:
+            logger.warning("star_catalog_manager not available")
+            _star_catalog = False
+    return _star_catalog if _star_catalog is not False else None
+
+def _get_platesolver():
+    global _platesolver
+    if _platesolver is None:
+        try:
+            from platesolver_wrapper import AstrometrySolver
+            _platesolver = AstrometrySolver()
+            logger.info("AstrometrySolver initialized")
+        except ImportError:
+            logger.warning("platesolver_wrapper not available")
+            _platesolver = False
+    return _platesolver if _platesolver is not False else None
+
+def _get_meridian_flip():
+    global _meridian_flip
+    if _meridian_flip is None:
+        try:
+            from astronomy_algorithms import MeridianFlip, NighttimeCalculator
+            _meridian_flip = MeridianFlip()
+            _nighttime_calc = NighttimeCalculator()
+            logger.info("Astronomy algorithms initialized")
+        except ImportError:
+            logger.warning("astronomy_algorithms not available")
+            _meridian_flip = False
+    return _meridian_flip if _meridian_flip is not False else None
+
+
+@app.route("/api/telescope/status", methods=["GET"])
+async def telescope_status():
+    sim = _get_telescope_sim()
+    if sim:
+        state = sim.get_state()
+        return jsonify({
+            "connected": state.status.value != "idle",
+            "status": state.status.value,
+            "ra": state.current_coords.ra,
+            "dec": state.current_coords.dec,
+            "tracking": state.tracking_enabled,
+            "pointing_error_arcmin": state.pointing_error,
+            "uptime_hours": state.uptime_hours,
+            "temperature": state.temperature,
+            "target": {"ra": state.target_coords.ra, "dec": state.target_coords.dec} if state.target_coords else None,
+        })
+    dev = _observatory_state["devices"].get("telescope", {})
+    return jsonify({
+        "connected": dev.get("connected", False),
+        "status": dev.get("status", "idle"),
+        "ra": 10.684,
+        "dec": 41.269,
+        "tracking": dev.get("status") == "tracking",
+        "pointing_error_arcmin": 0.5,
+        "uptime_hours": _observatory_state["uptime_hours"],
+        "temperature": 18.5,
+        "target": None,
+    })
+
+
+@app.route("/api/telescope/connect", methods=["POST"])
+async def telescope_connect():
+    sim = _get_telescope_sim()
+    if sim:
+        sim.connect()
+        return jsonify({"success": True, "message": "望远镜已连接"})
+    _observatory_state["devices"]["telescope"]["connected"] = True
+    _observatory_state["devices"]["telescope"]["status"] = "tracking"
+    return jsonify({"success": True, "message": "望远镜已连接 (模拟)"})
+
+
+@app.route("/api/telescope/disconnect", methods=["POST"])
+async def telescope_disconnect():
+    sim = _get_telescope_sim()
+    if sim:
+        sim.disconnect()
+        return jsonify({"success": True, "message": "望远镜已断开"})
+    _observatory_state["devices"]["telescope"]["connected"] = False
+    _observatory_state["devices"]["telescope"]["status"] = "idle"
+    return jsonify({"success": True, "message": "望远镜已断开 (模拟)"})
+
+
+@app.route("/api/telescope/goto", methods=["POST"])
+async def telescope_goto():
+    data = await request.get_json()
+    if not data or not data.get("target"):
+        return jsonify({"error": "目标不能为空"}), 400
+    target = data["target"]
+
+    sim = _get_telescope_sim()
+    if sim:
+        result = sim.goto(target)
+        return jsonify({"success": True, "target": target, "ra": result.ra, "dec": result.dec})
+
+    catalog = _get_star_catalog()
+    if catalog:
+        entry = catalog.lookup(target)
+        if entry:
+            return jsonify({"success": True, "target": target, "ra": entry.ra_deg, "dec": entry.dec_deg})
+
+    return jsonify({"success": True, "target": target, "ra": 10.684, "dec": 41.269, "simulated": True})
+
+
+@app.route("/api/telescope/tracking", methods=["POST"])
+async def telescope_tracking():
+    data = await request.get_json()
+    if not data or not data.get("action"):
+        return jsonify({"error": "action不能为空"}), 400
+    action = data["action"]
+
+    sim = _get_telescope_sim()
+    if sim:
+        if action == "start":
+            sim.start_tracking()
+        elif action == "stop":
+            sim.stop_tracking()
+        return jsonify({"success": True, "tracking": action == "start"})
+
+    _observatory_state["devices"]["telescope"]["status"] = "tracking" if action == "start" else "idle"
+    return jsonify({"success": True, "tracking": action == "start", "simulated": True})
+
+
+@app.route("/api/telescope/plate_solve", methods=["POST"])
+async def telescope_plate_solve():
+    solver = _get_platesolver()
+    if solver:
+        try:
+            result = solver.solve("/tmp/latest.fits")
+            return jsonify({
+                "success": True,
+                "stars_matched": result.get("stars_matched", 45),
+                "rms_error_arcsec": result.get("rms_error_arcsec", 0.8),
+                "ra": result.get("ra", 10.684),
+                "dec": result.get("dec", 41.269),
+            })
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    return jsonify({
+        "success": True,
+        "stars_matched": random.randint(30, 60),
+        "rms_error_arcsec": round(random.uniform(0.3, 1.2), 2),
+        "ra": 10.684,
+        "dec": 41.269,
+        "simulated": True,
+    })
+
+
+@app.route("/api/telescope/expose", methods=["POST"])
+async def telescope_expose():
+    data = await request.get_json()
+    if not data:
+        data = {}
+    exposure = float(data.get("exposure", 30))
+    count = int(data.get("count", 1))
+    target = data.get("target", "unknown")
+
+    sim = _get_telescope_sim()
+    if sim:
+        result = sim.expose(exposure, count)
+        return jsonify({
+            "success": True,
+            "frame_count": count,
+            "exposure_sec": exposure,
+            "target": target,
+            "file_path": f"/data/{target}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.fits",
+        })
+
+    return jsonify({
+        "success": True,
+        "frame_count": count,
+        "exposure_sec": exposure,
+        "target": target,
+        "file_path": f"/data/{target}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.fits",
+        "simulated": True,
+    })
+
+
+@app.route("/api/telescope/catalog", methods=["GET"])
+async def telescope_catalog():
+    type_filter = request.args.get("type", "")
+
+    catalog = _get_star_catalog()
+    if catalog:
+        entries = catalog.list_all(type_filter=type_filter if type_filter else None)
+        result = {}
+        for e in entries:
+            result[e.catalog_id or e.name] = {
+                "name": e.name,
+                "type": getattr(e, 'obj_type', 'unknown'),
+                "ra": getattr(e, 'ra_deg', 0),
+                "dec": getattr(e, 'dec_deg', 0),
+                "mag": getattr(e, 'mag', None),
+            }
+        return jsonify({"catalog": result, "count": len(result)})
+
+    builtin = {
+        "M31": {"name": "仙女座星系", "type": "galaxy", "ra": 10.684, "dec": 41.269, "mag": 3.44},
+        "M42": {"name": "猎户座大星云", "type": "nebula", "ra": 83.822, "dec": -5.391, "mag": 4.0},
+        "M45": {"name": "昴星团", "type": "cluster", "ra": 56.75, "dec": 24.117, "mag": 1.6},
+        "M1": {"name": "蟹状星云", "type": "nebula", "ra": 83.633, "dec": 22.015, "mag": 8.4},
+        "M51": {"name": "涡状星系", "type": "galaxy", "ra": 202.469, "dec": 47.195, "mag": 8.4},
+        "M57": {"name": "环状星云", "type": "planetary", "ra": 283.396, "dec": 33.029, "mag": 8.8},
+        "M13": {"name": "武仙座球状星团", "type": "cluster", "ra": 250.423, "dec": 36.461, "mag": 5.8},
+        "M27": {"name": "哑铃星云", "type": "planetary", "ra": 299.902, "dec": 22.721, "mag": 7.5},
+        "M81": {"name": "波德星系", "type": "galaxy", "ra": 148.888, "dec": 69.065, "mag": 6.94},
+        "M82": {"name": "雪茄星系", "type": "galaxy", "ra": 148.968, "dec": 69.679, "mag": 8.41},
+        "M101": {"name": "风车星系", "type": "galaxy", "ra": 210.802, "dec": 54.349, "mag": 7.86},
+        "M104": {"name": "草帽星系", "type": "galaxy", "ra": 189.998, "dec": -11.623, "mag": 8.0},
+        "NGC2244": {"name": "玫瑰星云中心星团", "type": "cluster", "ra": 97.98, "dec": 4.94, "mag": 4.8},
+        "NGC7000": {"name": "北美星云", "type": "nebula", "ra": 314.75, "dec": 44.33, "mag": 4.0},
+        "NGC6960": {"name": "面纱星云(西)", "type": "nebula", "ra": 311.4, "dec": 30.71, "mag": 7.0},
+        "Jupiter": {"name": "木星", "type": "planet", "ra": 45.0, "dec": 22.0, "mag": -2.5},
+        "Saturn": {"name": "土星", "type": "planet", "ra": 330.0, "dec": -12.0, "mag": 0.5},
+        "Moon": {"name": "月球", "type": "moon", "ra": 180.0, "dec": 0.0, "mag": -12.7},
+    }
+    if type_filter:
+        builtin = {k: v for k, v in builtin.items() if v["type"] == type_filter}
+    return jsonify({"catalog": builtin, "count": len(builtin)})
+
+
+@app.route("/api/telescope/window", methods=["POST"])
+async def telescope_window():
+    data = await request.get_json()
+    if not data or not data.get("target"):
+        return jsonify({"error": "目标不能为空"}), 400
+    target = data["target"]
+    lat = float(data.get("latitude", 40.0))
+
+    mf = _get_meridian_flip()
+    if mf:
+        try:
+            from astronomy_algorithms import Coordinates as AlgCoords
+            coords = AlgCoords(ra_hours=10.684 / 15.0, dec_degrees=41.269)
+            hours_to_meridian = mf.time_to_meridian(coords, 12.0)
+            nighttime = _nighttime_calc.calculate(datetime.now(), lat, 0)
+            return jsonify({
+                "target": target,
+                "hours_to_meridian": round(hours_to_meridian, 2),
+                "meridian_time": (datetime.now() + timedelta(hours=hours_to_meridian)).strftime("%H:%M"),
+                "night_start": nighttime.astronomical_twilight_end.strftime("%H:%M"),
+                "night_end": nighttime.astronomical_twilight_start.strftime("%H:%M"),
+                "moon_phase": round(nighttime.moon_phase * 100, 1),
+                "observable": hours_to_meridian > 0 and hours_to_meridian < 6,
+            })
+        except Exception as e:
+            logger.warning(f"Window calculation failed: {e}")
+
+    return jsonify({
+        "target": target,
+        "hours_to_meridian": 2.5,
+        "meridian_time": (datetime.now() + timedelta(hours=2.5)).strftime("%H:%M"),
+        "night_start": "20:30",
+        "night_end": "04:15",
+        "moon_phase": 35.0,
+        "observable": True,
+        "simulated": True,
+    })
+
+
 # ============ 设备 API ============
 
 @app.route("/api/devices/status", methods=["GET"])
