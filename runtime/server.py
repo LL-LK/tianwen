@@ -24,7 +24,6 @@ from quart import Quart, jsonify, request, render_template, websocket
 import uuid
 import json
 import time
-import random
 from threading import Lock
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -516,104 +515,39 @@ except ImportError:
     _REALTIME_BRIDGE_AVAILABLE = False
     logger.warning("Realtime bridge module not available, using legacy WebSocket manager")
 
-# ============ 模拟数据生成 ============
+# ============ 演示数据（标注为模拟，非真实观测） ============
 
 _observatory_state = {
-    "status": "observing",
-    "uptime_hours": 72.5,
-    "discoveries": 3,
-    "hypotheses": 15,
-    "current_target": {
-        "name": "M31 仙女座星系",
-        "ra": "00h42m44s",
-        "dec": "+41°16'09\"",
-        "type": "星系",
-        "magnitude": 3.44,
-        "exposure": "300s × 12帧",
-        "progress": 78,
-    },
-    "queue": [
-        {"id": "q1", "priority": "P0", "target": "SN2024X", "type": "超新星", "window": "22:30-22:45", "duration": "15min", "status": "进行中"},
-        {"id": "q2", "priority": "P1", "target": "HD209458", "type": "系外行星", "window": "23:00-01:00", "duration": "120min", "status": "等待中"},
-        {"id": "q3", "priority": "P2", "target": "NGC2244", "type": "星团", "window": "01:00-01:30", "duration": "30min", "status": "等待中"},
-        {"id": "q4", "priority": "P1", "target": "M42", "type": "星云", "window": "01:30-02:00", "duration": "30min", "status": "等待中"},
-        {"id": "q5", "priority": "P2", "target": "Jupiter", "type": "行星", "window": "02:00-02:30", "duration": "30min", "status": "等待中"},
-    ],
+    "status": "idle",
+    "uptime_hours": 0.0,
+    "discoveries": 0,
+    "hypotheses": 0,
+    "current_target": None,
+    "queue": [],
     "devices": {
-        "telescope": {"name": "Seestar S50", "status": "tracking", "connected": True},
-        "camera": {"name": "IMX462", "status": "exposing", "gain": 120, "exposure_ms": 300000},
+        "telescope": {"name": "Seestar S50", "status": "idle", "connected": False},
+        "camera": {"name": "IMX462", "status": "idle", "gain": 0, "exposure_ms": 0},
         "filter_wheel": {"name": "ZWO EFW", "status": "idle", "current": "Luminance"},
-        "dome": {"name": "远程圆顶", "status": "open", "azimuth": 45},
-        "weather": {"cloud_cover": 12, "humidity": 45, "temperature": 18.5, "wind_speed": 3.2, "seeing": 1.8},
+        "dome": {"name": "远程圆顶", "status": "closed", "azimuth": 0},
+        "weather": {"cloud_cover": 0, "humidity": 0, "temperature": 0, "wind_speed": 0, "seeing": 0},
     },
-    "research_loop": {
-        "cycle_id": "cycle_a3f8b2c1",
-        "cycle_number": 42,
-        "topic": "M31旋臂中未编目HII区搜索",
-        "steps": [
-            {"name": "文献检索", "status": "completed", "progress": 100},
-            {"name": "假说生成", "status": "completed", "progress": 100, "detail": "生成5个假说"},
-            {"name": "假说检验", "status": "running", "progress": 65},
-            {"name": "发现确认", "status": "pending", "progress": 0},
-            {"name": "观测调度", "status": "pending", "progress": 0},
-            {"name": "自我进化", "status": "pending", "progress": 0},
-        ],
-        "current_hypothesis": "M31旋臂中存在未编目HII区",
-        "confidence": 67.3,
-        "estimated_completion": "23:15",
-    },
-    "detections": {
-        "stage1": {"total": 234, "stars": 180, "galaxies": 45, "qsos": 9},
-        "stage2": {"classified_stars": 178, "classified_galaxies": 43, "classified_qsos": 8, "unknown": 5},
-        "stage3": {"nebula": 2, "comet": 1, "galaxy": 0, "globular_cluster": 0},
-    },
-    "latest_image": {
-        "id": "img_20260502_223015",
-        "target": "M31",
-        "exposure": 300,
-        "filter": "L",
-        "timestamp": "2026-05-02T22:30:15",
-        "size_kb": 8192,
-    },
+    "research_loop": None,
+    "detections": None,
+    "latest_image": None,
+    "_demo_mode": True,
 }
 
-_alerts = [
-    {"id": "a1", "level": "discovery", "time": "22:28", "message": "可能发现新瞬变源 SN2024X", "read": False},
-    {"id": "a2", "level": "warning", "time": "22:15", "message": "云量增加至40%，建议暂停观测", "read": False},
-    {"id": "a3", "level": "success", "time": "22:00", "message": "M31观测完成，12帧已入库", "read": True},
-    {"id": "a4", "level": "info", "time": "21:45", "message": "假说检验通过 (p<0.01)", "read": True},
-    {"id": "a5", "level": "info", "time": "21:30", "message": "Cycle #41 完成，发现1个候选天体", "read": True},
-]
+_alerts = []
 
-_log_entries = [
-    {"time": "22:28:15", "level": "DISCOVERY", "message": "新瞬变源检测: SN2024X候选"},
-    {"time": "22:28:10", "level": "ASTROPIPE", "message": "Stage III YOLO检测完成"},
-    {"time": "22:27:55", "level": "SCHEDULER", "message": "目标切换至 SN2024X"},
-    {"time": "22:27:30", "level": "CAMERA", "message": "曝光300s完成，图像已保存"},
-    {"time": "22:22:30", "level": "TELESCOPE", "message": "望远镜指向 M31 (00h42m44s +41°16')"},
-    {"time": "22:22:00", "level": "RESEARCH", "message": "假说检验进度: 65%"},
-    {"time": "22:20:00", "level": "WEATHER", "message": "天气更新: 云量12%, 视宁度1.8\""},
-    {"time": "22:15:00", "level": "SYSTEM", "message": "自动观测循环启动"},
-]
+_log_entries = []
 
 _lightcurve_data = {
-    "time": [f"22:{i:02d}" for i in range(0, 31)],
-    "magnitude": [15.2 + 0.3 * (i % 5) + random.uniform(-0.05, 0.05) for i in range(31)],
-    "error": [0.02 + random.uniform(0, 0.01) for _ in range(31)],
+    "time": [],
+    "magnitude": [],
+    "error": [],
 }
 
 _cycle_history = []
-for i in range(1, 43):
-    _cycle_history.append({
-        "id": f"cycle_{uuid.uuid4().hex[:8]}",
-        "number": i,
-        "topic": f"自动研究周期 #{i}",
-        "started_at": (datetime.now() - timedelta(hours=72 - i * 1.7)).isoformat(),
-        "completed_at": (datetime.now() - timedelta(hours=72 - i * 1.7 - 0.5)).isoformat() if i < 42 else None,
-        "status": "completed" if i < 42 else "running",
-        "discoveries": random.randint(0, 2),
-        "hypotheses": random.randint(1, 8),
-    })
 
 
 def _build_observatory_status():
@@ -1155,13 +1089,10 @@ async def telescope_plate_solve():
             return jsonify({"success": False, "error": str(e)}), 500
 
     return jsonify({
-        "success": True,
-        "stars_matched": random.randint(30, 60),
-        "rms_error_arcsec": round(random.uniform(0.3, 1.2), 2),
-        "ra": 10.684,
-        "dec": 41.269,
+        "success": False,
+        "error": "Plate solver not available",
         "simulated": True,
-    })
+    }), 503
 
 
 @app.route("/api/telescope/expose", methods=["POST"])

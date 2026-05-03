@@ -564,11 +564,11 @@ tr:hover td{background:rgba(59,130,246,0.04)}
     </div>
   </div>
   <div class="card">
-    <div class="card-header"><span class="card-title"><span class="icon">📋</span>模块耗时分析</span></div>
+    <div class="card-header"><span class="card-title"><span class="icon">📋</span>系统模块状态</span></div>
     <div style="overflow-x:auto">
-      <table><thead><tr><th>模块</th><th>调用次数</th><th>平均耗时</th><th>总耗时</th><th>状态</th></tr></thead>
+      <table><thead><tr><th>模块</th><th>详情</th><th>状态</th></tr></thead>
       <tbody id="moduleTimingBody">
-        <tr><td colspan="5" style="text-align:center;color:var(--text-muted)">加载中...</td></tr>
+        <tr><td colspan="3" style="text-align:center;color:var(--text-muted)">加载中...</td></tr>
       </tbody></table>
     </div>
   </div>
@@ -1399,38 +1399,65 @@ async function loadMonitor(){
 function renderMonitorCharts(){
   if (typeof Plotly === 'undefined') return;
 
-  var rlTrace = {x: Array.from({length:20},function(_,i){return i+1}), y: Array.from({length:20},function(){return Math.random()*30+65}), type:'scatter', mode:'lines+markers', marker:{color:'#10b981',size:3}, line:{color:'#10b981',width:1.5}, name:'调度效率'};
-  var rlLayout = {paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#a0aec0',size:10}, xaxis:{title:'轮次',gridcolor:'rgba(45,55,72,0.3)',zeroline:false}, yaxis:{title:'效率%',gridcolor:'rgba(45,55,72,0.3)',zeroline:false,range:[60,100]}, margin:{l:40,r:10,t:10,b:30}, showlegend:false, height:200};
-  Plotly.newPlot('rlChart', [rlTrace], rlLayout, {displayModeBar:false,responsive:true});
+  var noDataLayout = {paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#a0aec0',size:10}, xaxis:{visible:false}, yaxis:{visible:false}, margin:{l:10,r:10,t:10,b:10}, showlegend:false, height:200,
+    annotations: [{text:'暂无历史数据', xref:'paper', yref:'paper', x:0.5, y:0.5, showarrow:false, font:{color:'#718096',size:13}}]};
 
-  var perfTrace = {x:['22:00','22:05','22:10','22:15','22:20','22:25','22:30'], y: Array.from({length:7},function(){return Math.random()*200+50}), type:'scatter', mode:'lines+markers', marker:{color:'#3b82f6',size:3}, line:{color:'#3b82f6',width:1.5}, name:'响应时间'};
-  var perfLayout = {paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#a0aec0',size:10}, xaxis:{title:'时间',gridcolor:'rgba(45,55,72,0.3)',zeroline:false}, yaxis:{title:'ms',gridcolor:'rgba(45,55,72,0.3)',zeroline:false}, margin:{l:40,r:10,t:10,b:30}, showlegend:false, height:200};
-  Plotly.newPlot('perfChart', [perfTrace], perfLayout, {displayModeBar:false,responsive:true});
+  apiGet('/rl/stats').then(function(rlStats){
+    if (rlStats && rlStats.total_episodes > 0) {
+      var val = rlStats.efficiency || 0;
+      var rlTrace = {x:[1], y:[val], type:'bar', marker:{color:'#10b981'}, name:'调度效率', text:[val.toFixed(1)+'%'], textposition:'auto', textfont:{color:'#fff'}};
+      var rlLayout = {paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#a0aec0',size:10}, xaxis:{showticklabels:false}, yaxis:{title:'效率%',gridcolor:'rgba(45,55,72,0.3)',zeroline:false,range:[0,100]}, margin:{l:40,r:10,t:10,b:30}, showlegend:false, height:200};
+      Plotly.newPlot('rlChart', [rlTrace], rlLayout, {displayModeBar:false,responsive:true});
+    } else {
+      Plotly.newPlot('rlChart', [], noDataLayout, {displayModeBar:false,responsive:true});
+    }
+  }).catch(function(){ Plotly.newPlot('rlChart', [], noDataLayout, {displayModeBar:false,responsive:true}); });
 
-  var loopTrace = {x: Array.from({length:42},function(_,i){return i+1}), y: Array.from({length:42},function(){return Math.random()*2}), type:'bar', marker:{color:'#8b5cf6'}, name:'发现数'};
-  var loopLayout = {paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#a0aec0',size:10}, xaxis:{title:'周期',gridcolor:'rgba(45,55,72,0.3)',zeroline:false}, yaxis:{title:'发现',gridcolor:'rgba(45,55,72,0.3)',zeroline:false}, margin:{l:40,r:10,t:10,b:30}, showlegend:false, height:200};
-  Plotly.newPlot('loopChart', [loopTrace], loopLayout, {displayModeBar:false,responsive:true});
+  apiGet('/health').then(function(health){
+    if (health && health.system && health.system.avg_latency_ms) {
+      var val = health.system.avg_latency_ms;
+      var perfTrace = {x:[1], y:[val], type:'bar', marker:{color:'#3b82f6'}, name:'响应时间', text:[val.toFixed(0)+'ms'], textposition:'auto', textfont:{color:'#fff'}};
+      var perfLayout = {paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#a0aec0',size:10}, xaxis:{showticklabels:false}, yaxis:{title:'ms',gridcolor:'rgba(45,55,72,0.3)',zeroline:false}, margin:{l:40,r:10,t:10,b:30}, showlegend:false, height:200};
+      Plotly.newPlot('perfChart', [perfTrace], perfLayout, {displayModeBar:false,responsive:true});
+    } else {
+      Plotly.newPlot('perfChart', [], noDataLayout, {displayModeBar:false,responsive:true});
+    }
+  }).catch(function(){ Plotly.newPlot('perfChart', [], noDataLayout, {displayModeBar:false,responsive:true}); });
+
+  apiGet('/stats/summary').then(function(summary){
+    if (summary && summary.total_cycles > 0) {
+      var val = summary.total_discoveries || 0;
+      var loopTrace = {x:[1], y:[val], type:'bar', marker:{color:'#8b5cf6'}, name:'发现数', text:[String(val)], textposition:'auto', textfont:{color:'#fff'}};
+      var loopLayout = {paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#a0aec0',size:10}, xaxis:{showticklabels:false}, yaxis:{title:'发现',gridcolor:'rgba(45,55,72,0.3)',zeroline:false}, margin:{l:40,r:10,t:10,b:30}, showlegend:false, height:200};
+      Plotly.newPlot('loopChart', [loopTrace], loopLayout, {displayModeBar:false,responsive:true});
+    } else {
+      Plotly.newPlot('loopChart', [], noDataLayout, {displayModeBar:false,responsive:true});
+    }
+  }).catch(function(){ Plotly.newPlot('loopChart', [], noDataLayout, {displayModeBar:false,responsive:true}); });
 }
 
 function renderModuleTiming(){
-  var modules = [
-    {name:'literature_researcher', calls:42, avg:'1.2s', total:'50.4s', ok:true},
-    {name:'hypothesis_generator', calls:42, avg:'0.8s', total:'33.6s', ok:true},
-    {name:'hypothesis_tester', calls:38, avg:'2.1s', total:'79.8s', ok:true},
-    {name:'astro_pipeline', calls:35, avg:'3.5s', total:'122.5s', ok:true},
-    {name:'observation_scheduler', calls:42, avg:'0.3s', total:'12.6s', ok:true},
-    {name:'data_miner', calls:28, avg:'4.2s', total:'117.6s', ok:true},
-    {name:'discovery_tracker', calls:15, avg:'0.5s', total:'7.5s', ok:true},
-    {name:'kepler_client', calls:20, avg:'1.8s', total:'36.0s', ok:false},
-  ];
-  $('#moduleTimingBody').innerHTML = modules.map(function(m){
-    return '<tr>' +
-      '<td>' + m.name + '</td>' +
-      '<td>' + m.calls + '</td>' +
-      '<td>' + m.avg + '</td>' +
-      '<td>' + m.total + '</td>' +
-      '<td><span class="status-badge ' + (m.ok?'completed':'pending') + '">' + (m.ok?'正常':'离线') + '</span></td></tr>';
-  }).join('');
+  apiGet('/health').then(function(health){
+    var deps = health && health.dependencies ? health.dependencies : {};
+    var modules = [
+      {name:'cognitive_engine', label:'认知引擎', ok:!!deps.cognitive_engine},
+      {name:'planning_engine', label:'规划引擎', ok:!!deps.planning_engine},
+      {name:'execution_engine', label:'执行引擎', ok:!!deps.execution_engine},
+      {name:'evolution_system', label:'进化系统', ok:!!deps.evolution_system},
+      {name:'agent_initialized', label:'Agent初始化', ok:!!deps.agent_initialized},
+    ];
+    if (health && health.system) {
+      modules.push({name:'api_server', label:'API服务器', ok:true, detail:'PID '+health.system.process.pid+' | '+health.system.process.threads+'线程'});
+    }
+    $('#moduleTimingBody').innerHTML = modules.map(function(m){
+      return '<tr>' +
+        '<td>' + m.label + '</td>' +
+        '<td>' + (m.detail || '--') + '</td>' +
+        '<td><span class="status-badge ' + (m.ok?'completed':'pending') + '">' + (m.ok?'正常':'未初始化') + '</span></td></tr>';
+    }).join('');
+  }).catch(function(){
+    $('#moduleTimingBody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted)">无法获取模块状态</td></tr>';
+  });
 }
 
 // ============ 望远镜控制函数 ============
