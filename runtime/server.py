@@ -13,11 +13,11 @@ import sys
 import os
 import secrets
 import logging
+import traceback
 from pathlib import Path
 from functools import wraps
 import psutil
 
-# 添加runtime路径
 sys.path.insert(0, str(Path(__file__).parent))
 
 from quart import Quart, jsonify, request, render_template, websocket
@@ -30,45 +30,36 @@ from threading import Lock
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-# 日志配置
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 )
 logger = logging.getLogger("hermes_agi")
 
-# 配置
 DEBUG = os.environ.get("DEBUG", "false").lower() in ("true", "1", "yes")
 API_KEY = os.environ.get("API_KEY", "")
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "")
 
 app = Quart(__name__, template_folder="../web", static_folder="../web")
-
-# 设置配置
 app.config["PROVIDE_AUTOMATIC_OPTIONS"] = True
 app.config["TEMPLATES_AUTO_RELOAD"] = DEBUG
 
-# CORS配置：仅允许配置的域名
 if CORS_ORIGINS:
     app = cors(app, allow_origin=CORS_ORIGINS.split(","))
 else:
-    # 非调试模式下默认关闭CORS
     if not DEBUG:
         app = cors(app, allow_origin=[])
     else:
         app = cors(app, allow_origin="*")
 
-# 导入Agent
 from main import HermesAGI, CognitiveEngine, PlanningEngine
 from cycle_statistics_dashboard import CycleStatisticsDashboard
 from reasoning_engine import ModelConfig
 import httpx
 
-# 全局Agent实例
 agent = HermesAGI()
 dashboard = CycleStatisticsDashboard()
 
-# 速率限制配置
 RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", 60))
 RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", 30))
 _rate_limit_store: dict = defaultdict(list)
@@ -86,6 +77,40 @@ def _check_rate_limit(client_ip: str) -> bool:
     return True
 
 
+def _validate_required_fields(data: dict, required: list[str]) -> str | None:
+    for field in required:
+        if not data.get(field):
+            return f"缺少必填字段: {field}"
+    return None
+
+
+def _sanitize_str(value: str, max_len: int = 500) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:max_len]
+
+
+@app.errorhandler(400)
+async def bad_request(e):
+    return jsonify({"error": "请求参数无效", "code": "BAD_REQUEST"}), 400
+
+
+@app.errorhandler(404)
+async def not_found(e):
+    return jsonify({"error": "资源不存在", "code": "NOT_FOUND"}), 404
+
+
+@app.errorhandler(405)
+async def method_not_allowed(e):
+    return jsonify({"error": "不支持的请求方法", "code": "METHOD_NOT_ALLOWED"}), 405
+
+
+@app.errorhandler(500)
+async def internal_error(e):
+    logger.error(f"Internal server error: {traceback.format_exc()}")
+    return jsonify({"error": "服务器内部错误", "code": "INTERNAL_ERROR"}), 500
+
+
 @app.after_request
 async def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -99,12 +124,10 @@ async def add_security_headers(response):
 
 
 def require_api_key(f):
-    """API Key认证装饰器"""
     @wraps(f)
     async def decorated(*args, **kwargs):
         provided_key = request.headers.get("X-API-Key") or request.args.get("api_key")
         if DEBUG and not API_KEY:
-            # 调试模式且未配置Key时跳过认证
             return await f(*args, **kwargs)
         if not provided_key:
             return jsonify({"error": "API Key required", "code": "MISSING_KEY"}), 401
@@ -471,6 +494,23 @@ class WebSocketManager:
 
 ws_manager = WebSocketManager()
 
+try:
+    from realtime_bridge import (
+        EventBus, AgentStateBridge, ConnectionManager,
+        MessageSerializer, start_heartbeat_loop, start_broadcast_loop,
+    )
+    _event_bus = EventBus()
+    _state_bridge = AgentStateBridge(_event_bus)
+    _conn_manager = ConnectionManager()
+    _REALTIME_BRIDGE_AVAILABLE = True
+    logger.info("Realtime bridge module loaded successfully")
+except ImportError:
+    _event_bus = None
+    _state_bridge = None
+    _conn_manager = None
+    _REALTIME_BRIDGE_AVAILABLE = False
+    logger.warning("Realtime bridge module not available, using legacy WebSocket manager")
+
 # ============ 模拟数据生成 ============
 
 _observatory_state = {
@@ -578,24 +618,104 @@ def _build_observatory_status():
     return state
 
 
+# ============ API 文档 ============
+
+@app.route("/api/docs", methods=["GET"])
+async def api_docs():
+    return jsonify({
+        "service": "天问-AGI 全自动天文观测站 API",
+        "version": "2.3.0",
+        "endpoints": {
+            "observatory": {
+                "GET  /api/observatory/status": "观测站完整状态",
+                "GET  /api/observatory/queue": "观测队列",
+                "POST /api/observatory/queue": "添加观测目标 {target, priority, type, window, duration}",
+                "DELETE /api/observatory/queue/<id>": "移除队列项",
+                "POST /api/observatory/control": "控制观测站 {action: start|stop|pause|resume}",
+            },
+            "devices": {
+                "GET  /api/devices/status": "设备状态(望远镜/相机/滤镜轮/圆顶/气象站)",
+            },
+            "data": {
+                "GET  /api/data/detections/latest": "三阶段检测结果",
+                "GET  /api/data/images/latest": "最新图像信息",
+                "GET  /api/data/lightcurve?target=M31": "光变曲线数据",
+            },
+            "research": {
+                "GET  /api/research/status": "研究闭环状态",
+                "GET  /api/research/cycles?page=1&per_page=20": "历史研究周期",
+            },
+            "alerts": {
+                "GET  /api/alerts?unread=true": "告警列表",
+                "PUT  /api/alerts/<id>/read": "标记告警已读",
+            },
+            "logs": {
+                "GET  /api/logs?level=DISCOVERY&limit=50": "系统日志",
+            },
+            "system": {
+                "GET  /api/health": "健康检查",
+                "GET  /api/stats/summary": "统计摘要",
+                "GET  /api/stats/json": "JSON统计",
+                "GET  /api/stats/dashboard": "HTML统计面板",
+            },
+            "chat": {
+                "POST /api/chat": "LLM对话 {message, session_id}",
+                "POST /api/cognitive": "认知引擎预览 {message}",
+                "GET  /api/sessions": "会话列表",
+                "GET  /api/sessions/<id>": "会话详情",
+            },
+            "websocket": {
+                "WS   /ws/observatory": "观测站实时推送 (status_update, queue_update, new_alert)",
+            },
+        },
+        "realtime_bridge": "available" if _REALTIME_BRIDGE_AVAILABLE else "unavailable",
+    })
+
+
 # ============ WebSocket 端点 ============
 
 @app.websocket('/ws/observatory')
 async def observatory_ws():
     client_id = str(uuid.uuid4())
-    ws_manager.register(client_id, websocket._get_current_object())
+    if _REALTIME_BRIDGE_AVAILABLE:
+        _conn_manager.register(client_id, websocket._get_current_object())
+    else:
+        ws_manager.register(client_id, websocket._get_current_object())
+
     try:
         while True:
             data = await websocket.receive()
             if data == "ping":
                 await websocket.send("pong")
+                if _REALTIME_BRIDGE_AVAILABLE:
+                    _conn_manager.heartbeat(client_id)
             elif data == "get_status":
                 status = _build_observatory_status()
-                await websocket.send(json.dumps({"type": "status_update", "data": status}, ensure_ascii=False, default=str))
+                await websocket.send(json.dumps(
+                    {"type": "status_update", "data": status},
+                    ensure_ascii=False, default=str
+                ))
+            elif data and data.startswith("{"):
+                try:
+                    msg = json.loads(data)
+                    if msg.get("type") == "subscribe" and _REALTIME_BRIDGE_AVAILABLE:
+                        event_type = msg.get("event", "")
+                        if event_type:
+                            async def _forward(event_type_inner, event_data):
+                                try:
+                                    await websocket.send(MessageSerializer.serialize_event(event_type_inner, event_data))
+                                except Exception:
+                                    pass
+                            _event_bus.subscribe(event_type, _forward)
+                except json.JSONDecodeError:
+                    pass
     except Exception:
         pass
     finally:
-        ws_manager.unregister(client_id)
+        if _REALTIME_BRIDGE_AVAILABLE:
+            _conn_manager.unregister(client_id)
+        else:
+            ws_manager.unregister(client_id)
 
 
 # ============ 观测站 API ============
@@ -639,16 +759,34 @@ async def observatory_queue_remove(item_id):
 @app.route("/api/observatory/control", methods=["POST"])
 async def observatory_control():
     data = await request.get_json()
+    if not data:
+        return jsonify({"error": "请求体不能为空"}), 400
     action = data.get("action", "")
     valid_actions = ["start", "stop", "pause", "resume"]
     if action not in valid_actions:
         return jsonify({"error": f"无效操作: {action}，支持: {valid_actions}"}), 400
 
     status_map = {"start": "observing", "stop": "idle", "pause": "paused", "resume": "observing"}
-    _observatory_state["status"] = status_map[action]
-    _log_entries.insert(0, {"time": datetime.now().strftime("%H:%M:%S"), "level": "SYSTEM", "message": f"观测站状态变更: {action}"})
-    await ws_manager.broadcast({"type": "status_update", "data": _build_observatory_status()})
-    return jsonify({"success": True, "status": _observatory_state["status"]})
+    new_status = status_map[action]
+    _observatory_state["status"] = new_status
+    _log_entries.insert(0, {
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "level": "SYSTEM",
+        "message": f"观测站状态变更: {action}"
+    })
+
+    if _REALTIME_BRIDGE_AVAILABLE:
+        _state_bridge.update_status(new_status)
+        await _conn_manager.broadcast({
+            "type": "status_update",
+            "data": _build_observatory_status(),
+        })
+    else:
+        await ws_manager.broadcast({
+            "type": "status_update",
+            "data": _build_observatory_status(),
+        })
+    return jsonify({"success": True, "status": new_status})
 
 
 # ============ 设备 API ============
@@ -750,9 +888,18 @@ if __name__ == "__main__":
     logger.info(f"Debug mode: {DEBUG}")
     logger.info(f"API Key configured: {'Yes' if API_KEY else 'No (auth disabled)'}")
     logger.info(f"CORS Origins: {CORS_ORIGINS or 'All (debug mode)'}")
+    logger.info(f"Realtime Bridge: {'Available' if _REALTIME_BRIDGE_AVAILABLE else 'Unavailable (legacy mode)'}")
     logger.info(f"Local:    http://localhost:{port}")
-    logger.info(f"API Docs: http://localhost:{port}/api/health")
+    logger.info(f"API Docs: http://localhost:{port}/api/docs")
+    logger.info(f"Health:   http://localhost:{port}/api/health")
     logger.info(f"WebSocket: ws://localhost:{port}/ws/observatory")
     logger.info("=" * 50)
+
+    if _REALTIME_BRIDGE_AVAILABLE:
+        @app.before_serving
+        async def start_bridge_tasks():
+            asyncio.ensure_future(start_heartbeat_loop(_conn_manager))
+            asyncio.ensure_future(start_broadcast_loop(_conn_manager, _state_bridge))
+            logger.info("Realtime bridge background tasks started")
 
     app.run(host="0.0.0.0", port=port, debug=DEBUG)
