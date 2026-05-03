@@ -47,10 +47,7 @@ app.config["TEMPLATES_AUTO_RELOAD"] = DEBUG
 if CORS_ORIGINS:
     app = cors(app, allow_origin=CORS_ORIGINS.split(","))
 else:
-    if not DEBUG:
-        app = cors(app, allow_origin=["https://tianwen-agi.pages.dev"])
-    else:
-        app = cors(app, allow_origin="*")
+    app = cors(app, allow_origin="*")
 
 from main import HermesAGI, CognitiveEngine, PlanningEngine
 from cycle_statistics_dashboard import CycleStatisticsDashboard
