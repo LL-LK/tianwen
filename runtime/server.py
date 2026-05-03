@@ -937,8 +937,8 @@ def _get_telescope_sim():
             from telescope_simulator import TelescopeSimulator
             _telescope_sim = TelescopeSimulator()
             logger.info("TelescopeSimulator initialized")
-        except ImportError:
-            logger.warning("telescope_simulator not available")
+        except Exception as e:
+            logger.warning(f"telescope_simulator not available: {e}")
             _telescope_sim = False
     return _telescope_sim if _telescope_sim is not False else None
 
@@ -949,8 +949,8 @@ def _get_star_catalog():
             from star_catalog_manager import StarCatalogManager
             _star_catalog = StarCatalogManager()
             logger.info("StarCatalogManager initialized")
-        except ImportError:
-            logger.warning("star_catalog_manager not available")
+        except Exception as e:
+            logger.warning(f"star_catalog_manager not available: {e}")
             _star_catalog = False
     return _star_catalog if _star_catalog is not False else None
 
@@ -961,8 +961,8 @@ def _get_platesolver():
             from platesolver_wrapper import AstrometrySolver
             _platesolver = AstrometrySolver()
             logger.info("AstrometrySolver initialized")
-        except ImportError:
-            logger.warning("platesolver_wrapper not available")
+        except Exception as e:
+            logger.warning(f"platesolver_wrapper not available: {e}")
             _platesolver = False
     return _platesolver if _platesolver is not False else None
 
@@ -974,28 +974,32 @@ def _get_meridian_flip():
             _meridian_flip = MeridianFlip()
             _nighttime_calc = NighttimeCalculator()
             logger.info("Astronomy algorithms initialized")
-        except ImportError:
-            logger.warning("astronomy_algorithms not available")
+        except Exception as e:
+            logger.warning(f"astronomy_algorithms not available: {e}")
             _meridian_flip = False
     return _meridian_flip if _meridian_flip is not False else None
 
 
 @app.route("/api/telescope/status", methods=["GET"])
 async def telescope_status():
-    sim = _get_telescope_sim()
-    if sim:
-        state = sim.get_state()
-        return jsonify({
-            "connected": state.status.value != "idle",
-            "status": state.status.value,
-            "ra": state.current_coords.ra,
-            "dec": state.current_coords.dec,
-            "tracking": state.tracking_enabled,
-            "pointing_error_arcmin": state.pointing_error,
-            "uptime_hours": state.uptime_hours,
-            "temperature": state.temperature,
-            "target": {"ra": state.target_coords.ra, "dec": state.target_coords.dec} if state.target_coords else None,
-        })
+    try:
+        sim = _get_telescope_sim()
+        if sim:
+            state = sim.get_state()
+            return jsonify({
+                "connected": state.status.value != "idle",
+                "status": state.status.value,
+                "ra": state.current_coords.ra,
+                "dec": state.current_coords.dec,
+                "tracking": state.tracking_enabled,
+                "pointing_error_arcmin": state.pointing_error,
+                "uptime_hours": state.uptime_hours,
+                "temperature": state.temperature,
+                "target": {"ra": state.target_coords.ra, "dec": state.target_coords.dec} if state.target_coords else None,
+            })
+    except Exception as e:
+        logger.warning(f"Telescope simulator error: {e}")
+
     dev = _observatory_state["devices"].get("telescope", {})
     return jsonify({
         "connected": dev.get("connected", False),
@@ -1012,10 +1016,13 @@ async def telescope_status():
 
 @app.route("/api/telescope/connect", methods=["POST"])
 async def telescope_connect():
-    sim = _get_telescope_sim()
-    if sim:
-        sim.connect()
-        return jsonify({"success": True, "message": "望远镜已连接"})
+    try:
+        sim = _get_telescope_sim()
+        if sim:
+            sim.connect()
+            return jsonify({"success": True, "message": "望远镜已连接"})
+    except Exception as e:
+        logger.warning(f"Telescope connect error: {e}")
     _observatory_state["devices"]["telescope"]["connected"] = True
     _observatory_state["devices"]["telescope"]["status"] = "tracking"
     return jsonify({"success": True, "message": "望远镜已连接 (模拟)"})
@@ -1023,10 +1030,13 @@ async def telescope_connect():
 
 @app.route("/api/telescope/disconnect", methods=["POST"])
 async def telescope_disconnect():
-    sim = _get_telescope_sim()
-    if sim:
-        sim.disconnect()
-        return jsonify({"success": True, "message": "望远镜已断开"})
+    try:
+        sim = _get_telescope_sim()
+        if sim:
+            sim.disconnect()
+            return jsonify({"success": True, "message": "望远镜已断开"})
+    except Exception as e:
+        logger.warning(f"Telescope disconnect error: {e}")
     _observatory_state["devices"]["telescope"]["connected"] = False
     _observatory_state["devices"]["telescope"]["status"] = "idle"
     return jsonify({"success": True, "message": "望远镜已断开 (模拟)"})
@@ -1039,16 +1049,19 @@ async def telescope_goto():
         return jsonify({"error": "目标不能为空"}), 400
     target = data["target"]
 
-    sim = _get_telescope_sim()
-    if sim:
-        result = sim.goto(target)
-        return jsonify({"success": True, "target": target, "ra": result.ra, "dec": result.dec})
+    try:
+        sim = _get_telescope_sim()
+        if sim:
+            result = sim.goto(target)
+            return jsonify({"success": True, "target": target, "ra": result.ra, "dec": result.dec})
 
-    catalog = _get_star_catalog()
-    if catalog:
-        entry = catalog.lookup(target)
-        if entry:
-            return jsonify({"success": True, "target": target, "ra": entry.ra_deg, "dec": entry.dec_deg})
+        catalog = _get_star_catalog()
+        if catalog:
+            entry = catalog.lookup(target)
+            if entry:
+                return jsonify({"success": True, "target": target, "ra": entry.ra_deg, "dec": entry.dec_deg})
+    except Exception as e:
+        logger.warning(f"Telescope goto error: {e}")
 
     return jsonify({"success": True, "target": target, "ra": 10.684, "dec": 41.269, "simulated": True})
 
@@ -1060,13 +1073,16 @@ async def telescope_tracking():
         return jsonify({"error": "action不能为空"}), 400
     action = data["action"]
 
-    sim = _get_telescope_sim()
-    if sim:
-        if action == "start":
-            sim.start_tracking()
-        elif action == "stop":
-            sim.stop_tracking()
-        return jsonify({"success": True, "tracking": action == "start"})
+    try:
+        sim = _get_telescope_sim()
+        if sim:
+            if action == "start":
+                sim.start_tracking()
+            elif action == "stop":
+                sim.stop_tracking()
+            return jsonify({"success": True, "tracking": action == "start"})
+    except Exception as e:
+        logger.warning(f"Telescope tracking error: {e}")
 
     _observatory_state["devices"]["telescope"]["status"] = "tracking" if action == "start" else "idle"
     return jsonify({"success": True, "tracking": action == "start", "simulated": True})
@@ -1074,9 +1090,9 @@ async def telescope_tracking():
 
 @app.route("/api/telescope/plate_solve", methods=["POST"])
 async def telescope_plate_solve():
-    solver = _get_platesolver()
-    if solver:
-        try:
+    try:
+        solver = _get_platesolver()
+        if solver:
             result = solver.solve("/tmp/latest.fits")
             return jsonify({
                 "success": True,
@@ -1085,8 +1101,8 @@ async def telescope_plate_solve():
                 "ra": result.get("ra", 10.684),
                 "dec": result.get("dec", 41.269),
             })
-        except Exception as e:
-            return jsonify({"success": False, "error": str(e)}), 500
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
     return jsonify({
         "success": False,
@@ -1104,16 +1120,19 @@ async def telescope_expose():
     count = int(data.get("count", 1))
     target = data.get("target", "unknown")
 
-    sim = _get_telescope_sim()
-    if sim:
-        result = sim.expose(exposure, count)
-        return jsonify({
-            "success": True,
-            "frame_count": count,
-            "exposure_sec": exposure,
-            "target": target,
-            "file_path": f"/data/{target}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.fits",
-        })
+    try:
+        sim = _get_telescope_sim()
+        if sim:
+            result = sim.expose(exposure, count)
+            return jsonify({
+                "success": True,
+                "frame_count": count,
+                "exposure_sec": exposure,
+                "target": target,
+                "file_path": f"/data/{target}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.fits",
+            })
+    except Exception as e:
+        logger.warning(f"Telescope expose error: {e}")
 
     return jsonify({
         "success": True,
@@ -1129,19 +1148,22 @@ async def telescope_expose():
 async def telescope_catalog():
     type_filter = request.args.get("type", "")
 
-    catalog = _get_star_catalog()
-    if catalog:
-        entries = catalog.list_all(type_filter=type_filter if type_filter else None)
-        result = {}
-        for e in entries:
-            result[e.catalog_id or e.name] = {
-                "name": e.name,
-                "type": getattr(e, 'obj_type', 'unknown'),
-                "ra": getattr(e, 'ra_deg', 0),
-                "dec": getattr(e, 'dec_deg', 0),
-                "mag": getattr(e, 'mag', None),
-            }
-        return jsonify({"catalog": result, "count": len(result)})
+    try:
+        catalog = _get_star_catalog()
+        if catalog:
+            entries = catalog.list_all(type_filter=type_filter if type_filter else None)
+            result = {}
+            for e in entries:
+                result[e.catalog_id or e.name] = {
+                    "name": e.name,
+                    "type": getattr(e, 'obj_type', 'unknown'),
+                    "ra": getattr(e, 'ra_deg', 0),
+                    "dec": getattr(e, 'dec_deg', 0),
+                    "mag": getattr(e, 'mag', None),
+                }
+            return jsonify({"catalog": result, "count": len(result)})
+    except Exception as e:
+        logger.warning(f"Star catalog error: {e}")
 
     builtin = {
         "M31": {"name": "仙女座星系", "type": "galaxy", "ra": 10.684, "dec": 41.269, "mag": 3.44},
@@ -1294,6 +1316,17 @@ async def stats_summary():
         "total_hypotheses": sum(c["hypotheses"] for c in _cycle_history),
         "uptime_hours": _observatory_state["uptime_hours"],
         "active_ws_clients": ws_manager.connection_count,
+    })
+
+
+@app.route("/api/rl/stats", methods=["GET"])
+async def rl_stats():
+    return jsonify({
+        "efficiency": 0.0,
+        "avg_wait_min": 0.0,
+        "success_rate": 0.0,
+        "total_episodes": 0,
+        "_note": "RL调度器未启动训练，数据为零",
     })
 
 
