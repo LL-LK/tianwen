@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ghcr.io/LL-LK/tianwen-agi:ca01a09
+    image: ghcr.io/LL-LK/tianwen-agi:961516c
     ports:
       - "5000:5000"
     environment:
@@ -59,7 +59,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ghcr.io/LL-LK/tianwen-agi:ca01a09
+    image: ghcr.io/LL-LK/tianwen-agi:961516c
     ports:
       - "5000:5000"
     environment:
