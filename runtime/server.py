@@ -21,7 +21,6 @@ import psutil
 sys.path.insert(0, str(Path(__file__).parent))
 
 from quart import Quart, jsonify, request, render_template, websocket
-from quart_cors import cors
 import uuid
 import json
 import time
@@ -44,10 +43,13 @@ app = Quart(__name__, template_folder="../web", static_folder="../web")
 app.config["PROVIDE_AUTOMATIC_OPTIONS"] = True
 app.config["TEMPLATES_AUTO_RELOAD"] = DEBUG
 
-if CORS_ORIGINS:
-    app = cors(app, allow_origin=CORS_ORIGINS.split(","))
-else:
-    app = cors(app, allow_origin="*")
+@app.after_request
+async def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-API-Key"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Max-Age"] = "86400"
+    return response
 
 from main import HermesAGI, CognitiveEngine, PlanningEngine
 from cycle_statistics_dashboard import CycleStatisticsDashboard
