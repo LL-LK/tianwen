@@ -23,8 +23,7 @@ function cleanHeaders(original) {
   return cleaned;
 }
 
-export async function onRequest(context) {
-  const { request } = context;
+async function proxyToBackend(request, env, ctx) {
   const url = new URL(request.url);
 
   if (request.method === 'OPTIONS') {
@@ -32,7 +31,6 @@ export async function onRequest(context) {
   }
 
   const targetUrl = BACKEND + url.pathname + url.search;
-
   const headers = cleanHeaders(request.headers);
 
   let body = undefined;
@@ -73,3 +71,16 @@ export async function onRequest(context) {
     });
   }
 }
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const pathname = url.pathname;
+
+    if (pathname.startsWith('/api/')) {
+      return proxyToBackend(request, env, ctx);
+    }
+
+    return env.ASSETS.fetch(request);
+  },
+};
