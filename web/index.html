@@ -265,6 +265,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
   <button class="tab-btn" data-tab="data">📊 数据面板</button>
   <button class="tab-btn" data-tab="research">🔬 研究闭环</button>
   <button class="tab-btn" data-tab="alerts">🔔 告警中心<span class="tab-badge" id="alertBadge" style="display:none">0</span></button>
+  <button class="tab-btn" data-tab="telescope">🔭 望远镜控制</button>
   <button class="tab-btn" data-tab="logs">📋 系统日志</button>
 </div>
 
@@ -372,6 +373,92 @@ tr:hover td{background:rgba(59,130,246,0.04)}
       <button class="filter-btn" onclick="filterAlerts('info')">ℹ️ 信息</button>
     </div>
     <div id="alertList"><div class="empty-state"><div class="icon">📭</div><div>暂无告警</div></div></div>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-telescope">
+  <div class="grid-2-1">
+    <div class="card">
+      <div class="card-header"><span class="card-title"><span class="icon">🔭</span>望远镜状态</span></div>
+      <div id="telescopeStatus">
+        <div class="conn-panel">
+          <span class="label">状态:</span>
+          <span class="ping-result" id="telStatus">未连接</span>
+          <span class="label" style="margin-left:16px">RA:</span>
+          <span id="telRa">--</span>
+          <span class="label" style="margin-left:12px">Dec:</span>
+          <span id="telDec">--</span>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-item"><div class="stat-label">跟踪</div><div class="stat-val" id="telTracking">--</div></div>
+          <div class="stat-item"><div class="stat-label">指向误差</div><div class="stat-val" id="telPointingError">--</div></div>
+          <div class="stat-item"><div class="stat-label">运行时间</div><div class="stat-val" id="telUptime">--</div></div>
+          <div class="stat-item"><div class="stat-label">温度</div><div class="stat-val" id="telTemp">--</div></div>
+        </div>
+      </div>
+      <div class="btn-group" style="margin-top:12px">
+        <button class="btn btn-primary" onclick="telConnect()">连接</button>
+        <button class="btn btn-warning" onclick="telDisconnect()">断开</button>
+        <button class="btn btn-success" onclick="telRefresh()">刷新状态</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title"><span class="icon">🎯</span>GOTO 指向</span></div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input class="input" id="telGotoTarget" placeholder="目标 (如 M31)" style="flex:1">
+        <button class="btn btn-success" onclick="telGoto()">GOTO</button>
+      </div>
+      <div class="card-header" style="margin-top:12px"><span class="card-title"><span class="icon">⚙️</span>跟踪控制</span></div>
+      <div class="btn-group" style="margin-top:8px">
+        <button class="btn btn-success" onclick="telTracking('start')">启动跟踪</button>
+        <button class="btn btn-warning" onclick="telTracking('stop')">停止跟踪</button>
+        <button class="btn btn-primary" onclick="telPlateSolve()">Plate Solving</button>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title"><span class="icon">📷</span>成像控制</span></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <div>
+        <label style="font-size:12px;color:var(--text-muted)">曝光时间(秒)</label>
+        <input class="input" id="telExpTime" type="number" value="30" style="width:100px">
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text-muted)">帧数</label>
+        <input class="input" id="telExpCount" type="number" value="3" style="width:80px">
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text-muted)">目标</label>
+        <input class="input" id="telExpTarget" placeholder="M31" style="width:120px">
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="telExpose()">开始曝光</button>
+    <div id="telExposeResult" style="margin-top:12px;font-size:13px"></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title"><span class="icon">🗂</span>天体星表</span><span style="font-size:12px;color:var(--text-muted)">内置110+梅西耶/NGC天体</span></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <select class="input" id="telCatalogType" onchange="telLoadCatalog()" style="width:150px">
+        <option value="">全部类型</option>
+        <option value="galaxy">星系</option>
+        <option value="nebula">星云</option>
+        <option value="cluster">星团</option>
+        <option value="planetary">行星状星云</option>
+      </select>
+      <input class="input" id="telCatalogSearch" placeholder="搜索目标..." style="flex:1" oninput="telSearchCatalog()">
+    </div>
+    <div id="telCatalogList" style="max-height:300px;overflow-y:auto;font-size:12px">
+      <div class="empty-state"><div class="icon">🔍</div><div>加载星表中...</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title"><span class="icon">📅</span>观测窗口计算</span></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input class="input" id="telWindowTarget" placeholder="目标 (如 M31)" style="flex:1">
+      <input class="input" id="telWindowLat" type="number" value="40.0" style="width:100px" placeholder="纬度">
+      <button class="btn btn-primary" onclick="telCalcWindow()">计算</button>
+    </div>
+    <div id="telWindowResult" style="font-size:13px"></div>
   </div>
 </div>
 
@@ -995,7 +1082,267 @@ window.addEventListener('DOMContentLoaded', function(){
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(function(){});
   }
+
+  // 页面加载时自动加载星表
+  setTimeout(telLoadCatalog, 2000);
 });
+
+// ============ 望远镜控制函数 ============
+
+var _telCatalogCache = null;
+
+async function telRefresh(){
+  try {
+    var resp = await fetch(API_BASE + '/telescope/status');
+    if (!resp.ok) throw new Error('状态获取失败');
+    var data = await resp.json();
+
+    $('#telStatus').textContent = data.connected ? '已连接' : '未连接';
+    $('#telStatus').className = 'ping-result ' + (data.connected ? 'ok' : 'fail');
+    $('#telRa').textContent = data.ra ? data.ra.toFixed(4) + '\u00b0' : '--';
+    $('#telDec').textContent = data.dec ? data.dec.toFixed(4) + '\u00b0' : '--';
+    $('#telTracking').textContent = data.tracking ? '开启' : '关闭';
+    $('#telPointingError').textContent = data.pointing_error_arcmin ? data.pointing_error_arcmin.toFixed(2) + "'" : '--';
+    $('#telUptime').textContent = data.uptime_hours ? data.uptime_hours.toFixed(1) + 'h' : '--';
+    $('#telTemp').textContent = data.temperature ? data.temperature + '\u00b0C' : '--';
+
+  } catch(e) {
+    showToast('获取状态失败: ' + e.message, 'error');
+  }
+}
+
+async function telConnect(){
+  try {
+    var resp = await fetch(API_BASE + '/telescope/connect', {method:'POST'});
+    var data = await resp.json();
+    if (data.success) {
+      showToast('望远镜连接成功', 'success');
+      telRefresh();
+    } else {
+      showToast('连接失败: ' + (data.error || '未知错误'), 'error');
+    }
+  } catch(e) {
+    showToast('连接失败: ' + e.message, 'error');
+  }
+}
+
+async function telDisconnect(){
+  try {
+    await fetch(API_BASE + '/telescope/disconnect', {method:'POST'});
+    showToast('已断开望远镜', 'info');
+    $('#telStatus').textContent = '未连接';
+    $('#telStatus').className = 'ping-result fail';
+  } catch(e) {
+    showToast('断开失败: ' + e.message, 'error');
+  }
+}
+
+async function telGoto(){
+  var target = $('#telGotoTarget').value.trim();
+  if (!target) { showToast('请输入目标', 'error'); return; }
+
+  try {
+    var resp = await fetch(API_BASE + '/telescope/goto', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({target: target})
+    });
+    var data = await resp.json();
+
+    if (data.success) {
+      showToast('GOTO ' + target + ' 成功', 'success');
+      telRefresh();
+    } else {
+      showToast('GOTO失败: ' + (data.error || '未知错误'), 'error');
+    }
+  } catch(e) {
+    showToast('GOTO失败: ' + e.message, 'error');
+  }
+}
+
+async function telTracking(action){
+  try {
+    var resp = await fetch(API_BASE + '/telescope/tracking', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action: action})
+    });
+    var data = await resp.json();
+    if (data.success) {
+      showToast('跟踪' + (action === 'start' ? '启动' : '停止'), 'success');
+      telRefresh();
+    } else {
+      showToast('操作失败: ' + (data.error || ''), 'error');
+    }
+  } catch(e) {
+    showToast('操作失败: ' + e.message, 'error');
+  }
+}
+
+async function telPlateSolve(){
+  try {
+    var resp = await fetch(API_BASE + '/telescope/plate_solve', {method:'POST'});
+    var data = await resp.json();
+
+    if (data.success) {
+      showToast('Plate Solving成功: ' + data.stars_matched + '颗星匹配, RMS=' + data.rms_error_arcsec.toFixed(2) + '"', 'success');
+      telRefresh();
+    } else {
+      showToast('Plate Solving失败: ' + (data.error || ''), 'error');
+    }
+  } catch(e) {
+    showToast('Plate Solving失败: ' + e.message, 'error');
+  }
+}
+
+async function telExpose(){
+  var expTime = parseFloat($('#telExpTime').value) || 30;
+  var count = parseInt($('#telExpCount').value) || 1;
+  var target = $('#telExpTarget').value.trim() || 'unknown';
+
+  $('#telExposeResult').innerHTML = '<span style="color:var(--info)">曝光中...</span>';
+
+  try {
+    var resp = await fetch(API_BASE + '/telescope/expose', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({exposure: expTime, count: count, target: target})
+    });
+    var data = await resp.json();
+
+    if (data.success) {
+      $('#telExposeResult').innerHTML = '<span style="color:var(--success)">成功: ' + data.frame_count + '帧 x ' + data.exposure_sec + 's, 保存: ' + data.file_path + '</span>';
+      showToast('曝光完成: ' + data.frame_count + '帧', 'success');
+    } else {
+      $('#telExposeResult').innerHTML = '<span style="color:var(--danger)">失败: ' + (data.error || '') + '</span>';
+      showToast('曝光失败', 'error');
+    }
+  } catch(e) {
+    $('#telExposeResult').innerHTML = '<span style="color:var(--danger)">错误: ' + e.message + '</span>';
+    showToast('曝光失败: ' + e.message, 'error');
+  }
+}
+
+async function telLoadCatalog(){
+  var typeFilter = $('#telCatalogType') ? $('#telCatalogType').value : '';
+
+  try {
+    if (!_telCatalogCache) {
+      var resp = await fetch(API_BASE + '/telescope/catalog');
+      var data = await resp.json();
+      _telCatalogCache = data.catalog || {};
+    }
+
+    var html = '<table style="width:100%"><thead><tr><th>名称</th><th>类型</th><th>赤经</th><th>赤纬</th><th>星等</th><th>操作</th></tr></thead><tbody>';
+    var count = 0;
+
+    for (var key in _telCatalogCache) {
+      var item = _telCatalogCache[key];
+      if (typeFilter && item.type !== typeFilter) continue;
+
+      var ra = item.ra || 0;
+      var dec = item.dec || 0;
+      var mag = item.mag !== undefined ? item.mag : '--';
+
+      html += '<tr>';
+      html += '<td><strong>' + item.name + '</strong><br><small style="color:var(--text-muted)">' + key + '</small></td>';
+      html += '<td>' + (item.type || '--') + '</td>';
+      html += '<td>' + ra.toFixed(4) + '\u00b0</td>';
+      html += '<td>' + dec.toFixed(4) + '\u00b0</td>';
+      html += '<td>' + mag + '</td>';
+      html += '<td><button class="btn btn-primary" style="padding:2px 8px;font-size:11px" onclick="telCatalogGoto(\'' + key + '\')">GOTO</button></td>';
+      html += '</tr>';
+      count++;
+    }
+
+    html += '</tbody></table>';
+
+    if (count === 0) {
+      html = '<div class="empty-state"><div class="icon">🔍</div><div>没有找到匹配的天体</div></div>';
+    }
+
+    if ($('#telCatalogList')) $('#telCatalogList').innerHTML = html;
+
+  } catch(e) {
+    if ($('#telCatalogList')) $('#telCatalogList').innerHTML = '<div class="empty-state"><div class="icon">❌</div><div>加载失败: ' + e.message + '</div></div>';
+  }
+}
+
+function telCatalogGoto(key){
+  var gotoInput = $('#telGotoTarget');
+  if (gotoInput) {
+    gotoInput.value = key;
+    telGoto();
+  }
+}
+
+function telSearchCatalog(){
+  var query = ($('#telCatalogSearch') ? $('#telCatalogSearch').value : '').toLowerCase();
+
+  if (!_telCatalogCache) {
+    telLoadCatalog();
+    return;
+  }
+
+  var typeFilter = $('#telCatalogType') ? $('#telCatalogType').value : '';
+  var html = '<table style="width:100%"><thead><tr><th>名称</th><th>类型</th><th>赤经</th><th>赤纬</th><th>星等</th><th>操作</th></tr></thead><tbody>';
+  var count = 0;
+
+  for (var key in _telCatalogCache) {
+    var item = _telCatalogCache[key];
+    if (typeFilter && item.type !== typeFilter) continue;
+
+    var searchStr = (key + ' ' + (item.name || '') + ' ' + (item.type || '')).toLowerCase();
+    if (query && searchStr.indexOf(query) === -1) continue;
+
+    html += '<tr>';
+    html += '<td><strong>' + item.name + '</strong><br><small style="color:var(--text-muted)">' + key + '</small></td>';
+    html += '<td>' + (item.type || '--') + '</td>';
+    html += '<td>' + (item.ra || 0).toFixed(4) + '\u00b0</td>';
+    html += '<td>' + (item.dec || 0).toFixed(4) + '\u00b0</td>';
+    html += '<td>' + (item.mag !== undefined ? item.mag : '--') + '</td>';
+    html += '<td><button class="btn btn-primary" style="padding:2px 8px;font-size:11px" onclick="telCatalogGoto(\'' + key + '\')">GOTO</button></td>';
+    html += '</tr>';
+    count++;
+  }
+
+  html += '</tbody></table>';
+
+  if (count === 0) {
+    html = '<div class="empty-state"><div class="icon">🔍</div><div>没有找到匹配的天体</div></div>';
+  }
+
+  if ($('#telCatalogList')) $('#telCatalogList').innerHTML = html;
+}
+
+async function telCalcWindow(){
+  var target = ($('#telWindowTarget') ? $('#telWindowTarget').value.trim() : '') || 'M31';
+  var lat = parseFloat($('#telWindowLat') ? $('#telWindowLat').value : '40') || 40.0;
+
+  try {
+    var resp = await fetch(API_BASE + '/telescope/window?target=' + encodeURIComponent(target) + '&latitude=' + lat);
+    var data = await resp.json();
+
+    if (data.error) {
+      if ($('#telWindowResult')) $('#telWindowResult').innerHTML = '<span style="color:var(--danger)">错误: ' + data.error + '</span>';
+      return;
+    }
+
+    var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">';
+    html += '<div><strong>目标:</strong> ' + data.target + '</div>';
+    html += '<div><strong>坐标:</strong> RA=' + (data.ra || 0).toFixed(4) + '\u00b0, Dec=' + (data.dec || 0).toFixed(4) + '\u00b0</div>';
+    html += '<div><strong>当前高度:</strong> ' + (data.current_altitude || 0).toFixed(1) + '\u00b0</div>';
+    html += '<div><strong>最高高度:</strong> ' + (data.max_altitude || 0).toFixed(1) + '\u00b0</div>';
+    html += '<div><strong>可见性:</strong> ' + ((data.is_visible || false) ? '<span style="color:var(--success)">可见</span>' : '<span style="color:var(--danger)">不可见</span>') + '</div>';
+    html += '<div><strong>观测窗口:</strong> ' + (data.window_start || '--') + ' ~ ' + (data.window_end || '--') + '</div>';
+    html += '</div>';
+
+    if ($('#telWindowResult')) $('#telWindowResult').innerHTML = html;
+
+  } catch(e) {
+    if ($('#telWindowResult')) $('#telWindowResult').innerHTML = '<span style="color:var(--danger)">计算失败: ' + e.message + '</span>';
+  }
+}
 </script>
 <script src="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.js" onload="initAladin()" defer></script>
 </body>
