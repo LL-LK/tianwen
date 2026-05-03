@@ -1,0 +1,1311 @@
+=== PAGE 1 ===
+StarWhisper Telescope: An AI framework for
+automating end-to-end astronomical observations
+Cunshi Wang12∗,Yu Zhang2,Yuyang Li12†,Xinjie Hu23,
+Yiming Mao124,Xunhao Chen12,Pengliang Du2,Rui
+Wang2,Ying Wu25,Hang Yang12,Yansong Li6,Beichuan
+Wang12,Haiyang Mu2,Xiaohan Chen12,Shunxuan He12,
+Hao Mo12,Liyue Zhang12,Lin Du12,Yunning Zhao12,
+Jianfeng Tian2,Liang Ge25,Yongna Mao1,Shengming Li2,
+Zheng Wang2,Xiaomeng Lu2,Jinhang Zou2,Yang
+Huang12,Ningchen Sun12,Jie Zheng2,Min He2,Yu Bai25,
+Junjie Jin2,Hong Wu12,Jifeng Liu125
+1University of Chinese Academy of Sciences, Beijing, China;
+2Key Laboratory of Optical Astronomy,
+National Astronomical Observatories, Chinese Academy of
+Sciences, Beijing, China;
+3School of Computing Science, Simon Fraser University, Burnaby,
+British Columbia V5A1S6, Canada;
+4College of Science, Tibet University, Tibet, China;
+5Institute for Frontiers in Astronomy and Astrophysics,
+Beijing Normal University, Beijing, China;
+6Liii Network Co., Zhejiang, China;
+The exponential growth of large-scale telescope arrays has boosted time-domain
+astronomy development but introduced operational bottlenecks, including labor-
+intensive observation planning, data processing, and real-time decision-making. Here
+we present the StarWhisper Telescope system, an AI agent framework automating
+end-to-end astronomical observations for surveys like the Nearby Galaxy Super-
+novae Survey. By integrating large language models with specialized function calls
+and modular workflows, StarWhisper Telescope autonomously generates site-specific
+∗Email:wangcunshi@nao.cas.cn
+†Email:liyuyang22@mails.ucas.ac.cn
+1arXiv:2412.06412v3  [astro-ph.IM]  19 Oct 2025
+
+=== PAGE 2 ===
+observation lists, executes real-time image analysis via pipelines, and dynamically
+triggers follow-up proposals upon transient detection. The system reduces human in-
+tervention through automated observation planning, telescope controlling and data
+processing, while enabling seamless collaboration between amateur and professional
+astronomers. Deployed across Nearby Galaxy Supernovae Survey’s network of 10
+amateur telescopes, StarWhisper Telescope has detected transients with promising
+response times relative to existing surveys. Furthermore, StarWhisper Telescope’s
+scalable agent architecture provides a blueprint for future facilities like the Global
+Open Transient Telescope Array, where AI-driven autonomy will be critical for
+managing 60 telescopes.
+1 Introduction
+As time domain astronomy develops, large scientific facilities are in the planning.
+The Global Open Transient Telescope Array (GOTTA1, 2, which also referred to the
+SiTian project.), aims to construct 60 1-meter telescopes in its first stage to build
+an array to monitor the sky. The labor cost for the observation of the GOTTA is
+huge, with an estimated observation personnel sequence exceeding 200 people. Most
+of the telescopes will be deployed at the Lenghu Observatory, with a latitude of about
+4,200 meters. Due to the large number of telescopes, automated observations are
+necessary for future time-domain surveys. With the help of a Large Language Model
+(LLM) based agent, new automated observations will aid astronomers by taking the
+observations and processing the data, realizing the concept of an ”AI Astronomer”.
+Astronomical observation can be broadly divided into three phases: (1) observa-
+tion planning, (2) observation execution, and (3) data processing. These phases are
+executed sequentially, starting with planning, followed by execution, and conclud-
+ing with data processing. Notably, the results of data processing feed back into the
+planning phase, influencing future observation strategies and helping to optimize the
+overall observational process.
+The observation planning phase aims to create an observation list for each tele-
+scope participating in the night’s observations. This list includes the observation time
+(in UTC time), the astronomical objects to be observed, their coordinates (typically
+in Right Ascension, R.A., and Declination, Dec.), and other relevant information.
+Observation control is typically managed by the Observation Control System (OCS,
+3), which operates based on the provided observation list and additional parameters,
+such as the exposure time, number of exposures, required filters, telescope position
+and focus control. The images observed by the telescope are subsequently transferred
+to the data pipeline4for processing, extracting the photometric information required
+by astronomers, and identifying transients as high-value objects.
+The observation, planning, and data processing phases are labor-intensive and re-
+quire considerable effort. Generating the observation list involves selecting the most
+suitable objects from an input catalog containing more than 100,000 entries while
+taking into account the object’s sky visibility at each telescope’s position. Typically,
+each observation is first reviewed by the astronomer prior to being processed. The
+review process involves examining nearly 20 GB of raw image data per telescope to
+2
+
+=== PAGE 3 ===
+detect and confirm the presence of transient astronomical events that are of interest
+to astronomers. To free astronomers from these phases with tasks, we developed the
+StarWhisper Telescope (SWT) system, a LLM5, 6agent-based astronomical observa-
+tion system designed to assist astronomers by efficiently managing observations across
+a telescope array and saving astronomers’ time.
+While LLMs have demonstrated extraordinary capabilities in many fields, tradi-
+tional LLMs, such as Qwen7, 8, the GPT series9, and DeepSeek10, have not been
+equipped with tools or trained with specific data for astronomical observations, and
+more likely to present well-known celestial objects, no matter it can be observed or
+not (See Supplementary Section 1, Observation planning by Qwen). The SWT sys-
+tem addresses these challenges by integrating function calls to expand the capacities
+of LLMs and LLM-enhanced workflows to infuse domain expertise.
+Function calls enable LLMs to interact with external tools or systems by rec-
+ognizing predefined operations, extending their capabilities beyond text generation
+to perform tasks or retrieve real-time information. This functionality is developed
+through training on datasets pairing input instructions with expected outputs, en-
+hancing the models’ instruction-following abilities8, 9. When equipped with function
+call capabilities, LLMs are often referred to as LLM-based agents, or simply agents
+in these paper11–16.
+LLM-enhanced workflow connects steps in a series or parallel configuration, in-
+corporating tools, Application Programming Interfaces (APIs), and LLMs to handle
+complex, multi-stage tasks and do function calls. Compared to traditional work-
+flows17, it can process unstructured data, make flexible judgments, and adaptively
+link each step of the process. This approach increases the credibility and usability
+of the system through the operation and interaction logic of natural language, while
+maintaining robust input/output structures11, 15, 18. The workflow in this manuscript
+infers the LLM-enhanced workflow.
+The SWT system is applied to the Nearby Galaxy Supernovae Survey (NGSS,
+Section 2) to help the observers save time (Figure 1). The NGSS project is a
+time-domain survey with 10 amateur-level telescopes, with a simplified telescope
+organizational structure similar to GOTTA. In summary, the SWT observation mod-
+ule (Section 3) consists of observation planning(Section 3.2), observation control
+(Section 3.3) and a data pipeline (Section 3.4). Before and after observations, SWT
+provides recommendations to observers through automated messages (Section 3.5).
+We show the observation and execution of the SWT system in Section 4, and dis-
+cuss its strengths and weaknesses in Section 5.1. The solutions to the weaknesses are
+discussed in Section 5.2. The related works are referred in Supplementary Section 2,
+Related Works.
+2 Nearby Galaxy Supernovae Survey
+As outlined in Section 1, we have developed an agent-based system named SWT,
+aimed at easing the challenges associated with astronomical observations, particularly
+focusing on large-scale time-domain surveys such as the GOTTA (More information
+are provided in Supplementary Section 3, GOTTA). Although GOTTA is still under
+3
+
+=== PAGE 4 ===
+9:0011:0011:30
+12:0018:005:00
+Long Waits, Competing Priorities, Researcher Fatigue
+9:00 18:00 5:00
+AI-Generated List
+One-click Setup, Autonomous Operation, Researchers Focus on scienceDuring Day
+Data ReadyObservations
+Waiting, Data processingSearch for sourcesCheck TNS alerts
+Any findings yesterday?Telescope ListTraditional    vs.    SWT-Enhanced
+Researchers focus 
+on academic work
+Xinglong x7
+Gansu
+Yunna
+Xinjiang
+AI Task Interface 
+√ List Completed
+Create observation list
+AI-Controled Observations
+Figure 1 Workflow comparison between traditional observation methods and the SWT
+enhanced system.The TNS stands for Transient Name Server.
+development, we test the SWT system’s performance through a similar survey called
+the NGSS, which features multiple sites and telescopes, thereby serving as an ideal
+testing ground for GOTTA.
+The NGSS aims to detect transients in nearby galaxies using amateur-level tele-
+scopes. The initiative’s future roadmap involves coordinating a network of more than
+500 underutilized amateur telescopes to conduct systematic time-domain sky surveys,
+harnessing the collective potential of the global astronomy community. Similar to the
+GOTTA, its primary function is to identify transient astronomical events, but on a
+smaller scale, suitable for amateur equipment.
+Several amateur telescopes have been installed at the Xinglong Observatory in
+Hebei Province (40.393◦N, 117.575◦E), with additional telescopes located in Xin-
+jiang (43.522◦N, 88.577◦E), Gansu (35.678◦N, 106.848◦E), and Yunnan(23.914◦N,
+102.653◦E) provinces in China. These telescopes, detailed in Table 1, are equipped
+with monochrome CMOS sensors and LRGB photometric filters. With their relatively
+large Field of View (FoV) and apertures under 250mm, they are particularly suited for
+detecting bright supernovae in nearby galaxies. On clear nights, these instruments can
+observe over 500 sky fields, covering more than 3,000 nearby galaxies. Larger amateur
+telescopes with apertures exceeding 250mm and narrower FoVs are used primarily for
+follow-up photometry, complemented by professional telescopes like the 216-cm tele-
+scope at Xinglong Observatory for follow-up spectroscopy and precise photometric
+observations. Considering the power of these telescopes, this work focuses on galaxies
+within 50 Mpc19and associated transient phenomena.
+To reflect the operational preferences of the amateur astronomy community
+as much as possible, NGSS operations utilize Nighttime Imaging ’N’ Astronomy
+(N.I.N.A.) software, a widely-used automation tool among amateur astronomers. This
+4
+
+=== PAGE 5 ===
+software integrates the control processes, allowing the observer to connect all equip-
+ment, such as the camera, telescope, dome, and filter wheel, to execute the observation
+from a given list in a specific format (a ninaTargetSet file). N.I.N.A. allows users to
+develop custom plugins to meet specific needs, for example, the three point polar align-
+ment. The software requires a list file to execute observations and uses ASCOM drivers
+to control the entire telescope system, performing fully automatic operations includ-
+ing slewing, auto-focusing, astrometric solving, capturing images, switching targets,
+and returning to park position upon completion.
+Telescope
+NameField-of-View
+(deg2)Focal Length
+(mm)Pixel Scale
+(arcsec pixel−1)Telescope
+Location
+xl-106 10.14 530 1.46 Xinglong
+xl-130 2.91 990 0.784 Xinglong
+xl-130-2 3.43 909 0.853 Xinglong
+xl-180 4.80 502 1.54 Xinglong
+xl-203 1.18 864 1.29 Xinglong
+xl-250 0.18 2575 0.301 Xinglong
+xl-c14 0.16 2717 1.14 Xinglong
+gs-150 0.83 678 0.73 Gansu
+yn-90 2.27 601 1.85 Yunnan
+wlmq-107 2.47 700 2.8 Xinjiang
+Table 1 Details of Amateur Telescopes Used for NGSS.The telescope name contains
+two parts, ’xl’, ’yn’, ’gs’, ’wlmq’ is the place, and the rest shows the diameter or the model
+number of the telescope.
+3 Methods
+LLM-based agents relieve researchers of repetitive tasks in scientific workflows, en-
+abling a strategic shift toward high-impact intellectual contributions. For instance,
+in general research contexts, these agents streamline labor-intensive processes such
+as literature review, manuscript drafting, and content summarization. In astronomy,
+specialized agents further augment productivity by automating critical but there are
+time-consuming responsibilities, including preparing observation proposals, designing
+and executing observational strategies.
+The SWT system is designed to orchestrate and interface with the NGSS telescope
+network through AI-driven agents, enabling autonomous control and adaptive obser-
+vation workflows. Several functional workflows are interconnected with workflows and
+API-driven communication protocols.
+In this section, we present the architecture of the SWT system, which comprises
+a central agent (Section 3.1) and four sequentially connected workflows (Figure 2):
+observation planning (Section 3.2), telescope control (Section 3.3), data processing
+(Section 3.4) and agent reporting (Section 3.5). The central agent is integrated with
+all workflows, providing comprehensive control over each component.
+Regarding the LLMs used in the SWT system, agents and workflows, we utilize
+Qwen-2.520as our base model. The details of the architectures are provided in
+5
+
+=== PAGE 6 ===
+Figure 2 The main structure of the SWT system.It begins with Observation Planning,
+where initial observation lists are generated. The process then moves to Agent Reporting, which
+incorporates updates from the Transient Name Server (TNS) report and the transients found by the
+data processing module. This procedure also allows manual revision and injects new targets into the
+observation list. These plans are then operated by the telescopes via the Observation Control module,
+in which the weather station can send commands to halt the observation. The Data Processing phase
+is designed to find transients from a data pipeline.
+the Supplementary Section 4, Detail and Prompt Design of NGSS Agent; Section 5,
+Observation Planning and Section 6, Auxiliary tools.
+3.1 Central Agent
+The SWT system adopts a modular workflow architecture designed to automate astro-
+nomical observation tasks while maintaining flexibility for human intervention. Built
+upon a distributed processing paradigm, the SWT system integrates 8 specialized
+workflows that operate through coordinated API communications, parameter-driven
+task routing, and AI-enhanced decision layers.
+The core architecture features a central agent (NGSS Agent) acting as the cognitive
+hub, which dynamically orchestrates sub-workflows based on real-time user requests,
+environmental conditions, and observational constraints.
+The eight workflows and their structure are as follows:
+•Central Workflow: The central workflow orchestrates the overall system oper-
+ations, including setting parameters, managing memory buffers, handling LLM
+models, and invoking tools via a central Agent.
+•Observation Planning: This workflow generates observation plans, communicates
+with the local server, and produces a log Uniform Resources Locator (URL) and
+the task Universally Unique Identifier.
+•Observation List Query: This workflow allows users to query observation plans
+for a specific site and date.
+•Transient Loading: This workflow handles the viewing and addition of transient
+sources and provides links to identification and image results.
+•Target Addition: This workflow enables users to add new astronomical targets
+(including targets from Transient Name Server, TNS) to the observation list and
+provides a summary of the results.
+•Plan Loading: This workflow loads observation plan files into the telescope’s
+N.I.N.A. software.
+6
+
+=== PAGE 7 ===
+Figure 3 Schematic diagram illustrating the construction of the observation list for the
+NGSS.Regular rectangles denote tools, while rounded rectangles represent agents powered by LLM.
+All orange boxes indicate input information. The constraints tool calculates both altitude and moon
+distance limitations. Once objects are manually added, the finalized list is saved to the server.
+•Telescope Control: This workflow controls the start and end of telescope
+observation actions via API calls.
+•Weather Monitoring: This workflow retrieves and summarizes weather data to
+ensure suitable observing conditions.
+We show the details and the prompt design for the main agent in Supplementary
+Section 4, Detail and Prompt Design of NGSS Agent.
+3.2 Observation Planning
+The observation planning workflow is designed to create observation lists for 10 tele-
+scopes across four sites in NGSS. Further details of this workflow can be found in
+Figure 3.
+The observation planning is done by a function call to trigger the workflow, and
+sequentially trigger the generation of a day’s plan. The workflow first generates an
+empty observation list based on the configuration files. The configuration file includes
+the pre-set observation parameters, including but not least the exposure, tracking, fo-
+cusing and guiding settings, filter configurations, slewing and readout time, is designed
+to improve the workflow’s robustness. The workflow then fills the empty observation
+lists with sources in the input catalog, or the previous observation lists. The site po-
+sition and several constraints will be considered during planning, and the final plan
+will be revised by the astronomer.
+More details of Observation Planning are shown in Supplementary Section 5,
+Observation Planning.
+3.3 Observation control
+After the generated observation list is reviewed by an astronomer, it will be transferred
+to the appropriate format and sent to N.I.N.A. to start the observation (Figure 4).
+7
+
+=== PAGE 8 ===
+Figure 4 Schematic diagram of the observation component in the NGSS.Regular rect-
+angles denote tools, while hexagons represent hardware facilities. All orange boxes indicate input
+information, and green boxes correspond to output results. The observation list will be transformed
+into a ninaTargetSet file for N.I.N.A. to read and take control of the observation. The data will be
+simultaneously processed by a data pipeline. The weather station at Xinglong Observatory can auto-
+matically halt the observation by commands to N.I.N.A.. The transients found will be reported after
+data processing.
+We built a N.I.N.A. plugin based on the Site Plugin21(https://nighttime-imaging.
+eu/docs/master/site/contributing/plugins/) with the functions of loading ninaTar-
+getSet, an observation list format that can be read by N.I.N.A., and starting and
+stopping observation via a User Datagram Protocol message. The ninaTargetSet con-
+tains more information about the hardware, such as the settings of exposure, focusing,
+filters, and guiding. These settings are injected through the transformation between
+the JSON observation list to the ninaTargetSet for each object. By default, every two
+hours, the automatic focusing will be enabled, and 30 new bias images will be taken.
+At the predetermined time (the end of astronomical twilight), the agent issue com-
+mands by sending corresponding messages, which then triggers the plugin to initiate
+observations. Observations are automatically terminated at the onset of astronom-
+ical dawn. Additionally, the API from the compact weather site is integrated with
+the agent, enabling the automatic suspension of observations in response to adverse
+weather conditions.
+3.4 Data pipeline
+The raw image taken by the telescopes will be processed in the data pipeline to find
+transients and send alerts. Usually, the follow-up spectroscopy observation proposal
+will be sent to the 216-cm telescope (at Xinglong Observatory), and manually do the
+follow-up observation since its not linked to the SWT system.
+Xinglong - Observatory Popular Science Telescope Pipeline (X - OPSTEP,22) is
+the data pipeline for NGSS. It can automatically and real-time process the raw image
+data, including image pre-processing, astrometry, photometry, and image subtraction.
+After the observation process by N.I.N.A., the raw image will be sent back to the
+server at the Xinglong observatory, then X-OPSTEP will be triggered as long as the
+8
+
+=== PAGE 9 ===
+new raw data is received. X-OPSTEP first performs bias and flat correction, and then
+solves for the image world coordinate system information withAstrometry.net23.
+After that, the photometry process will be done by SExtractor24, and the resulting
+catalog will be cross-matched with GAIA DR325to conduct flux calibration. The
+pipeline will then combine the same target for the same band By using SWarp26
+with 3-σclipping median combination to get rid of contamination from any satellites.
+Finally, we useHOTPANTS27to subtract the template image from the science image
+and cut out the target galaxies. See figure 5 for an example. A real-bogus model
+is applied to check the subtracted image. The model, similar to Shi et al., 202528,
+using a 64×64 difference image as input, predicting through a ResNet + attention
+architecture, achieves 99.12% validation accuracy.
+3.5 Suggestions Given by the AI agent
+The photometric data and image subtraction result will be read by the SWT system.
+The SWT system evaluates multiple options to assign, remove, or replace specific
+galaxies in the observation lists. Typically, it recommends that the user adopt the ob-
+servation lists from the previous day to form continuous monitoring of these galaxies.
+These galaxies are flagged and reassigned to the observation list. Similarly, galax-
+ies with detected transients are also highlighted and included in the subsequent
+observation list for continuous imaging.
+Once a transient is detected, its coordinates and associated information are trans-
+mitted to the user via a web interface. If the Agent is unable to retrieve any information
+about the object, it will recommend that the user submit the object to the TNS. The
+SWT system will also send a message about the transient to the XingLong chat group,
+including information about the source and an observation suggestion generated by
+the LLM.
+We show some auxiliary tools in Supplementary Section 6.
+4 Results
+The SWT system has been actively operating on NGSS telescopes since October 2024,
+successfully detecting several transients. The majority of these transients are initially
+reported by other open surveys, and we cross-matched them with our observational
+data, and found some transients bright enough to be detected. Some transients have
+observing time earlier than the discovery time reported, but not detected due to large
+background noises or detected before explosion. Details of these transients are shown
+in Table 2.
+As shown in Table 2, during the early test observations, the actual detection time
+for transients lagged approximately one day behind the TNS reporting time. This
+delay is primarily attributed to the manual maintenance at the beginning of NGSS,
+at the time when the manpower can only afford two to three telescopes.
+However, after deploying SWT system, the detection time of brighter transients,
+such as AT2024abqt, SN2024advj, and SN2025bl, trailed the TNS reporting time by
+only a few hours. Notably, AT2025pk, a flare star, represents the first transient event
+successfully identified through the SWT system.
+9
+
+=== PAGE 10 ===
+Transient
+NameOur
+First
+DetectionTNS
+Report
+DateTransient
+TypeRedshift
+( z )Discovery
+Telescope
+SN2024xin 2024-10-07 2024-10-05 SN Ia 0.019 xl-106
+SN2024xlh 2024-10-07 2024-10-06 SN II 0.03 xl-106
+SN2024xli 2024-10-07 2024-10-06 SN Ia 0.037 xl-106
+SN2024xqe 2024-10-10 2024-10-09 SN Ia 0.034 xl-106
+SN2024xvg 2024-10-10 2024-10-10 SN Ia 0.03 xl-250
+AT2024abqt 2024-11-21 2024-11-21 CV - xl-130-2
+SN2024advj 2024-12-11 2024-12-11 SN IIn 0.017 xl-106
+SN2025bl 2025-01-04 2025-01-04 SN II 0.009 xl-130-2
+AT2025pk 2025-01-17 2025-01-17 Flare Candidate - xl-130-2
+Table 2 Details of Transients Detected by NGSS.The first detection date is the date on
+which the transient was detected based on the image subtraction. The ’-’ in redshift means no
+data reported. The TNS is the Transient Name Server plateform, and the types are Super
+Novae (SN), Cataclysmic Variable (CV).
+Figure 5 The discovery confirmation images of AT2025pk.The images are shown from left
+to right are template, science, and difference image. The title contains object name (OBJNAME),
+background magnitude (BMAG), the pixel position of AT2025pk, Right Ascension (ra), Declination
+(dec), and the hour angles in hour-minute-second (hms) and degree-arcminute-arcsecond (dms).
+Figure 5 shows the transient source identification images provided by the SWT
+system. Bright transient sources are evident in both the science and difference im-
+ages. Through visual inspection, we search for suspicious bright spots in the images
+and cross-check to exclude asteroids or comets, thereby enabling the discovery of
+transients.
+The application of the SWT system in NGSS has greatly improved work efficiency.
+The observation plan was completely generated manually in the beginning phase of
+NGSS. To quantitatively evaluate the performance of the SWT system, we conduct a
+controlled comparison between manually generated and SWT-generated observation
+plans under identical conditions. The observation site is considered as Xinglong. The
+results (Table 4) show that SWT reduce the planning time from about 1.5 hours (PhD
+level) to less than 1 minute, with better target coverage counts and zero conflicts,
+demonstrating both efficiency and robustness.
+10
+
+=== PAGE 11 ===
+Metric Manual (PhD student) SWT System
+Planning time per telescope 1 - 1.5 hours <1 minute
+Number of galaxy coverage on
+the same day2000 - 2500 2500 - 3000
+Conflict rate per list 1 - 3 0
+Requires manual adjustment Frequently needed Not required
+Reproducibility / Consistency Depends on operator Fully deterministic
+Adaptability to constraints Limited Sites, visibility, and moon
+phase
+Table 3 Comparison between manual and SWT system for observation planning.The
+manual plan is generated by a PhD student, with galaxy coverage based on the combined
+10-telescope array. The conflict rate reflects the number of galaxies observed more than once in a
+single list. The time refers to the period when observable galaxies can be distributed across the
+telescopes. Manual adjustment of the SWT plan is only applied when target changes are needed. In
+manual planning, it is difficult for humans to account for all constraints simultaneously.
+We evaluated the success rate of SWT system by cycling through the following
+prompts and querying the agent round by round: (1) Please make an observation plan;
+(2) Please check today’s log of making observation plan; (3) Please check the observa-
+tion plan; (4) Please check the transients; (5) Please add them to the observation list;
+(6) Please load the observation lists to each telescope. These queries are commonly
+used among observers when interacting with the agent. The programs for starting or
+stopping observations have been prohibited from running during the test to avoid any
+potential risk of system damage.
+The agent has been asked 7,620 rounds, of which 4,194 involved tool calling, and
+the tool has been called 2,962 times successfully, showing the overall function call
+success rate is approximately 70.5%. The number of function calls is less than the
+number of queries because not all queries need to make function calls. The success rates
+of the observation planning and observation list querying tools have achieved 100%.
+For loading transient or input sources and telescope-controlling tools, the success rates
+range between 60% and 70%. The loading observation plan for the telescope tool has
+a relatively low success rate of approximately 30%. These issues are mainly caused by
+the network latency, and lead to an overtime failure. The test is conducted over two
+days, and the total running cost is about 871.6 minutes, involving about 58.6 million
+tokens cost. Tokens are a basic unit of text processed by LLMs, providing the context
+for usage in our workflow. This amount of tokens is about 14 dollars at cloud services.
+The example of usage of the SWT is shown in Supplementary Section 7.
+5 Discussion
+In the previous Section 3, we show the construction of the SWT system. In this section,
+we first introduce the strengths and challenges of the system in Section 5.1. We then
+make a future plan at Section 5.2 to solve the technical issues we faced, and the path
+to an AI Astronomer.
+11
+
+=== PAGE 12 ===
+5.1 Strengths and Weakness
+Astronomical observations have traditionally demanded specialized expertise; how-
+ever, our agent-integrated system substantially lowers the entry barrier by enabling
+natural language interaction and real-time process monitoring. This innovative ap-
+proach not only accelerates the onboarding process for novice observers but also
+empowers experienced astronomers to efficiently manage multiple telescopes simulta-
+neously, thereby considerably improving observational productivity.
+The development of standardized protocols, such as Agent-to-Agent29, which allow
+agents to interact with another agent, among different agents, lays a solid foundation
+for cluster control designed based on multi-agent system games. It enables seamless
+customization for a wide range of survey projects and adaptability to various ob-
+servational strategies, including dynamic updates to observation lists and real-time
+control.
+We also identify several limitations of the current system and discuss how they
+may be addressed or what lessons have been learned.
+Automated hardware
+The dome of NGSS is not automated and must be opened or closed manually, ren-
+dering automatic observation halting partly ineffective. At Xinglong Observatory, this
+issue is mitigated by sending warnings to the observers of the GOTTA pathfinder,
+which shares the same dome. However, for telescopes located at other sites — typ-
+ically housed in amateur domes situated on villagers’ rooftops — dome operations
+cannot be controlled remotely. Dome management at these locations relies entirely on
+the cooperation of local residents who rent out their rooftop space. Similarly, flat ex-
+posure must currently be taken manually, due to the lack of automation. At present,
+we have created standard template flat images to ensure basic data quality in Gansu,
+Yunnan, and Xinjiang telescopes. Looking forward, integrating automated hardware
+will be a feasible solution for telescopes at Xinglong Observatory. However, for re-
+mote amateur sites, achieving full automation remains a considerable challenge due
+to logistical and infrastructural constraints.
+Hardware failures
+The SWT system is currently unable to automatically resolve hardware failures. Com-
+mon issues include focuser freeze due to cold weather, wiring disconnections, and
+computer memory crashes, with the latter two being the most frequent. At present,
+these problems are resolved manually by on-site observers. In the future, the system
+could be enhanced to provide troubleshooting suggestions through an intelligent agent.
+This would be achieved by analyzing observation logs written by observers, which the
+SWT system could access using Retrieval-Augmented Generation30or a Model Con-
+text Protocol. Retrieval-Augmented Generation is a technique that enhances LLM by
+retrieving information from a specified dataset, considerably improving accuracy and
+relevance in specific domains. Model Context Protocol is a protocol designed to define
+contextual interactions for tools or datasets, aiming to standardize communication
+and integration between models and external resources. For larger telescopes, con-
+tinuous monitoring systems could be implemented to collect standardized telemetry
+12
+
+=== PAGE 13 ===
+data, allowing the agent to assess telescope status and detect anomalies in real time.
+However, for telescopes located outside of Xinglong Observatory — particularly those
+hosted in amateur setups — there are currently no feasible conditions for immediate
+or automated fixes due to limited infrastructure and remote locations.
+Software crashes
+The SWT system currently lacks the ability to automatically resolve low-level soft-
+ware crashes, such as those occurring in applications like N.I.N.A. and X-OPSTEP.
+These incidents are typically infrequent but often stem from human-driven overuse
+of server resources—such as running multiple memory-intensive programs simultane-
+ously, which exceeds available storage capacity. Automated solutions for these types of
+failures are not considered a high priority, mainly due to their rarity and the challenges
+associated with changing operator workflows or upgrading server specifications. While
+agent-based monitoring of the software environment could potentially detect and miti-
+gate such issues, it introduces considerable security risks by requiring privileged access
+(e.g., through tools like Code Interpreter). An alternative approach involves training
+a GUI agent31to monitor graphical interfaces and respond to anomalies. However,
+this method requires substantial GPU memory resources, making it impractical for
+deployment at scale in large observatory operations.
+Standardized telescopes
+The current lack of standardization among telescopes in the NGSS network intro-
+duces operational inconsistencies, particularly in manual observation practices. Two
+key challenges emerge for the SWT. First, the varying FoVs across different telescopes
+affect overall sky coverage. The input catalog is currently designed based on the small-
+est FoV to maintain uniformity, which results in larger FoV telescopes potentially
+observing adjacent or overlapping regions and inadvertently covering galaxies already
+targeted by smaller FoV instruments. This leads to a reduction in total effective sky
+coverage compared to manually generated plans. A new tool is being developed to
+shift the planning focus from individual galaxy selection to maximizing sky coverage,
+which is expected to improve this limitation. Second, differences in hardware relia-
+bility across telescope types result in varied failure patterns, making it more difficult
+to implement consistent fault detection and recovery strategies. Standardization of
+both hardware and software components is therefore essential not only for improving
+system usability and agent-instrument interaction, but also for enabling scalable de-
+ployment. As the NGSS network expands with more standardized nodes, it will achieve
+broader sky coverage, enhancing its scientific and educational capabilities. Further-
+more, standardization reduces operational complexity by minimizing labor-intensive
+maintenance and improves data consistency by reducing instrumental variation across
+observational outputs.
+13
+
+=== PAGE 14 ===
+5.2 Future works
+Edge Computing
+Integrating edge computing modules with telescope systems offers a promising solu-
+tion to latency issues in server-to-server communication, enabling telescopes to make
+autonomous decisions and improving operational responsiveness and control stability.
+By deploying lightweight agent services and AI models locally—such as on industrial
+personal computers equipped with edge devices like the NVIDIA Jetson—real-time
+decision-making and task execution can be achieved with minimal reliance on remote
+servers or cloud infrastructure.
+Observation monitoring
+A future observation monitoring module is crucial for ensuring the reliability of unat-
+tended observatories. It will use sensors to collect real-time data on the telescope’s
+physical state, including vibration (e.g., sounds from the equatorial mount), tem-
+perature, humidity, and electronic signals, to assess its operational status. When
+an anomaly is detected, the module will evaluate its severity and respond ac-
+cordingly—automatically resolving low-severity issues through control commands or
+warning the observers with guidance for more serious problems.
+We will collect operational data from the GOTTA prototype, a 1-m diameter
+prototype telescope for GOTTA (See more information in Supplementary Section 3,
+GOTTA), to generate training samples for various types of errors and malfunctions.
+These data will be used to construct a knowledge graph based on observer handbooks,
+aiming to enable automated monitoring and maintenance instructions—capabilities
+that are currently limited in existing systems. This effort will also include building a
+comprehensive dataset containing videos from cameras near the telescope, observation
+logs, and hardware manuals, which will serve as valuable training material for LLM-
+based agents assisting in system maintenance.
+This dataset serves as a Retrieval-Augmented Generation-based memory mod-
+ule, integrating operational logs, interaction histories with observation assistants, and
+user behavioral profiles. These multi-source data are transformed into vector embed-
+dings, enabling the retrieval of contextually relevant information during inference.
+By continuously learning from past successes, failures, and user-specific patterns, the
+system dynamically refines its responses, adapts to individual preferences, and sup-
+ports distributed intelligence across edge computing nodes (e.g., telescope-mounted
+devices).
+Path to AI Astronomer
+Figure 6 shows the methodology used by the AI Astronomer. For the telescopes that
+conduct sky surveys, it will get data from their real-time observation, and command
+the follow-up spectroscopy telescope to observe.
+In Figure 6, the red blocks represent AstroInsight, an idea generation system
+which built on the integration of LLM-based agents and astronomical datasets. It
+will generate scientific ideas based on knowledge from databases such as ArXiv or
+Astrophysics Data System, and selects optimal methodologies for validation.
+14
+
+=== PAGE 15 ===
+Figure 6 The iterated process of AI Astronomer.The red blocks are about the StarWhisper
+automatic scientific discovery system. The green blocks are the observation part, where we are trying
+to build the embodied telescope. The blue blocks show the StarWhisper scientific writing workflow.
+The OCS stands for the Observation Control System.
+For feasible plans requiring new data, the green blocks—enhanced by reason-
+ing models like DeepSeek R132—support operations across the NGSS project,
+GOTTA, and 216-cm-telescope. This integration enables reasoned task dispatch and
+observation coordination, with acquired data feeding directly into AutoASTRO, the
+automated data processing and machine learning pipeline. The blue blocks represent
+the StarWhisper’s scientific writing workflow, which transforms analytical outputs
+into structured narratives. This workflow forms a closed-loop feedback system, where
+the results of scientific writing are fed back into the idea generation module (red
+blocks), enabling continuous iteration and knowledge refinement.
+Acknowledgments
+The research presented in this paper was generously funded by the National
+Programs on Key Research and Development Project, with specific contributions
+from grant numbers 2019YFA0405504 and 2019YFA0405000. This research is sup-
+ported by National Key R&D Program of China (grant No. 2023YFA1609700 and
+2023YFA1608304). Additional support came from the National Natural Science Foun-
+dation of China (NSFC) under grants NSFC-11988101, 11973054, 12090040, 12090041,
+12403022 11903054, 12261141690 and 11933004. We also received backing from the
+Strategic Priority Program of the Chinese Academy of Sciences, granted under
+XDB41000000, XDB0550000, XDB0550100 and XDB0550102. Special acknowledg-
+ment goes to the China Manned Space Project for their science research grant, denoted
+by NO.CMS-CSST-2021-B07. The research is also supported by National Astronomi-
+cal Observatories Chinese Academy of Sciences No. E4TG2001 and Key R&D Program
+of Zhejiang (2024SSYS0006).
+JFL extends gratitude for the support received from the New Cornerstone Science
+Foundation, particularly via the NewCornerstone Investigator Program, and the honor
+of the XPLORER PRIZE.
+15
+
+=== PAGE 16 ===
+Author Contribution
+Cunshi Wang contributed the coding, agent construction, and the writing of the
+manuscript. Yu Zhang and Xinjie Hu contributed the coding, agent construction.
+Yiming Mao contributed the test on NGSS project. Xunhao Chen contributed the X-
+OPSTEP pipeline. Pengliang Du contributed the data transmission and connections
+between telescopes to agents. Rui Wang contributed setup and operation of the tele-
+scopes. Yuyang Li contributed the design of the structure, prompt engineering for the
+SWT system. Ying Wu contributed the design NGSS array and the design of N.I.N.A.
+plugin. Hang Yang contributed the edge calculation of the system. Yansong Li con-
+tributed the writing of the manuscript. Beichuan Wang contributed the TNS search
+module and the observation of these telescopes. Haiyang Mu, Xiaohan Chen, Shunx-
+uan He, Hao Mo, Liyue Zhang, Lin Du, and Yunning Zhao contributed the operation
+and maintenance of SWT system on NGSS. Jianfeng Tian, Liang Ge, Shengming Li,
+Xiaomeng Lu contributed the design of the structure on embodied telescope and the
+future of SWT system. Zheng Wang, Jinhang Zou contributed the design of GOTTA
+pathfinder OCS and provide insights in the observation based on agents. Yongna
+Mao, Yang Huang, Ningchen Sun, Jie Zheng, Min He, Yu Bai, Junjie Jin, Hong Wu,
+Jifeng Liu contributed the support the SWT system and administrative and resource
+support.
+Data availability
+We have uploaded the codes, prompts, tools, and supporting materials to GitHub at
+https://github.com/Yu-Yang-Li/StarWhisper/tree/main/NGSS.
+The StarWhisper’s scientific writing workflow can be found in the Coze
+store at https://www.coze.cn/store/agent/7383556199616135179?utm source=ai-bot.
+cn. See https://www.coze.cn/store/agent/7383556199616135179?utm source=ai-bot.
+cn&bid=6f7h1ou4k7g19&post id=7396577135529394202 for the user handbook.
+Code availability
+See https://github.com/Yu-Yang-Li/StarWhisper/tree/main/NGSS for the usage of
+the codes.
+Ethics Declarations
+We declare no competing interests.
+6 Supplementary: Observation planning by Qwen
+The observation plans generated by popular use models often focus on well-known
+celestial objects, such as the Andromeda Galaxy (M31) or the Triangulum Galaxy
+(M33), without considering crucial factors like the season or the observation time
+specified in the prompt.
+16
+
+=== PAGE 17 ===
+We asked Qwen-max-202412 model, the model with the highest ability for Qwen
+series models at December 2024, to show us 10 galaxies to observe in Beijing, at 16th
+Jan. 2025, and mentioned that we can only observe the object with a higher than 30
+degrees at night. The result is shown in Table 4.
+The Qwen models currently do not include specialized astronomical planning func-
+tions and are unable to provide precise observation times. Instead, they offer broader
+time ranges, such as ”Evening,” ”Night,” or ”Early Morning,” which may not fully
+align with the specific needs of observational astronomy. Additionally, some targets,
+such as the ”Leo Triplet,” ”Messier 96 Group,” or ”Virgo Cluster,” represent extended
+sky regions that cannot be fully observed within a single telescope field of view. Upon
+reviewing the rise, transit, and set times of these targets, it appears that the gen-
+erated observation plan does not closely correspond to the approximate observation
+times suggested by Qwen.
+7 Supplementary: Related works
+Here, we summarize several related works:
+7.1 Large language models
+LLMs have demonstrated extraordinary capabilities in natural language conversa-
+tions7, 9, 10, 33, coding, and even contributing to scientific discoveries34, especially
+through the use of chain-of-thought prompting18. The GPT series models6, 9
+have been leaders among LLMs, excelling in various aspects such as chat models,
+instruction-following ability, coding skills, etc. They are also among the first models
+used to construct agents15. However, these models are closed-source and unable to
+meet the local deployment requirements in scenarios that demand data privacy and
+security. As an alternative, we mainly used the open-source models as the LLM engine,
+especially the DeepSeek series models10and the Qwen series models7, 8.
+In terms of agents, Langchain ChatChat15is driven by evolving technical re-
+quirements and practical constraints, implementing basic agent interactions through
+function registration. However, it has inherent limitations in system scalability and
+multi-task processing capabilities. AgentScope35is a code-driven multi-agent orches-
+tration paradigm. This architectural shift facilitated complex task execution, including
+cross-domain knowledge synthesis and multi-step reasoning workflows. However, the
+increased development complexity associated with this approach necessitated further
+optimization of the development lifecycle.
+Coze is a no-code platform, but its cloud-only model was unsuitable for our on-
+premises needs. Dify36is a containerized solution deployable via Docker. Though it
+has limited code modularization and Python package restrictions, the agent workflows
+can be constructed using local FastAPI services.
+n8n17has strong local integration and extensible AI interface. Although its native
+AI features are limited, combining it with Dify enabled a hybrid architecture that
+balances efficiency and complexity. Given its flexibility and adaptability, we adopted
+n8n as the foundational framework for the SWT system.
+17
+
+=== PAGE 18 ===
+Approximate time Target name Raise time Decent time Transit time
+Evening Andromeda Galaxy (M31) -∼22 : 40∼17 : 00
+Evening Cigar Galaxy (M82)∼18 : 40 -∼02 : 00
+Evening Bode’s Galaxy (M81)∼19 : 00 -∼02 : 00
+Night Pinwheel Galaxy (M101)∼00 : 20 -∼06 : 40
+Night Owl Nebula (M97)∼21 : 40 -∼04 : 00
+Night Leo Triplet (M65, M66, NGC 3628)∼23 : 40 -∼04 : 00
+Night Messier 96 Group (including M95, M96, and M105)∼21 : 10 -∼03 : 00
+Night Sombrero Galaxy (M104)∼03 : 00 -∼05 : 00
+Night Coma Berenices Cluster (Melotte 111)∼00 : 00 -∼05 : 00
+Early morning Virgo Cluster (including M84, M85, M86, M87, etc.)∼00 : 50 -∼05 : 00
+Early morning Antennae Galaxies (NGC 4038 / NGC 4039)∼03 : 50∼05 : 20∼04 : 30
+Early morning Black Eye Galaxy (M64)∼01 : 00 -∼05 : 20
+Table 4 The observation list given by Qwen.The date is 2025-01-06, situated at Beijing, and
+mentioned that the object with height lower than 30 degrees are not observable. The column
+’Approximate time’ and ’Target name’ are given by Qwen-max-202412 model. The column ’Raise
+time’, ’Descent time’ are all given by calculation from python with a 10 minute time gap, and
+defined as the raise or descent to 30 degree height. For all the times, ’-’ means the time is not at
+night. For example, the raise or descent happens at noon. The time after 00:00 is in the next day,
+January 17, 2025, and they belong to the same night.18
+
+=== PAGE 19 ===
+7.2 Astronomical observation
+The traditional means for observation execution is via the OCS interfacing with in-
+struments. Over time, improvements are usually made to the control system by adding
+in more automation37, 38. The philosophy behind OCS has always been focused on
+becoming more robotic39, 40, rather than employing AI methods, which may assist
+and lower the barrier of entry for novice astronomers. AI cosmologist41is an advanced
+framework constructed using LLM-empowered agents designed to autonomously per-
+form data analysis and generate scientific papers in the field of cosmology; however,
+its current capabilities do not extend to the planning and execution of observational
+tasks, which remain outside the scope of its automated workflow.
+8 Supplementary: GOTTA
+The immediate goal of SWT system is to refine the AI-operated observation, paving
+the way for future advancements tailored for the GOTTA initiative. We introduce the
+GOTTA in this section.
+GOTTA1also named as the SiTian project in China, while SiTian means the
+officials of the Imperial Astronomical Bureau in ancient China. GOTTA designed to
+employ over sixty 1-m diameter telescopes across various locations around the world,
+aims to capture data from more than 10,000 square degrees of sky area per night. It
+addresses the challenge of observing the extremely early stages of astronomical events,
+such as supernovae, kilonovae, and tidal destruction events. A distinctive feature of
+GOTTA is its capability to conduct photometric time-domain observations using a
+network of 1-m telescopes.
+The telescopes will be organized into observation nodes, each comprising three
+telescopes equipped withg,r, andiband filters, enabling simultaneous multi-band
+observation of a single sky area. Each telescope will have a FoV of 25 square degrees,
+with an observation cycle lasting 30 minutes for the entire array. The system will also
+include several 6-m follow-up spectroscopic telescopes specifically aimed at capturing
+rapid alerts for transient sources like supernovae. With a limiting magnitude under
+21 mag, the system will ensure detailed observations of faint celestial objects. The
+scalability of the project will allow for enhanced observing modes and survey efficiency
+as more telescope arrays are added. The GOTTA “Brain” will oversee observation
+planning, integrated planning, data analysis, and storage.
+At present, GOTTA utilizes three 30-cm GOTTA pathfinder telescopes (referred
+to as mST from the previous SiTian project, and namely, the mini-SiTian Array,2, 42)
+and a 1-m prototype to do the previous test for the operation and maintenance of
+the GOTTA array. The three mST are equipped withg,r,ibands individually, and
+generate three raw images simultaneously. The 1-m GOTTA prototype is constructed
+at Xinglong Observatory, using a four-piece mosaic CMOS, since there is only one
+prototype at present, no filters are applied. Three new GOTTA telescopes are under
+construction at Lenghu Observatory.
+The previous telescopes are constructed for training42, OCS development3, and
+pipeline refinement4. Function call-based control tests have been performed on the
+19
+
+=== PAGE 20 ===
+mST telescopes using a developed TCP communication protocol for transmitting
+observational data and loading observation lists.
+During testing, the mST interface was utilized for agent communication, with the
+list including several gravitational wave event candidates and a fixed sky area. Obser-
+vational tasks could be manually customized by specifying exposure times, number of
+exposures, and other parameters such as object name, right ascension (R.A.), decli-
+nation (Dec.), image type, and priority. The resulting images were communicated to
+the LLM after completing the exposure. This setup allowed for efficient task prioriti-
+zation and execution, ensuring that all added sources were observed with the highest
+priority.
+9 Supplementary: Detail and Prompt Design of
+NGSS Agent
+9.1 Details
+These workflows are directly integrated with the central agent, although certain func-
+tions share the same API but operate with different input parameters. This design
+enhances the stability and reliability of the LLM in invoking tools through function
+calls. For instance, the Transient Loading and Target Addition modules utilize the
+same API to add new targets to the observation list. Similarly, the Plan Loading and
+Telescope Control modules both interact with an API to send messages to N.I.N.A.,
+albeit with different message content tailored to their specific tasks.
+The details of the eight workflows in the central agent are as follows:
+•Central Workflow: The central workflow contains multiple functions, such as set-
+ting parameters, memory buffers, LLM models, tool calls, etc. In this workflow, we
+define the system prompt by detailing the agent’s role, global parameters, capabil-
+ities, and limitations. The agent is responsible for processing user requests related
+to astronomical observations, invoking the appropriate tools as needed. These tools
+are encapsulated within sub-workflows, enabling tasks such as querying observation
+plans, loading files, controlling the telescope, and more.
+•Observation Planning: The observation planning workflow is responsible for gen-
+erating the observation plan, communicating with the local server through HTTP
+requests, updating site information, and triggering observation plan generation.
+Once the workflow is triggered, it will ultimately generate a response that includes
+log Uniform Resource Locator (URL) and the Universally Unique Identifier gener-
+ated by Python for the task. Automatic tasks can be performed periodically, such
+as triggering observation plan generation at 9 o’clock every day.
+•Observation List Query: The observation list query workflow queries the list to
+view the observation plan for the specified site and date. The user provides the site
+and the date as parameters, and the workflow returns a URL, allowing the user to
+manually access the results.
+•Transient Loading: Manages the viewing and addition of transient sources while
+generating relevant links to enable users to access identification and image results.
+20
+
+=== PAGE 21 ===
+The workflow encompasses parameter extraction and API calls, culminating in the
+use of an AI agent to summarize the operation outcomes.
+•Target Addition: The target addition workflow allows users to add new sources
+to the observation list. The sources are provided in the format of object name, or
+RA and Dec by the user, and an HTTP request is made to invoke the back-end
+API. Subsequently, an AI agent is employed to summarize the operation results,
+detailing both successful and failed sources provided, along with explanations of
+potential causes for any failures.
+•Plan Loading: The plan loading workflow handles file transfers for loading observa-
+tion plan files into the telescope’s N.I.N.A. software. The workflow uses information
+extraction nodes to extract parameters from user input, generate URLs, and invoke
+the relevant APIs through HTTP requests.
+•Telescope Control: The telescope control workflow is designed to control the
+start and end of telescope observation actions. The workflow receives the action
+parameter, constructs the corresponding API link, and sends the HTTP request.
+•Weather Monitoring: The weather monitoring workflow retrieves weather data
+from the specified API, including parameters such as temperature, humidity, and
+dew point, and processes and summarizes the information. This workflow is also
+used for monitoring to ensure that conditions remain suitable for observations.
+Additionally, if adverse weather conditions are detected, warnings will be sent and
+the observation can be halted through theTelescope Controlworkflow.
+9.2 Prompt
+The prompt of NGSS Agent engineering follows a structured template comprising
+6 core components: Character, Goal, Global parameter definition, Skill, Values, and
+Restrictions.
+The complete system prompt is structured as follows (Prompt 1):
+# Character
+You are a senior astronomical observation consultant who is good at making telescopic star
+observation plans. You are good at making comprehensive use of various tools and logical
+judgments to arrange observation plans for each telescope at each observatory station and
+provide applicable NINA software observation lists. You need to use the tools to complete the
+task as much as possible, not the Agents own capabilities.
+# Goal
+- Accurately understand and analyze the needs of users.
+- Quickly and accurately invoke the appropriate tools as required.
+- Ensure that the tool is used as expected by the user.
+# Global parameter definition
+1. station: indicates the full lowercase Chinese spelling of the station name. The optional value is
+xinglong, gansu, yunnan, yunnan_chuxiong, all (where all indicates all stations), and the
+format is a string
+2. query_dt: The date in the YYYYMMDD format is a string
+3. telescope: The number of the telescope (for example, 1, 2, 3) in the format num
+# Skills
+## Skill 1: Make an observation plan
+### Workflow
+First, call the Make_Observation_Plan tool
+The second step is to return the following two messages to the user:
+- uuid: specifies the unique number of the process that makes an observation plan
+21
+
+=== PAGE 22 ===
+- url: specifies the URL of the log information for making observation plans. (Output the log
+information directly.)
+## Skill 2: View the observation plan
+### trigger condition
+The user clearly expresses the result of viewing the observation plan/final observation plan.
+### function
+This skill can help users view the specific date of an observation site, and the observation plan of
+a specific telescope.
+### Workflow:
+First, ask the user for the station and the date (query_dt).
+Second, call the tool Get_OB_List to get the URL to view the observation plan
+The third step is to return the URL to the user (please output it directly) and prompt the user to
+click on the planned link to complete the view.
+The third step is to ask the user "Do you want NINA software to load this observation plan file?" If
+the user say yes, continue calling Skill 3: Loading the observation plan file.
+## Skill 3: Load the observation plan file
+## Skill 4: Control NINA Telescope
+## Skill 5: Add observation objects
+### trigger condition
+If and only if the user clearly expresses adding observation objects or modifying observation lists
+### function
+Add a new observation object to the observation list
+### Workflow
+The first step is to ask the user what target to add
+Second, call the Add_Observation_Object tool
+The third step is to return the reply after the tool.
+## Skill 6: View a transient source for a particular day, or add a transient source to today’s watch
+list
+### trigger condition
+The user expressed the need to view the observation results of previous day, image subtraction
+results, temporary source forecasts, and other descriptions
+### function
+This ability allows you to view subtracting results from images for a given day and transient source
+forecasts.
+### How to use
+Step 1: Ask the user for the station site station, date query_dt, and telescope number Telescope
+Step 2: Call the Transient_load tool to complete the task of adding the transient source forecast
+for a certain day to the observation list.
+Step 3: Output the results.
+# Values
+- User needs first, always to meet user needs as the goal.
+# Restrictions
+- Must follow the requirements and instructions from the user, and accurately call the corresponding
+tools.
+- Answer only queries related to astronomical observations, not other types of questions.
+- Query the observation plan list, do not execute skill 1.
+- Answer in the language in which the user asks.
+- Make tool calls whenever possible, even if the tool that needs to be called has just been
+successfully called.
+- If a tool is called successfully, or the specified return value is not obtained, readjust the
+policy or input parameters and call the tool again until it is successful.
+- Ask the user for the required parameters of the tool.
+- must be directly output URL (http://127.0.0.1:80/check_log please directly output, for example,
+instead of! [] (http://127.0.0.1:80/check_log)).
+Listing 1The main agent prompt
+22
+
+=== PAGE 23 ===
+10 Supplementary: Observation Planning
+We outline the key aspects of generating observation plans for the NGSS. Given
+the relatively simple observational requirements and the lack of strict constraints
+on exposure times, all observations are standardized: typically using a two-minute
+exposure to capture three images in the L filter. In some cases, as directed by NGSS
+leadership, observations may instead be conducted using two images each in the R,
+G, and B filters.
+To optimize telescope usage across multiple observing sites, customized observing
+lists are generated for each site based on local observability conditions. For survey
+purposes, 2-minute exposures in the L band are standard, with non-overlapping obser-
+vation lists used to maximize sky coverage. Observing priorities vary by site location
+— for instance, telescopes in Yunnan focus on sources with lower declinations. This
+strategic planning not only enhances the efficiency of existing telescopes but also
+enables rapid integration of new ones into the network.
+While the system is capable of supporting multiple observation strategies, current
+operations rely on predefined strategies that align with astronomers’ preferences to
+ensure consistency and standardization. In the future, as more amateur astronomers
+join the NGSS project, the SWT system will support a wider variety of observation
+strategies tailored to diverse observational needs.
+The observation list template for each telescope is built after calculating rise and
+set times, with the time allocated per target computed as:
+number of optical filters used×exposure time + slewing time.(1)
+Once the time slots are pre-populated, they are filled with suitable targets based
+on visibility and priority criteria.
+Due to the limited aperture of the telescopes involved, preference is given to
+brighter and closer galaxies. The input catalog used for target selection is primarily
+the catalog of galaxies within 50 Mpc19. Several refinements are applied to this cata-
+log to improve search efficiency, including declination filtering, catalog selection based
+on limiting magnitudes, and duplicate removal.
+10.1 Catalog refinement
+1.Declination Filtering:The southernmost observation site in the NGSS array
+is located in Yuxi, Yunnan, at a latitude of 23.914◦. Considering a 30◦limiting
+observation altitude at all sites, objects with declinations below−36.086◦are un-
+observable across all sites and are removed. This filtering reduces the catalog to
+11,443 galaxies.
+2.Catalog Selection:To accommodate the limiting magnitudes of the NGSS tele-
+scopes, we restricted the catalog to objects listed in the New General Catalogue
+(NGC), the Index Catalogue of Nebulae and Clusters of Stars (IC), the Principal
+Galaxies Catalogue (PGC), the Uppsala General Catalog of Galaxies (UGC), and
+the European Southern Observatory (ESO) catalog. This step exclude dim galaxies
+for which we cannot reliably detect supernovae, and leaving 4,773 galaxies.
+23
+
+=== PAGE 24 ===
+3.Duplicate Removal:To avoid redundant observations of overlapping objects, we
+performed a self-matching process with a tolerance of 0.3 arcminutes, considering
+that the smallest field of view (FoV) of the telescopes in NGSS is approximately
+0.55◦×0.3◦. After this step, the refined input catalog contains 3,772 objects.
+Among the various observatory sites, priority is given to objects that are observable
+at the current latitude and lie outside the range of more northerly sites. The initial
+screening process is based on latitude, which involves categorizing sources from the
+input catalog, performing the screening, and producing several catalogs.
+10.2 Observation list creation
+In this section, we describe the method used to assign individual sources from the
+input catalog into the final observation list.
+The following guiding principles are followed when constructing the observation
+list:
+1. Each observing site prioritizes targets that can only be observed from its location.
+2. The system aims to observe as many unique targets as possible while minimizing
+duplication across sites.
+3. Only objects that will or have recently transited within a two-hour window around
+the meridian are considered; this time window can be dynamically adjusted via
+user prompts.
+When generating a new observation list – or after filling previously allocated time
+slots – any remaining empty intervals are filled with targets selected based on the
+above principles. The assignment is carried out by scanning from low-latitude to
+high-latitude sites and iterating through each telescope.
+For each time interval, an RA range is computed, and the target with the lowest
+declination is assigned first due to its shorter observable window. Once a target is
+assigned, it is removed from the input catalog to avoid duplication and ensure maxi-
+mum coverage. If no suitable targets remain in the catalog, the system automatically
+restarts the selection process with a fresh copy of the input catalog, and the restart
+counts is logged in the workflow.
+To support continuous sky survey operations, such as light curve generation, the
+system allows users to inherit observation lists from previous days. This inheritance
+occurs before the new list is generated. Each target from the previous day’s list is
+checked for observability in the current time window. If still visible, it is reassigned to
+the corresponding slot; otherwise, it is returned to the input catalog for re-evaluation
+(see Table 10.2 for the algorithm outline).
+Once inheritance is complete, the remaining empty slots are filled using the same
+assignment logic applied during the default observation list generation. If a valid
+observation list from the previous day exists, its settings (e.g., filter choices, exposure
+times) are inherited by default.
+The final step involves optional manual review. Based on observer preferences,
+the system generates a link to the observation list using the date and site as inputs.
+Observers may also request the addition of specific targets, which are then searched
+24
+
+=== PAGE 25 ===
+for the i-th target from the beginning of the inheritance catalog
+for j = 1 to i for the new catalog
+if the j-th target is empty:
+if the i-th target is observable:
+assign the target at the j-th part in the empty catalog
+Table 5The methodology of inheriting observation targets from a previous
+catalog.
+for and inserted into appropriate positions in [ the observation list.] Any displaced
+targets are reported for transparency. Throughout this process, external resources
+such as TNS reports and prior observational results are made available for reference.
+11 Supplementary: Auxiliary tools
+11.1 Weather
+Along with the observation, two weather report modules will send the information
+to the observer. The first is the Xinglong weather station report, and the second is
+deployed onCozeto get information about all stations.
+The Xinglong weather module is linked to the small weather station at Xinglong
+observatory, which ensembles temperature, humidity, wind speed, and a full-sky cam-
+era. The observation at Xinglong follows the same end criteria with mST42since they
+are posited at the same dome, which are: humidity≥0.8, average wind speed≥10m/s.
+The weather module will be lifted while prompted to see the weather and the weather
+condition reaches the ending criteria.
+The weather search module runs automatically, retrieving and reporting weather
+conditions at the NGSS observation stations. It initializes using site location data and
+processes weather information from an online API in four parallel branches. Each gath-
+ers precipitation and nighttime data, calculates twilight times, and converts results
+to Beijing time. The data is then sent to an LLM to generate nighttime precipitation
+info, and after all branches are processed, a final summary is produced. The module
+only responds to weather inquiries or sends a daily weather reminder at 10 a.m..
+11.2 TNS search
+The TNS search agent (Figure 7) is constructed by integrating an LLM with a TNS
+web search crawler tool, which is subsequently connected to an observable analysis
+plugin and finally linked to another LLM. The first LLM refines human-provided
+prompts, incorporating details such as geographical location, minimum observable
+altitude, retrospective search time, and time zone. These parameters have default
+settings: the geographical location defaults to Xinglong Station, the time zone to the
+Eastern Eight Time Zone, the minimum observable altitude to 30 degrees, and the
+search scope to TNS targets observed within the past 30 days, as per the specifications
+of Xinglong Observatory. The final LLM synthesizes the star catalog data and outputs
+the results.
+25
+
+=== PAGE 26 ===
+Figure 7 The schematic diagram for the TNS search agent of the NGSS.All orange boxes
+represent input information, and green boxes represent output results.
+Figure 8 The connection between each server, the control link, and the data flow of our
+system to the telescopes.The OCS stands for the observation control system.
+The observation limit of NGSS is about 15 to 16 mag under 2 minutes of exposure,
+and the brightest TNS targets are usually beneath 18 mag. In most days, the TNS
+search may not provide any sources for NGSS. However, this agent is popular in
+Xinglong Group Chat. We have configured the TNS search module to generate a
+daily report at 10 a.m. using AI capabilities, and soon it will be updated to a Virtual
+GOTTA, a tool to find transients from TNS and surveys like Asteroid Terrestrial-
+impact Last Alert System, Zwicky Transient Facility, or GOTTA prototype forced
+photometry. The information of this agent can be found at GitHub https://github.
+com/Yu-Yang-Li/StarWhisper/tree/main/NGSS.
+11.3 Connections
+The connection from our server to the telescope is another difficulty in the work.
+The system is deployed on the server at the head office of National Astronomical
+Observatories, Chinese Academy of Sciences (NAOC), while the telescopes are situated
+at Xinglong Observatory and other remote stations. At this stage, we only consider
+the connection between our system and Xinglong, while the data flow for other sites
+is done manually.
+The connection between the SWT system and telescopes at Xinglong observatory
+is shown in Figure 8. The NAOC server supports the SWT system which provides the
+observation list generation, the decisions, and the report generation. The observation
+list will be sent to each telescope by the Xinglong server as the springboard to do
+information forwarding. Every information, except the images taken by the telescope,
+will be returned to the NAOC server to make further decisions. The Xinglong server
+has two works, springboard and data processing. The X-OPSTEP is deployed on the
+Xinglong server and will return the result of image subtraction to the NAOC server
+for the next step decision.
+26
+
+=== PAGE 27 ===
+12 Supplementary: Usage of SWT
+We have introduced the main architecture of the SWT system in the main text. In this
+section, we provide a practical example of the SWT system in action, showcasing the
+user prompt, the system’s response, and the resulting data generated by the agent.
+Listing 2 and Table 6 demonstrate the user prompt and the agent’s response
+during the creation of an observation plan. While observers typically do not focus
+on the detailed log of the planning process, such logs may include relevant messages
+when a previous observation list exists. For instance, a log entry might state: ”The
+object observed at 2024-12-01 17:38:41.032 has been inherited. The object name is
+UGC04103. ” The finalized observation list, presented in Listing 3 and Table 7, includes
+comprehensive details such as the object name, coordinates, and distance.
+Additionally, Listing 4 and Table 8 illustrate a sample user prompt for identifying
+transients and incorporating them into the observation list. Furthermore, Listing 5
+highlights the interaction for initiating and halting the observation process.
+#User Prompt:
+Please introduce yourself.
+#Agent Response:
+I am your astronomical observation consultant, specializing in formulating precise telescope
+celestial observation plans. Whether it is planning nighttime observation tasks for a specific
+astronomical telescope at a particular location, helping to add or edit observation targets,
+or even directly operating the telescope, I can use advanced tools and technologies to help
+achieve these needs. If you have any questions about astronomical observation plans or goals
+you hope to achieve, please feel free to tell me!
+#User Prompt:
+I need you to help me set up an observation plan.
+#Agent Response:
+I have prepared an observation plan for you. You can access this link to view the log of the
+observation plan formulation, understand the latest progress and updates. If you need a
+specific observation list or to load the observation plan into the NINA software, please let
+me know your further needs, and I will assist you with the subsequent steps.
+Listing 2The sample prompt of making observation plan
+#User Prompt:
+I need to view the observation list.
+#Agent Response:
+Your observation list has been successfully loaded! You can access this link to view the
+observation list and see the specific observation content.
+Do you need to load this observation plan file into the NINA software? If so, please provide me
+with the telescope number.
+Listing 3The sample prompts of viewing the observation list
+27
+
+=== PAGE 28 ===
+Operation Steps Time Record Specific Information
+Initiate the Formulation of the Observation Plan 2024-11-25 09:49:50.112 Officially initiated the process of formulating the observation plan on Novem-
+ber 25, 2024
+Verify Directory Existence 2024-11-25 09:49:50.121 Successfully passed the verification of directory existence
+Initialize the Observation List 2024-11-25 09:49:50.962 The initialization of the observation list was completed smoothly
+Search for Suitable Stars (Example)2024-11-25 11:40:53.144 16 potential observation sources were detected
+2024-11-25 11:46:53.144 15 potential observation sources were detected
+2024-11-25 11:52:53.144 14 potential observation sources were detected
+2024-11-25 11:58:53.144 13 potential observation sources were detected
+2024-11-25 12:04:53.144 12 potential observation sources were detected
+2024-11-25 12:10:53.144 11 potential observation sources were detected
+2024-11-25 12:16:53.144 10 potential observation sources were detected
+... ...
+Confirm the Allocation of Telescope Observation Time Slots 2024-11-25 09:53:45.529 All night-time observation time slots for Telescope No. 5 at Xinglong Station
+have been successfully allocated
+Save the Target Set 2024-11-25 09:53:45.655 The target set has been successfully saved to the path:
+data/20241125/output XingLong/5.ninaTargetSet
+Table 6The observation log record of making observation plan, which can be entered by clicking
+the ”observation list” in the Listing 2.28
+
+=== PAGE 29 ===
+Time Record Object Name Right Ascension Declination Distance
+2024 - 11 - 10 10:30:19.367 NGC6814 295.669032 -10.3226977 18.03
+2024 - 11 - 10 10:36:19.367 UGC11484 297.14475 54.2033 19.83
+2024 - 11 - 10 10:42:19.367 UGC11771 323.8644765 23.4683955 21.928
+... ... ... ... ...
+Table 7 The final observation list for the third-telescope (xl-130-2) at Xinglong
+Observatory, 2024.11.10. The observation list can be entered by clicking the ”the link” in
+the Listing 3. The list is shown in a JSON format but not table format. Here we do a
+reshape for clarity.
+#User Prompt:
+I want to view the transient sources provided by Xinglong Station Machine 1 on November 22,
+2024.
+#Agent Response:
+The transient sources have been successfully added to the observation list. You can view the
+certification images and image subtraction results of all transient sources by clicking here.
+Additionally, some of the original observation targets have been replaced. Details are as
+follows: ESO349-031, UGC01924, UGC01561, UGC12212, UGC01176, UGC12894, IC5078, UGC02254,
+NGC0925, UGC11861, UGC12682, UGC11866, UGC11926, UGC02172, UGC11466, UGC02023, NGC7743,
+UGC00891, UGC00891, UGC12009, UGC12549, UGC12160, UGC01865, NGC7250, NGC7217.
+If you have any other requirements, please let me know.
+Listing 4The sample prompts of checking the transients and add them to the observation list
+today.
+Date Object Name Right Ascension Declination Data Path
+2024 - 11 - 22 AGESJ223627+234258 339.115985 23.7165 NGC7339 Lcom 3rpjdiff.pdf
+2024 - 11 - 10 AGESJ223829+235135 339.631808 23.8586806 NGC7339 Lcom 3rpjdiff.pdf
+2024 - 11 - 10 IC1420 330.6316545 19.7503036 IC1420 Lcom 3rpjdiff.pdf
+2024 - 11 - 10 IC5078 315.6299865 -16.8180853 IC5078 Lcom 3rpjdiff.pdf
+... ... ... ... ...
+Table 8 The subtraction images from X-OPSTEP. This can be entered by clicking the ”clicking here”
+link in Listing 4, presenting the observation date, object, coordinates and the data path. The list is shown in a
+JSON format but not table format. Here we do a reshape for clarity.
+References
+[1] Liu, J., Soria, R., Wu, X.-F., Wu, H. & Shang, Z. The SiTian Project.Anais da
+Academia Brasileira de Ciencias93, 20200628 (2021).
+[2] Huang, Y.et al.The mini-sitian array: A pathfinder for the sitian project (2025).
+URL https://arxiv.org/abs/2504.01615. 2504.01615.
+[3] Wang, Z.et al.The mini-sitian array: Design and application of master control
+system.Research in Astronomy and Astrophysics25, 044004 (2025). URL http:
+//dx.doi.org/10.1088/1674-4527/adc78e.
+29
+
+=== PAGE 30 ===
+#User Prompt:
+I need to import the observation list, Xinglong Station, November 27, 2024, Telescope 1.
+#Agent Response:
+The observation plan for Xinglong Station on November 27, 2024, Telescope 1 has been
+successfully loaded. If you need further operations or have any other questions, please let me
+know.
+#User Prompt:
+I need to start the observation.
+#Agent Response:
+Your observation has started. Please monitor the observation process. If you have any questions
+or need further assistance, please let me know.
+#User Prompt:
+I need to end the observation.
+#Agent Response:
+Your observation has been successfully stopped. If you have any other needs or questions, please
+let me know.
+Listing 5The sample prompt for import the observation list to a telescope and start
+[4] Gu, H.et al.The mini-sitian array: the mini-sitian realtime image processing
+pipeline (strip) (2025). URL https://arxiv.org/abs/2504.01609. 2504.01609.
+[5] Ouyang, L.et al.Training language models to follow instructions with human
+feedback (2022). URL https://arxiv.org/abs/2203.02155. 2203.02155.
+[6] Carroll Wainwright, R. L. Instructgpt: Training language models to
+follow instructions with human feedback. https://github.com/openai/
+following-instructions-human-feedback (2022).
+[7] Bai, J.et al.Qwen technical report (2023). URL https://arxiv.org/abs/2309.
+16609. 2309.16609.
+[8] Yang, A.et al.Qwen2 technical report (2024). URL https://arxiv.org/abs/2407.
+10671. 2407.10671.
+[9] OpenAIet al.Gpt-4 technical report (2024). URL https://arxiv.org/abs/2303.
+08774. 2303.08774.
+[10] DeepSeek-AIet al.Deepseek-v2: A strong, economical, and efficient mixture-of-
+experts language model (2024). URL https://arxiv.org/abs/2405.04434. 2405.
+04434.
+[11] Andreas, J. Language models as agent models (2022). URL https://arxiv.org/
+abs/2212.01681. 2212.01681.
+[12] Qin, Y.et al.Toolllm: Facilitating large language models to master 16000+
+real-world apis (2023). URL https://arxiv.org/abs/2307.16789. 2307.16789.
+30
+
+=== PAGE 31 ===
+[13] Wang, X.et al.Mint: Evaluating llms in multi-turn interaction with tools and
+language feedback (2024). URL https://arxiv.org/abs/2309.10691. 2309.10691.
+[14] Sinha, N., Jain, V. & Chadha, A. Evaluating open language models across
+task types, application domains, and reasoning types: An in-depth experimental
+analysis (2024). URL https://arxiv.org/abs/2406.11402. 2406.11402.
+[15] Qian, L.et al.langchain-chatchat.GitHub repository(2024). URL https://
+github.com/chatchat-space/Langchain-Chatchat.
+[16] Qian, C.et al.Experiential co-learning of software-developing agents (2024).
+URL https://arxiv.org/abs/2312.17025. 2312.17025.
+[17] n8n. n8n - workflow automation. https://github.com/n8n-io (2022).
+[18] Wei, J.et al.Chain-of-thought prompting elicits reasoning in large language
+models (2023). URL https://arxiv.org/abs/2201.11903. 2201.11903.
+[19] Ohlson, D., Seth, A., Gallo, E., Baldassare, V. & Greene, J. The 50 mpc galaxy
+catalog (50 mgc): Consistent and homogeneous masses, distances, colors, and
+morphologies.Astronomical Journal167(2024). Publisher Copyright:©2023.
+The Author(s). Published by the American Astronomical Society.
+[20] Qwen. Qwen2.5. https://github.com/QwenLM/Qwen2.5 (2024).
+[21] fmoraes74. nina-sites-plugin. https://github.com/fmoraes74/nina-sites-plugin
+(2024).
+[22] Chen, X. X-opstep. https://github.com/Shinehope-Chen/X-OPSTEP (2024).
+[23] Lang, D., Hogg, D. W., Mierle, K., Blanton, M. & Roweis, S. Astrometry.net:
+Blind astrometric calibration of arbitrary astronomical images.The Astronomical
+Journal139, 1782 (2010). URL https://dx.doi.org/10.1088/0004-6256/139/5/
+1782.
+[24] Bertin, E. & Arnouts, S. Sextractor: Software for source extraction.Astron.
+Astrophys. Suppl. Ser.117, 393–404 (1996). URL https://doi.org/10.1051/aas:
+1996164.
+[25] Collaboration, G.et al.Gaia Data Release 3. Summary of the content and survey
+properties.Astronomy & Astrophysics674, A1 (2023).
+[26] Bertin, E.et al.Bohlender, D. A., Durand, D. & Handley, T. H. (eds)The
+TERAPIX Pipeline. (eds Bohlender, D. A., Durand, D. & Handley, T. H.)As-
+tronomical Data Analysis Software and Systems XI, Vol. 281 ofAstronomical
+Society of the Pacific Conference Series, 228 (2002).
+31
+
+=== PAGE 32 ===
+[27] Becker, A. HOTPANTS: High Order Transform of PSF ANd Template
+Subtraction.Astrophysics Source Code Library, record ascl:1504.004(2015).
+[28] Shi, J.-H., Gu, H.-R., Huang, Y., Zhang, Y.-X. & Du, P.-L. The mini-sitian
+array: Real-bogus classification using deep learning.Research in Astronomy and
+Astrophysics25, 044008 (2025). URL https://dx.doi.org/10.1088/1674-4527/
+adc78b.
+[29] Google. Agent2agent (a2a) protocol (2025). URL https://github.com/
+a2aproject/A2A.
+[30] Lewis, P.et al.Retrieval-augmented generation for knowledge-intensive nlp tasks
+(2021). URL https://arxiv.org/abs/2005.11401. 2005.11401.
+[31] Hu, S., Ouyang, M., Gao, D. & Shou, M. Z. The dawn of gui agent: A preliminary
+case study with claude 3.5 computer use (2024). URL https://arxiv.org/abs/
+2411.10323. 2411.10323.
+[32] DeepSeek-AIet al.Deepseek-r1: Incentivizing reasoning capability in llms via
+reinforcement learning (2025). URL https://arxiv.org/abs/2501.12948. 2501.
+12948.
+[33] GLM, T.et al.Chatglm: A family of large language models from glm-130b to
+glm-4 all tools (2024). URL https://arxiv.org/abs/2406.12793. 2406.12793.
+[34] Wang, H.et al.Scientific discovery in the age of artificial intelligence.Nature
+620, 47–60 (2023). URL https://doi.org/10.1038/s41586-023-06221-2.
+[35] agentscope. Agentscope. https://github.com/modelscope/agentscope (2023).
+[36] langgenius. Dify. https://github.com/langgenius/dify (2023).
+[37] Nguyen, D. V.et al.The simons observatory: Alarms and detector quality
+monitoring (2024). URL https://arxiv.org/abs/2406.14089. 2406.14089.
+[38] Koopman, B. J.et al.The simons observatory: Deployment of the observatory
+control system and supporting infrastructure (2024). URL https://arxiv.org/
+abs/2406.15703. 2406.15703.
+[39] Husser, T.-O.et al.pyobs – an observatory control system forrobotic telescopes
+(2022). URL https://arxiv.org/abs/2203.12642. 2203.12642.
+[40] Silber, J. H.et al.The robotic multiobject focal plane system of the dark energy
+spectroscopic instrument (desi).The Astronomical Journal165, 9 (2022). URL
+http://dx.doi.org/10.3847/1538-3881/ac9ab1.
+[41] Moss, A. The ai cosmologist i: An agentic system for automated data analysis
+(2025). URL https://arxiv.org/abs/2504.03424. 2504.03424.
+32
+
+=== PAGE 33 ===
+[42] He, M.et al.The mini-sitian array: First-two-year operation.Research in As-
+tronomy and Astrophysics25, 044005 (2025). URL http://dx.doi.org/10.1088/
+1674-4527/adc788.
+33
+
