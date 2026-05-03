@@ -126,8 +126,13 @@ def require_api_key(f):
     @wraps(f)
     async def decorated(*args, **kwargs):
         provided_key = request.headers.get("X-API-Key") or request.args.get("api_key")
-        if DEBUG and not API_KEY:
+        # DEBUG模式下仍需API_KEY验证，除非明确设置SKIP_AUTH=true
+        if DEBUG and os.environ.get("SKIP_AUTH", "").lower() in ("true", "1", "yes"):
+            logger.warning("[SECURITY] Auth skipper active in DEBUG mode")
             return await f(*args, **kwargs)
+        if not API_KEY:
+            logger.error("[SECURITY] API_KEY not configured but auth is required")
+            return jsonify({"error": "Server misconfigured: API_KEY not set", "code": "CONFIG_ERROR"}), 500
         if not provided_key:
             return jsonify({"error": "API Key required", "code": "MISSING_KEY"}), 401
         if not secrets.compare_digest(provided_key, API_KEY):

@@ -63,11 +63,19 @@ class FileTools:
 
     @staticmethod
     async def read_file(path: str, **kwargs) -> Dict:
-        """读取文件"""
+        """读取文件 - 修复路径遍历漏洞"""
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            # 路径安全验证：防止../路径遍历攻击
+            safe_path = Path(path).resolve()
+            allowed_dir = Path(kwargs.get('allowed_dir', '/tmp')).resolve()
+            if not str(safe_path).startswith(str(allowed_dir)):
+                # 如果不在允许目录，检查是否在项目目录内
+                project_dir = Path(__file__).parent.parent.resolve()
+                if not str(safe_path).startswith(str(project_dir)):
+                    return {"success": False, "error": "路径访问被拒绝"}
+            with open(safe_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            return {"success": True, "content": content, "path": path}
+            return {"success": True, "content": content, "path": str(safe_path)}
         except FileNotFoundError:
             return {"success": False, "error": f"文件不存在: {path}"}
         except Exception as e:
@@ -75,11 +83,18 @@ class FileTools:
 
     @staticmethod
     async def write_file(path: str, content: str, **kwargs) -> Dict:
-        """写入文件"""
+        """写入文件 - 修复路径遍历漏洞"""
         try:
-            with open(path, 'w', encoding='utf-8') as f:
+            # 路径安全验证：防止../路径遍历攻击
+            safe_path = Path(path).resolve()
+            allowed_dir = Path(kwargs.get('allowed_dir', '/tmp')).resolve()
+            if not str(safe_path).startswith(str(allowed_dir)):
+                project_dir = Path(__file__).parent.parent.resolve()
+                if not str(safe_path).startswith(str(project_dir)):
+                    return {"success": False, "error": "路径访问被拒绝"}
+            with open(safe_path, 'w', encoding='utf-8') as f:
                 f.write(content)
-            return {"success": True, "path": path}
+            return {"success": True, "path": str(safe_path)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -260,10 +275,15 @@ class SystemTools:
 
     @staticmethod
     async def execute_command(command: str, **kwargs) -> Dict:
-        """执行系统命令"""
+        """执行系统命令 - 修复命令注入漏洞"""
         try:
-            process = await asyncio.create_subprocess_shell(
-                command,
+            import shlex
+            # 使用shlex.split解析命令，禁用shell=True防止注入
+            args = shlex.split(command)
+            if not args:
+                return {"success": False, "command": command, "error": "无效命令"}
+            process = await asyncio.create_subprocess_exec(
+                args[0], *args[1:],
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )

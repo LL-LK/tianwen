@@ -36,6 +36,7 @@ from enum import Enum
 from collections import OrderedDict
 
 from runtime_logger import get_logger
+import httpx
 
 logger = get_logger(__name__)
 
