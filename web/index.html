@@ -1195,6 +1195,7 @@ window.addEventListener('DOMContentLoaded', function(){
   connectWS();
   loadAllData();
   testConnectivity();
+  telCheckAvailable();
 
   setTimeout(function(){ $('#kbdHint').classList.add('visible'); }, 1000);
   setTimeout(function(){ $('#kbdHint').classList.remove('visible'); }, 8000);
@@ -1203,7 +1204,6 @@ window.addEventListener('DOMContentLoaded', function(){
     navigator.serviceWorker.register('/sw.js').catch(function(){});
   }
 
-  // 页面加载时自动加载星表
   setTimeout(telLoadCatalog, 2000);
 });
 
@@ -1375,14 +1375,22 @@ async function loadMonitor(){
   var health = await apiGet('/health');
   if (health && health.system) {
     $('#perfMemory').textContent = (health.system.process.memory_mb || 0).toFixed(0) + ' MB';
-    $('#perfApiRate').textContent = Math.floor(Math.random() * 20 + 5);
-    $('#perfAvgLatency').textContent = Math.floor(Math.random() * 200 + 50) + 'ms';
+    $('#perfApiRate').textContent = health.system.api_calls_last_min || '--';
+    $('#perfAvgLatency').textContent = health.system.avg_latency_ms ? health.system.avg_latency_ms.toFixed(0) + 'ms' : '--';
   }
 
-  $('#rlEfficiency').textContent = (Math.random() * 30 + 65).toFixed(1) + '%';
-  $('#rlAvgWait').textContent = (Math.random() * 10 + 2).toFixed(1) + 'min';
-  $('#rlSuccessRate').textContent = (Math.random() * 15 + 82).toFixed(1) + '%';
-  $('#rlEpisodes').textContent = Math.floor(Math.random() * 500 + 200);
+  var rlStats = await apiGet('/rl/stats');
+  if (rlStats) {
+    $('#rlEfficiency').textContent = (rlStats.efficiency || 0).toFixed(1) + '%';
+    $('#rlAvgWait').textContent = (rlStats.avg_wait_min || 0).toFixed(1) + 'min';
+    $('#rlSuccessRate').textContent = (rlStats.success_rate || 0).toFixed(1) + '%';
+    $('#rlEpisodes').textContent = rlStats.total_episodes || 0;
+  } else {
+    $('#rlEfficiency').textContent = '--';
+    $('#rlAvgWait').textContent = '--';
+    $('#rlSuccessRate').textContent = '--';
+    $('#rlEpisodes').textContent = '--';
+  }
 
   renderMonitorCharts();
   renderModuleTiming();
@@ -1428,8 +1436,38 @@ function renderModuleTiming(){
 // ============ 望远镜控制函数 ============
 
 var _telCatalogCache = null;
+var _telAvailable = null;
+
+async function telCheckAvailable(){
+  try {
+    var resp = await fetch(API_BASE + '/telescope/status');
+    _telAvailable = resp.ok;
+  } catch(e) {
+    _telAvailable = false;
+  }
+  if (!_telAvailable) {
+    var panel = $('#panel-telescope');
+    if (panel) {
+      var banner = document.createElement('div');
+      banner.id = 'telUnavailableBanner';
+      banner.style.cssText = 'background:rgba(239,68,68,0.1);border:1px solid var(--danger);border-radius:8px;padding:12px 16px;margin-bottom:16px;text-align:center';
+      banner.innerHTML = '<span style="font-size:18px">⚠️</span> <b>望远镜控制端点未部署</b><br><span style="font-size:12px;color:var(--text-muted)">Railway 后端需重新部署以包含最新 server.py 中的望远镜 API</span>';
+      panel.insertBefore(banner, panel.firstChild);
+    }
+  }
+  return _telAvailable;
+}
+
+function telGuard(){
+  if (_telAvailable === false) {
+    showToast('望远镜控制功能未部署，请重新部署 Railway 后端', 'error');
+    return false;
+  }
+  return true;
+}
 
 async function telRefresh(){
+  if (!telGuard()) return;
   try {
     var resp = await fetch(API_BASE + '/telescope/status');
     if (!resp.ok) throw new Error('状态获取失败');
@@ -1450,6 +1488,7 @@ async function telRefresh(){
 }
 
 async function telConnect(){
+  if (!telGuard()) return;
   try {
     var resp = await fetch(API_BASE + '/telescope/connect', {method:'POST'});
     var data = await resp.json();
@@ -1465,6 +1504,7 @@ async function telConnect(){
 }
 
 async function telDisconnect(){
+  if (!telGuard()) return;
   try {
     await fetch(API_BASE + '/telescope/disconnect', {method:'POST'});
     showToast('已断开望远镜', 'info');
@@ -1476,6 +1516,7 @@ async function telDisconnect(){
 }
 
 async function telGoto(){
+  if (!telGuard()) return;
   var target = $('#telGotoTarget').value.trim();
   if (!target) { showToast('请输入目标', 'error'); return; }
 
@@ -1499,6 +1540,7 @@ async function telGoto(){
 }
 
 async function telTracking(action){
+  if (!telGuard()) return;
   try {
     var resp = await fetch(API_BASE + '/telescope/tracking', {
       method:'POST',
@@ -1518,6 +1560,7 @@ async function telTracking(action){
 }
 
 async function telPlateSolve(){
+  if (!telGuard()) return;
   try {
     var resp = await fetch(API_BASE + '/telescope/plate_solve', {method:'POST'});
     var data = await resp.json();
@@ -1534,6 +1577,7 @@ async function telPlateSolve(){
 }
 
 async function telExpose(){
+  if (!telGuard()) return;
   var expTime = parseFloat($('#telExpTime').value) || 30;
   var count = parseInt($('#telExpCount').value) || 1;
   var target = $('#telExpTarget').value.trim() || 'unknown';
@@ -1562,6 +1606,7 @@ async function telExpose(){
 }
 
 async function telLoadCatalog(){
+  if (!telGuard()) return;
   var typeFilter = $('#telCatalogType') ? $('#telCatalogType').value : '';
 
   try {
@@ -1654,6 +1699,7 @@ function telSearchCatalog(){
 }
 
 async function telCalcWindow(){
+  if (!telGuard()) return;
   var target = ($('#telWindowTarget') ? $('#telWindowTarget').value.trim() : '') || 'M31';
   var lat = parseFloat($('#telWindowLat') ? $('#telWindowLat').value : '40') || 40.0;
 
