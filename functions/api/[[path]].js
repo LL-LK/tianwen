@@ -7,23 +7,8 @@ const CORS_HEADERS = {
   'Access-Control-Max-Age': '86400',
 };
 
-const SAFE_HEADERS = [
-  'accept', 'accept-language', 'content-type', 'content-length',
-  'authorization', 'x-api-key', 'user-agent', 'referer',
-];
-
-function cleanHeaders(original) {
-  const cleaned = new Headers();
-  for (const [key, value] of original.entries()) {
-    const lower = key.toLowerCase();
-    if (SAFE_HEADERS.includes(lower)) {
-      cleaned.set(key, value);
-    }
-  }
-  return cleaned;
-}
-
-async function proxyToBackend(request, env, ctx) {
+export async function onRequest(context) {
+  const { request } = context;
   const url = new URL(request.url);
 
   if (request.method === 'OPTIONS') {
@@ -31,15 +16,20 @@ async function proxyToBackend(request, env, ctx) {
   }
 
   const targetUrl = BACKEND + url.pathname + url.search;
-  const headers = cleanHeaders(request.headers);
+
+  const headers = new Headers();
+  const safeKeys = ['accept', 'content-type', 'content-length', 'authorization', 'x-api-key'];
+  for (const [key, value] of request.headers.entries()) {
+    if (safeKeys.includes(key.toLowerCase())) {
+      headers.set(key, value);
+    }
+  }
 
   let body = undefined;
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     try {
       body = await request.arrayBuffer();
-    } catch (e) {
-      body = undefined;
-    }
+    } catch (e) {}
   }
 
   try {
@@ -64,23 +54,9 @@ async function proxyToBackend(request, env, ctx) {
     return new Response(JSON.stringify({
       error: '后端服务不可达',
       detail: err.message,
-      backend: BACKEND,
     }), {
       status: 502,
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
     });
   }
 }
-
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const pathname = url.pathname;
-
-    if (pathname.startsWith('/api/')) {
-      return proxyToBackend(request, env, ctx);
-    }
-
-    return env.ASSETS.fetch(request);
-  },
-};
