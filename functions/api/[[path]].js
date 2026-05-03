@@ -1,4 +1,4 @@
-const BACKEND = 'https://tianwen-agi-production-fa3e.up.railway.app';
+const BACKEND = 'https://tianwen-agi-production.up.railway.app';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
