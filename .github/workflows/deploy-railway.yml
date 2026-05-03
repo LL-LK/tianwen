@@ -22,16 +22,6 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Build and push Docker image
-        env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY }}
-        run: |
-          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin "$DOCKER_REGISTRY"
-          docker build -t "$DOCKER_REGISTRY/tianwen-agi:${{ github.sha }}" .
-          docker push "$DOCKER_REGISTRY/tianwen-agi:${{ github.sha }}"
-
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
@@ -39,7 +29,6 @@ jobs:
           railway login --token "$RAILWAY_TOKEN"
           railway link --environment production || true
           railway up --service server --detach || true
-          railway up --service vector-db --detach || true
 
       - name: Health check
         run: |
