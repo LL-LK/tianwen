@@ -42,6 +42,9 @@ except ImportError:
 # 从统一模块导入 Paper 数据模型
 from data_models import Paper
 
+# 假说生成器
+from hypothesis_generator import HypothesisGenerator, Hypothesis as Hyp
+
 @dataclass
 class ResearchGap:
     """研究空白/Gap"""
@@ -79,6 +82,7 @@ class ResearchState:
     summary: str = ""
     sources_used: List[str] = field(default_factory=list)  # 使用的数据源
     relevant_documents: List[Dict] = field(default_factory=list)  # RAG检索结果
+    hypotheses: List["Hypothesis"] = field(default_factory=list)  # 生成的假说列表
 
 @dataclass
 class LiteratureReview:
@@ -1498,6 +1502,29 @@ class LiteratureResearcher:
         trend = self._analyze_trend(timeline)
         summary = self._generate_summary_advanced(topic, papers, themes, gaps, trend)
 
+        # 5. 生成假说 (使用RAG增强的context)
+        hypotheses = []
+        try:
+            hypo_gen = HypothesisGenerator()
+            # 构建临时的ResearchState用于假说生成
+            temp_state = ResearchState(
+                query=topic,
+                total_results=len(papers),
+                papers=papers,
+                key_themes=themes,
+                research_gaps=gaps,
+                timeline=timeline,
+                top_authors=top_authors,
+                paper_clusters=clusters,
+                relevant_documents=existing_docs
+            )
+            hypotheses = await hypo_gen.generate_from_research(temp_state)
+            logger.info(f"RAG增强假说生成完成，共生成 {len(hypotheses)} 个假说")
+            for h in hypotheses:
+                logger.debug(f"  - {h.id}: {h.statement[:50]}...")
+        except Exception as e:
+            logger.error(f"RAG增强假说生成失败: {e}")
+
         return ResearchState(
             query=topic,
             total_results=len(papers),
@@ -1510,7 +1537,8 @@ class LiteratureResearcher:
             trend_direction=trend,
             summary=summary,
             sources_used=self.sources_used,
-            relevant_documents=existing_docs  # 包含RAG检索结果
+            relevant_documents=existing_docs,  # 包含RAG检索结果
+            hypotheses=hypotheses
         )
 
     async def search_arxiv(self, query: str, max_results: int = None) -> List[Paper]:
@@ -1697,6 +1725,28 @@ class LiteratureResearcher:
         # 8. 生成摘要
         summary = self._generate_summary_advanced(topic, papers, themes, gaps, trend)
 
+        # 9. 生成假说
+        hypotheses = []
+        try:
+            hypo_gen = HypothesisGenerator()
+            hypotheses = await hypo_gen.generate_from_research(
+                ResearchState(
+                    query=topic,
+                    total_results=len(papers),
+                    papers=papers,
+                    key_themes=themes,
+                    research_gaps=gaps,
+                    timeline=timeline,
+                    top_authors=top_authors,
+                    paper_clusters=clusters
+                )
+            )
+            logger.info(f"假说生成完成，共生成 {len(hypotheses)} 个假说")
+            for h in hypotheses:
+                logger.debug(f"  - {h.id}: {h.statement[:50]}...")
+        except Exception as e:
+            logger.error(f"假说生成失败: {e}")
+
         return ResearchState(
             query=topic,
             total_results=len(papers),
@@ -1708,7 +1758,8 @@ class LiteratureResearcher:
             paper_clusters=clusters,
             trend_direction=trend,
             summary=summary,
-            sources_used=self.sources_used
+            sources_used=self.sources_used,
+            hypotheses=hypotheses
         )
 
     def _extract_themes_advanced(self, papers: List[Paper], top_n: int = 15) -> List[str]:

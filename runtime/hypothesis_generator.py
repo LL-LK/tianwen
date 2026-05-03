@@ -8,51 +8,10 @@ HypothesisGenerator - 从文献和观测数据生成可验证假说
 import json
 import uuid
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Literal
-from dataclasses import dataclass, field, asdict
-from enum import Enum
+from typing import Dict, List, Any, Optional
 
-
-class HypothesisStatus(Enum):
-    PENDING = "待验证"
-    CONFIRMED = "证实"
-    REJECTED = "证伪"
-    REVISED = "修订"
-
-
-@dataclass
-class Hypothesis:
-    """结构化假说格式 (Structured Hypothesis Format)"""
-    id: str
-    statement: str                          # 核心陈述 (If-Then格式)
-    premises: List[str]                     # 支撑文献
-    predictions: List[str]                  # 可检验预测
-    verification_method: str                 # 如何验证
-    confidence: float                        # 0-1 置信度
-    status: Literal["待验证", "证实", "证伪", "修订"]
-    created_at: str = ""
-    evidence_for: List[str] = field(default_factory=list)
-    evidence_against: List[str] = field(default_factory=list)
-    revision_notes: str = ""
-
-    def __post_init__(self):
-        if not self.created_at:
-            self.created_at = datetime.now().isoformat()
-
-    def to_dict(self) -> Dict:
-        return {
-            "id": self.id,
-            "statement": self.statement,
-            "premises": self.premises,
-            "predictions": self.predictions,
-            "verification_method": self.verification_method,
-            "confidence": self.confidence,
-            "status": self.status,
-            "created_at": self.created_at,
-            "evidence_for": self.evidence_for,
-            "evidence_against": self.evidence_against,
-            "revision_notes": self.revision_notes
-        }
+# 导入统一数据模型
+from runtime.data_models import Hypothesis, HypothesisStatus
 
 
 class HypothesisGenerator:
@@ -134,13 +93,14 @@ class HypothesisGenerator:
 
         return Hypothesis(
             id=hypo_id,
-            statement=statement,
+            content=statement,
+            confidence=0.6,
+            status=HypothesisStatus.PENDING,
+            evidence=gap.evidence if hasattr(gap, 'evidence') else [],
+            source="research_gap",
             premises=[f"研究空白: {gap.description}"],
             predictions=predictions,
-            verification_method=f"文献调研 + 专家评审",
-            confidence=0.6,
-            status=HypothesisStatus.PENDING.value,
-            evidence_for=gap.evidence if hasattr(gap, 'evidence') else []
+            verification_method=f"文献调研 + 专家评审"
         )
 
     async def _generate_from_cluster(
