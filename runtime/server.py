@@ -809,6 +809,35 @@ except ImportError:
     _REALTIME_BRIDGE_AVAILABLE = False
     logger.warning("Realtime bridge module not available, using legacy WebSocket manager")
 
+# ============ 望远镜模拟器 (Plan A) ============
+try:
+    from telescope_simulator import TelescopeSimulator, TelescopeStatus, calculate_observation_window
+    _TELESCOPE_SIM_AVAILABLE = True
+    _telescope_sim = None
+    _calc_window = calculate_observation_window
+except ImportError as e:
+    logger.warning(f"telescope_simulator not available: {e}")
+    _TELESCOPE_SIM_AVAILABLE = False
+    _telescope_sim = None
+    _calc_window = None
+
+
+def _get_telescope_sim():
+    global _telescope_sim
+    if _telescope_sim is None and _TELESCOPE_SIM_AVAILABLE:
+        _telescope_sim = TelescopeSimulator(name="Seestar S50 (Simulated)")
+    return _telescope_sim
+
+
+# ============ NASA SkyView 星图 API (Plan B) ============
+try:
+    from realtime_sky_chart import NASA_SkyView_API, get_realtime_skychart, parse_coordinates, BUILTIN_CATALOG, SkySurvey
+    _SKYCHART_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"realtime_sky_chart not available: {e}")
+    _SKYCHART_AVAILABLE = False
+
+
 # ============ 模拟数据生成 ============
 
 _observatory_state = {
@@ -1637,6 +1666,379 @@ async def logs_list():
     if level:
         result = [e for e in result if e["level"].upper() == level.upper()]
     return jsonify({"logs": result[:limit]})
+
+
+# ============ NASA SkyView 星图 API (Plan B) ============
+
+@app.route("/api/skychart/realtime", methods=["GET"])
+async def skychart_realtime():
+    """
+    获取目标真实星图 (NASA SkyView)
+    
+    Query Params:
+        target: 目标名称 (如 M31, NGC224)
+        survey: 巡天调查 (默认 DSS2/color)
+        size: 视场大小角分 (默认 15)
+        pixels: 图像像素 (默认 600)
+    """
+    if not _SKYCHART_AVAILABLE:
+        return jsonify({"error": "星图模块不可用", "code": "NOT_AVAILABLE"}), 503
+    
+    target = request.args.get("target", "M31")
+    survey_name = request.args.get("survey", "DSS2/color")
+    size = float(request.args.get("size", 15))
+    pixels = int(request.args.get("pixels", 600))
+    
+    try:
+        sky_survey = SkySurvey(survey_name)
+    except ValueError:
+        sky_survey = SkySurvey.DSS2_COLOR
+    
+    try:
+        result = await get_realtime_skychart(
+            target=target,
+            survey=sky_survey,
+            size=size,
+            pixels=pixels,
+            use_cache=True
+        )
+        
+        output = {
+            "success": True,
+            "target": result.target,
+            "survey": result.survey,
+            "ra": result.ra,
+            "dec": result.dec,
+            "width": result.width,
+            "height": result.height,
+            "fov_deg": result.fov,
+            "image_base64": result.image_base64,
+            "sources_count": len(result.catalog_sources),
+            "sources": result.catalog_sources[:20],  # 只返回前20个
+            "cached": result.cached,
+            "timestamp": result.timestamp,
+        }
+        
+        return jsonify(output)
+    except Exception as e:
+        logger.error(f"SkyChart error: {e}")
+        return jsonify({"error": str(e), "code": "SKYCHART_ERROR"}), 500
+
+
+@app.route("/api/skychart/batch", methods=["GET"])
+async def skychart_batch():
+    """
+    批量获取多个目标星图
+    
+    Query Params:
+        targets: 逗号分隔的目标列表
+        survey: 巡天调查
+        size: 视场大小角分
+    """
+    if not _SKYCHART_AVAILABLE:
+        return jsonify({"error": "星图模块不可用", "code": "NOT_AVAILABLE"}), 503
+    
+    targets_str = request.args.get("targets", "M31,M42,M51")
+    survey_name = request.args.get("survey", "DSS2/color")
+    size = float(request.args.get("size", 15))
+    
+    targets = [t.strip() for t in targets_str.split(",") if t.strip()]
+    
+    try:
+        sky_survey = SkySurvey(survey_name)
+    except ValueError:
+        sky_survey = SkySurvey.DSS2_COLOR
+    
+    output = {}
+    for target in targets:
+        try:
+            result = await get_realtime_skychart(
+                target=target,
+                survey=sky_survey,
+                size=size,
+                pixels=600,
+                use_cache=True
+            )
+            output[target] = {
+                "success": True,
+                "ra": result.ra,
+                "dec": result.dec,
+                "fov_deg": result.fov,
+                "sources_count": len(result.catalog_sources),
+                "cached": result.cached,
+            }
+        except Exception as e:
+            output[target] = {"success": False, "error": str(e)}
+    
+    return jsonify({
+        "results": output,
+        "requested": len(targets),
+        "successful": sum(1 for v in output.values() if v.get("success"))
+    })
+
+
+@app.route("/api/skychart/coordinates", methods=["GET"])
+async def skychart_coordinates():
+    """查询目标坐标"""
+    if not _SKYCHART_AVAILABLE:
+        return jsonify({"error": "星图模块不可用", "code": "NOT_AVAILABLE"}), 503
+    
+    target = request.args.get("target", "")
+    if not target:
+        return jsonify({"error": "未提供目标名称", "code": "NO_TARGET"}), 400
+    
+    coords = parse_coordinates(target)
+    if coords is None:
+        return jsonify({
+            "error": f"无法解析目标: {target}",
+            "code": "TARGET_NOT_FOUND",
+            "hint": "请使用梅西耶编号(如M31)或NGC编号(如NGC224)"
+        }), 404
+    
+    catalog_info = BUILTIN_CATALOG.get(target.upper(), {})
+    
+    return jsonify({
+        "target": target,
+        "ra": coords[0],
+        "dec": coords[1],
+        "name": catalog_info.get("name", ""),
+        "type": catalog_info.get("type", ""),
+        "mag": catalog_info.get("mag", None)
+    })
+
+
+# ============ 望远镜控制 API (Plan A) ============
+
+@app.route("/api/telescope/status", methods=["GET"])
+async def telescope_status():
+    """获取望远镜模拟器状态"""
+    if not _TELESCOPE_SIM_AVAILABLE:
+        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
+    
+    sim = _get_telescope_sim()
+    if not sim:
+        return jsonify({"error": "望远镜未初始化", "code": "NOT_INITIALIZED"}), 503
+    
+    state = sim.state
+    return jsonify({
+        "connected": sim.connected,
+        "status": state.status.value,
+        "ra": state.current_coords.ra,
+        "dec": state.current_coords.dec,
+        "tracking": state.tracking_enabled,
+        "pointing_error_arcmin": state.pointing_error,
+        "uptime_hours": state.uptime_hours,
+        "temperature": state.temperature,
+        "stats": sim.get_stats()
+    })
+
+
+@app.route("/api/telescope/connect", methods=["POST"])
+async def telescope_connect():
+    """连接望远镜模拟器"""
+    if not _TELESCOPE_SIM_AVAILABLE:
+        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
+    
+    sim = _get_telescope_sim()
+    if not sim:
+        return jsonify({"error": "望远镜初始化失败", "code": "INIT_FAILED"}), 503
+    
+    if sim.connected:
+        return jsonify({"success": True, "message": "已连接", "specs": sim.SPECS})
+    
+    success = await sim.connect()
+    
+    if success:
+        return jsonify({"success": True, "message": "连接成功", "specs": sim.SPECS})
+    else:
+        return jsonify({"error": "连接失败", "code": "CONNECT_FAILED"}), 500
+
+
+@app.route("/api/telescope/disconnect", methods=["POST"])
+async def telescope_disconnect():
+    """断开望远镜连接"""
+    if not _TELESCOPE_SIM_AVAILABLE:
+        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
+    
+    sim = _get_telescope_sim()
+    if not sim:
+        return jsonify({"error": "望远镜未初始化", "code": "NOT_INITIALIZED"}), 503
+    
+    await sim.disconnect()
+    return jsonify({"success": True, "message": "已断开"})
+
+
+@app.route("/api/telescope/goto", methods=["POST"])
+async def telescope_goto():
+    """
+    GOTO指向目标
+    
+    Body: {"target": "M31"} 或 {"target": "10.6847,41.2687"}
+    """
+    if not _TELESCOPE_SIM_AVAILABLE:
+        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
+    
+    data = await request.get_json()
+    if not data or not data.get("target"):
+        return jsonify({"error": "未提供目标", "code": "NO_TARGET"}), 400
+    
+    sim = _get_telescope_sim()
+    if not sim or not sim.connected:
+        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+    
+    target = data["target"]
+    success = await sim.goto(target)
+    
+    if success:
+        state = sim.state
+        return jsonify({
+            "success": True,
+            "target": target,
+            "ra": state.current_coords.ra,
+            "dec": state.current_coords.dec,
+            "pointing_error_arcmin": state.pointing_error
+        })
+    else:
+        return jsonify({"error": "GOTO失败", "code": "GOTO_FAILED"}), 500
+
+
+@app.route("/api/telescope/plate_solve", methods=["POST"])
+async def telescope_plate_solve():
+    """执行Plate Solving校准"""
+    if not _TELESCOPE_SIM_AVAILABLE:
+        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
+    
+    sim = _get_telescope_sim()
+    if not sim or not sim.connected:
+        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+    
+    result = await sim.plate_solve()
+    
+    if result:
+        return jsonify({
+            "success": True,
+            "ra": result["ra"],
+            "dec": result["dec"],
+            "stars_matched": result["stars_matched"],
+            "rms_error_arcsec": result["rms_error"],
+            "solve_time_sec": result["solve_time"]
+        })
+    else:
+        return jsonify({"error": "Plate Solving失败", "code": "SOLVE_FAILED"}), 500
+
+
+@app.route("/api/telescope/tracking", methods=["POST"])
+async def telescope_tracking():
+    """
+    望远镜跟踪控制
+    
+    Body: {"action": "start"} 或 {"action": "stop"}
+    """
+    if not _TELESCOPE_SIM_AVAILABLE:
+        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
+    
+    data = await request.get_json()
+    action = data.get("action", "") if data else ""
+    
+    sim = _get_telescope_sim()
+    if not sim or not sim.connected:
+        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+    
+    if action == "start":
+        success = await sim.start_tracking()
+        return jsonify({"success": success, "tracking": sim.state.tracking_enabled})
+    elif action == "stop":
+        await sim.stop_tracking()
+        return jsonify({"success": True, "tracking": False})
+    else:
+        return jsonify({"error": "无效操作", "code": "INVALID_ACTION"}), 400
+
+
+@app.route("/api/telescope/expose", methods=["POST"])
+async def telescope_expose():
+    """
+    执行曝光成像
+    
+    Body: {"exposure": 30, "count": 3, "target": "M31"}
+    """
+    if not _TELESCOPE_SIM_AVAILABLE:
+        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
+    
+    data = await request.get_json() or {}
+    exposure = data.get("exposure", 30)
+    count = data.get("count", 1)
+    target = data.get("target", None)
+    
+    sim = _get_telescope_sim()
+    if not sim or not sim.connected:
+        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+    
+    result = await sim.expose(exposure=exposure, count=count, target=target)
+    
+    return jsonify({
+        "success": result.success,
+        "target": result.target_name,
+        "exposure_sec": result.exposure_sec,
+        "frame_count": result.frame_count,
+        "file_path": result.file_path,
+        "timestamp": result.timestamp,
+        "error": result.error_msg
+    })
+
+
+@app.route("/api/telescope/window", methods=["GET"])
+async def telescope_observation_window():
+    """
+    计算目标观测窗口
+    
+    Query Params: target=M31&latitude=40.0
+    """
+    target_name = request.args.get("target", "M31")
+    latitude = float(request.args.get("latitude", 40.0))
+    
+    coords = parse_coordinates(target_name) if _SKYCHART_AVAILABLE else None
+    if not coords:
+        # 回退到星表查找
+        if _SKYCHART_AVAILABLE:
+            catalog_info = BUILTIN_CATALOG.get(target_name.upper(), {})
+            coords = (catalog_info.get("ra"), catalog_info.get("dec"))
+    
+    if not coords or coords[0] is None:
+        return jsonify({"error": f"无法解析目标: {target_name}"}), 400
+    
+    window = _calc_window(coords[0], coords[1], latitude) if _calc_window else {}
+    
+    return jsonify({
+        "target": target_name,
+        "latitude": latitude,
+        "ra": coords[0],
+        "dec": coords[1],
+        **window
+    })
+
+
+@app.route("/api/telescope/catalog", methods=["GET"])
+async def telescope_catalog():
+    """
+    获取内置天体星表
+    
+    Query Params: type=galaxy (可选过滤类型)
+    """
+    if not _SKYCHART_AVAILABLE:
+        return jsonify({"error": "星图模块不可用", "code": "NOT_AVAILABLE"}), 503
+    
+    obj_type = request.args.get("type", None)
+    
+    catalog = {}
+    for name, info in BUILTIN_CATALOG.items():
+        if obj_type is None or info.get("type") == obj_type:
+            catalog[name] = info
+    
+    return jsonify({
+        "count": len(catalog),
+        "type_filter": obj_type,
+        "catalog": catalog
+    })
 
 
 # ============ 统计 API ============
