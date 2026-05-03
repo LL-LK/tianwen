@@ -48,7 +48,7 @@ if CORS_ORIGINS:
     app = cors(app, allow_origin=CORS_ORIGINS.split(","))
 else:
     if not DEBUG:
-        app = cors(app, allow_origin=[])
+        app = cors(app, allow_origin=["https://tianwen-agi.pages.dev"])
     else:
         app = cors(app, allow_origin="*")
 
