@@ -7,8 +7,23 @@
 <meta name="description" content="天问-AGI 全自动天文观测站 - 无人值守自主发现与观测">
 <meta name="theme-color" content="#0a0e17">
 <link rel="manifest" href="/manifest.json">
-<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
-<link rel="stylesheet" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" />
+
+<!-- 预连接关键域名 -->
+<link rel="preconnect" href="https://tianwen-agi-production.up.railway.app">
+<link rel="preconnect" href="https://cdn.plot.ly">
+<link rel="preconnect" href="https://aladin.u-strasbg.fr">
+<link rel="dns-prefetch" href="https://tianwen-agi-production.up.railway.app">
+<link rel="dns-prefetch" href="https://cdn.plot.ly">
+<link rel="dns-prefetch" href="https://aladin.u-strasbg.fr">
+
+<!-- 预加载关键资源 -->
+<link rel="preload" href="https://cdn.plot.ly/plotly-2.32.0.min.js" as="script">
+<link rel="preload" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" as="style">
+
+<!-- 外部资源（异步加载） -->
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js" defer></script>
+<link rel="stylesheet" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" media="print" onload="this.media='all'" />
+<noscript><link rel="stylesheet" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" /></noscript>
 <style>
 :root {
   --bg-primary: #0a0e17;
@@ -627,7 +642,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 
 <script>
 var BACKEND_URL = 'https://tianwen-agi-production.up.railway.app';
-var API_BASE = '/api';
+var API_BASE = BACKEND_URL + '/api';
 var API_KEY = '';
 var WS_URL = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws/observatory';
 

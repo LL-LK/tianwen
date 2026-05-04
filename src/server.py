@@ -58,6 +58,26 @@ async def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-API-Key"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     response.headers["Access-Control-Max-Age"] = "86400"
+    
+    # 缓存控制头
+    path = request.path
+    
+    # 静态资源缓存策略
+    if path.endswith(('.js', '.css', '.png', '.jpg', '.svg', '.ico')):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif path == '/' or path.endswith('.html'):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    # API响应不缓存
+    elif path.startswith('/api/'):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+    
+    # 压缩支持
+    if 'Content-Encoding' not in response.headers:
+        accept_encoding = request.headers.get('Accept-Encoding', '')
+        if 'gzip' in accept_encoding and response.content_type and 'text' in response.content_type:
+            response.headers["Content-Encoding"] = "gzip"
+    
     return response
 
 from main import HermesAGI
