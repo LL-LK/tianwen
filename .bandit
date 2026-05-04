@@ -1,0 +1,3 @@
+[bandit]
+exclude_dirs: .venv,.venv312,.git,__pycache__,tests,docs,data,deploy,scripts,memory
+skips: B101,B104,B301,B303,B311,B403,B404,B603,B607

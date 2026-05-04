@@ -82,7 +82,6 @@ async def add_cors_headers(response):
 
 from main import HermesAGI
 from core.cognitive import CognitiveEngine, PlanningEngine
-from reasoning_engine import ModelConfig
 from web.dashboard import CycleStatisticsDashboard
 from research.hypothesis_tester import HypothesisTester
 import httpx

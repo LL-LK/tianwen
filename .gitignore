@@ -1,5 +1,79 @@
+# Python
 __pycache__/
+*.py[cod]
 *.pyc
 *.pth
 *.pt
+*.egg-info/
+.eggs/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.nox/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+.venv*/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+credentials.json
+secrets.json
+*.key
+*.pem
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Build & Distribution
+build/
+dist/
+*.egg-info/
+*.whl
+
+# Documentation builds
+docs/_build/
+
+# Large model files
 runtime/models/
+*.bin
+*.h5
+*.ckpt
+*.safetensors
+
+# Backups
+backups/
+*.bak
+
+# Cache
+.cache/
+*.cache
+
+# Project specific
+data/demo/sessions.json
+railway_deploy.log
+railway_log.txt
+run_logs.txt

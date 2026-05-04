@@ -1451,9 +1451,12 @@ async function testLlmConnectivity(){
   }
 
   try {
+    var headers = {'Content-Type': 'application/json'};
+    if (API_KEY) headers['X-API-Key'] = API_KEY;
+
     var r = await fetch(API_BASE + '/llm/test', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
       body: JSON.stringify(body)
     });
     var data = await r.json();

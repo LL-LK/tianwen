@@ -1,10 +1,9 @@
-<<<<<<< Updated upstream
 services:
   server:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ghcr.io/LL-LK/tianwen-agi:1c9e582
+    image: ghcr.io/ll-lk/tianwen-agi:latest
     ports:
       - "5000:5000"
     environment:
@@ -22,7 +21,7 @@ services:
       retries: 3
       start_period: 40s
     volumes:
-      - ./runtime:/app/runtime
+      - ./src:/app/src
       - ./web:/app/web
     restart: unless-stopped
 
@@ -39,7 +38,6 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # 前端静态文件服务（可选）
   frontend:
     image: nginx:alpine
     ports:
@@ -53,60 +51,4 @@ services:
       - optional
 
 volumes:
-=======
-services:
-  server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ghcr.io/LL-LK/tianwen-agi:1c9e582
-    ports:
-      - "5000:5000"
-    environment:
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
-      - QWEN_ENDPOINT=${QWEN_ENDPOINT:-https://dashscope.aliyuncs.com/api/v1}
-      - CHROMA_HOST=vector-db
-      - CHROMA_PORT=8000
-    depends_on:
-      vector-db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:5000/api/health'); exit(0 if r.status==200 else 1)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    volumes:
-      - ./runtime:/app/runtime
-      - ./web:/app/web
-    restart: unless-stopped
-
-  vector-db:
-    image: chromadb/chroma:0.4.22
-    ports:
-      - "8000:8000"
-    volumes:
-      - chroma_data:/chroma/chroma_db
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/api/v1/heartbeat'); exit(0 if r.status==200 else 1)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-
-  # 前端静态文件服务（可选）
-  frontend:
-    image: nginx:alpine
-    ports:
-      - "8080:80"
-    volumes:
-      - ./web:/usr/share/nginx/html:ro
-    depends_on:
-      - server
-    restart: unless-stopped
-    profiles:
-      - optional
-
-volumes:
->>>>>>> Stashed changes
   chroma_data:
