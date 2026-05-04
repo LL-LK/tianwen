@@ -34,7 +34,6 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
-          railway login --token "$RAILWAY_TOKEN"
           railway link --environment production || true
           railway up --service server --detach || true
 
