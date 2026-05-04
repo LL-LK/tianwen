@@ -64,7 +64,7 @@ from main import HermesAGI
 from core.cognitive import CognitiveEngine, PlanningEngine
 from reasoning_engine import ModelConfig
 from web.dashboard import CycleStatisticsDashboard
-from research.hypothesis_tester import HypothesisTester, generate_mock_observation_data, generate_mock_literature_evidence
+from research.hypothesis_tester import HypothesisTester
 import httpx
 
 agent = HermesAGI()
@@ -894,36 +894,13 @@ except ImportError:
     _REALTIME_BRIDGE_AVAILABLE = False
     logger.warning("Realtime bridge module not available, using legacy WebSocket manager")
 
-# ============ 望远镜模拟器 (Plan A) ============
-try:
-    from telescope.simulator import TelescopeSimulator, TelescopeStatus, calculate_observation_window
-    _TELESCOPE_SIM_AVAILABLE = True
-    _telescope_sim = None
-    _calc_window = calculate_observation_window
-except ImportError as e:
-    logger.warning(f"telescope_simulator not available: {e}")
-    _TELESCOPE_SIM_AVAILABLE = False
-    _telescope_sim = None
-    _calc_window = None
-
-
-def _get_telescope_sim():
-    global _telescope_sim
-    if _telescope_sim is None and _TELESCOPE_SIM_AVAILABLE:
-        _telescope_sim = TelescopeSimulator(name="Seestar S50 (Simulated)")
-    return _telescope_sim
-
-
-# ============ NASA SkyView 星图 API (Plan B) ============
+# ============ NASA SkyView 星图 API ============
 try:
     from observation.sky_chart import NASA_SkyView_API, get_realtime_skychart, parse_coordinates, BUILTIN_CATALOG, SkySurvey
     _SKYCHART_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"realtime_sky_chart not available: {e}")
+    logger.warning(f"sky_chart not available: {e}")
     _SKYCHART_AVAILABLE = False
-
-
-# ============ 模拟数据生成 ============
 
 _observatory_state = {
     "status": "idle",
@@ -959,85 +936,6 @@ _lightcurve_data = {
 }
 
 _cycle_history = []
-
-
-_DEMO_DATA = {
-    "observatory_state": {
-        "status": "observing",
-        "uptime_hours": 72.5,
-        "discoveries": 3,
-        "hypotheses": 15,
-        "current_target": {
-            "name": "M31 仙女座星系",
-            "ra": "00h42m44s",
-            "dec": "+41°16'09\"",
-            "type": "星系",
-            "magnitude": 3.44,
-            "exposure": "300s × 12帧",
-            "progress": 78,
-        },
-        "queue": [
-            {"id": "q1", "priority": "P0", "target": "SN2024X", "type": "超新星", "window": "22:30-22:45", "duration": "15min", "status": "进行中"},
-            {"id": "q2", "priority": "P1", "target": "HD209458", "type": "系外行星", "window": "23:00-01:00", "duration": "120min", "status": "等待中"},
-            {"id": "q3", "priority": "P2", "target": "NGC2244", "type": "星团", "window": "01:00-01:30", "duration": "30min", "status": "等待中"},
-            {"id": "q4", "priority": "P1", "target": "M42", "type": "星云", "window": "01:30-02:00", "duration": "30min", "status": "等待中"},
-            {"id": "q5", "priority": "P2", "target": "Jupiter", "type": "行星", "window": "02:00-02:30", "duration": "30min", "status": "等待中"},
-        ],
-        "devices": {
-            "telescope": {"name": "Seestar S50", "status": "tracking", "connected": True},
-            "camera": {"name": "IMX462", "status": "exposing", "gain": 120, "exposure_ms": 300000},
-            "filter_wheel": {"name": "ZWO EFW", "status": "idle", "current": "Luminance"},
-            "dome": {"name": "远程圆顶", "status": "open", "azimuth": 45},
-            "weather": {"cloud_cover": 12, "humidity": 45, "temperature": 18.5, "wind_speed": 3.2, "seeing": 1.8},
-        },
-        "research_loop": {
-            "cycle_id": "cycle_a3f8b2c1",
-            "cycle_number": 42,
-            "topic": "M31旋臂中未编目HII区搜索",
-            "steps": [
-                {"name": "文献检索", "status": "completed", "progress": 100},
-                {"name": "假说生成", "status": "completed", "progress": 100, "detail": "生成5个假说"},
-                {"name": "假说检验", "status": "running", "progress": 65},
-                {"name": "发现确认", "status": "pending", "progress": 0},
-                {"name": "观测调度", "status": "pending", "progress": 0},
-                {"name": "自我进化", "status": "pending", "progress": 0},
-            ],
-            "current_hypothesis": "M31旋臂中存在未编目HII区",
-            "confidence": 67.3,
-            "estimated_completion": "23:15",
-        },
-        "detections": {
-            "stage1": {"total": 234, "stars": 180, "galaxies": 45, "qsos": 9},
-            "stage2": {"classified_stars": 178, "classified_galaxies": 43, "classified_qsos": 8, "unknown": 5},
-            "stage3": {"nebula": 2, "comet": 1, "galaxy": 0, "globular_cluster": 0},
-        },
-        "latest_image": {
-            "id": "img_20260502_223015",
-            "target": "M31",
-            "exposure": 300,
-            "filter": "L",
-            "timestamp": "2026-05-02T22:30:15",
-            "size_kb": 8192,
-        },
-    },
-    "alerts": [
-        {"id": "a1", "level": "discovery", "time": "22:28", "message": "可能发现新瞬变源 SN2024X", "read": False},
-        {"id": "a2", "level": "warning", "time": "22:15", "message": "云量增加至40%，建议暂停观测", "read": False},
-        {"id": "a3", "level": "success", "time": "22:00", "message": "M31观测完成，12帧已入库", "read": True},
-        {"id": "a4", "level": "info", "time": "21:45", "message": "假说检验通过 (p<0.01)", "read": True},
-        {"id": "a5", "level": "info", "time": "21:30", "message": "Cycle #41 完成，发现1个候选天体", "read": True},
-    ],
-    "logs": [
-        {"time": "22:28:15", "level": "DISCOVERY", "message": "新瞬变源检测: SN2024X候选"},
-        {"time": "22:28:10", "level": "ASTROPIPE", "message": "Stage III YOLO检测完成"},
-        {"time": "22:27:55", "level": "SCHEDULER", "message": "目标切换至 SN2024X"},
-        {"time": "22:27:30", "level": "CAMERA", "message": "曝光300s完成，图像已保存"},
-        {"time": "22:22:30", "level": "TELESCOPE", "message": "望远镜指向 M31 (00h42m44s +41°16')"},
-        {"time": "22:22:00", "level": "RESEARCH", "message": "假说检验进度: 65%"},
-        {"time": "22:20:00", "level": "WEATHER", "message": "天气更新: 云量12%, 视宁度1.8\""},
-        {"time": "22:15:00", "level": "SYSTEM", "message": "自动观测循环启动"},
-    ],
-}
 
 
 def _build_observatory_status():
@@ -1597,11 +1495,6 @@ async def data_lightcurve():
     return jsonify({"target": target, "data": _lightcurve_data})
 
 
-@app.route("/api/demo/data", methods=["GET"])
-async def demo_data():
-    return jsonify(_DEMO_DATA)
-
-
 # ============ 研究闭环 API ============
 
 @app.route("/api/research/status", methods=["GET"])
@@ -1641,9 +1534,8 @@ async def test_hypothesis():
             "verification_method": "...",
             "confidence": 0.7
         },
-        "observation_data": [...],  // 可选，需要真实数据
-        "literature_evidence": [...],  // 可选，需要真实数据
-        "demo_mode": false  // 可选，true表示允许使用模拟数据进行演示
+        "observation_data": [...],
+        "literature_evidence": [...]
     }
 
     响应:
@@ -1656,13 +1548,8 @@ async def test_hypothesis():
         "recommendation": "...",
         "confidence_interval": [...],
         "cross_validation_score": 0.x,
-        "statistical_confidence": {...},
-        "demo_mode": false,  // 明确标识是否使用了演示数据
-        "warnings": [...]  // 如果使用演示数据，会包含警告信息
+        "statistical_confidence": {...}
     }
-
-    注意: 默认 demo_mode=false，如果未提供 observation_data 且 demo_mode=false，
-    则返回错误而不是自动生成模拟数据。
     """
     data = await request.get_json()
 
@@ -1672,29 +1559,13 @@ async def test_hypothesis():
     hypo_data = data["hypothesis"]
     observation_data = data.get("observation_data")
     literature_evidence = data.get("literature_evidence")
-    demo_mode = data.get("demo_mode", False)
-    warnings = []
-
-    use_mock_data = False
 
     if not observation_data or not literature_evidence:
-        if demo_mode:
-            use_mock_data = True
-            if not observation_data:
-                target = hypo_data.get("target", "未知目标")
-                observation_data = generate_mock_observation_data(target, count=5)
-                logger.info(f"[HypothesisTest] DEMO模式: 自动生成 {len(observation_data)} 条模拟观测数据")
-                warnings.append("使用了演示模拟数据，实际验证需要提供真实观测数据")
-            if not literature_evidence:
-                literature_evidence = generate_mock_literature_evidence(hypo_data.get("statement", ""))
-                logger.info(f"[HypothesisTest] DEMO模式: 自动生成 {len(literature_evidence)} 条模拟文献证据")
-                warnings.append("使用了演示模拟文献证据，实际验证需要提供真实文献证据")
-        else:
-            return jsonify({
-                "error": "缺少必需数据",
-                "message": "observation_data 和 literature_evidence 为必填字段，或设置 demo_mode=true 使用演示数据",
-                "code": "MISSING_REQUIRED_DATA"
-            }), 400
+        return jsonify({
+            "error": "缺少必需数据",
+            "message": "observation_data 和 literature_evidence 为必填字段",
+            "code": "MISSING_REQUIRED_DATA"
+        }), 400
 
     try:
         from research.hypothesis_generator import Hypothesis
@@ -1730,37 +1601,11 @@ async def test_hypothesis():
                     "actual_outcome": tc.actual_outcome
                 }
                 for tc in report.test_cases
-            ],
-            "demo_mode": use_mock_data,
-            "warnings": warnings
+            ]
         })
     except Exception as e:
         logger.error(f"[HypothesisTest] 验证失败: {e}")
         return jsonify({"error": f"验证失败: {str(e)}"}), 500
-
-
-@app.route("/api/hypothesis/generate-test-data", methods=["GET"])
-async def generate_test_data():
-    """
-    生成测试数据端点 - 供前端调试用
-
-    Query params:
-    - target: 观测目标名称 (默认 "M31")
-    - count: 观测数据数量 (默认 5)
-
-    返回生成的模拟数据
-    """
-    target = request.args.get("target", "M31")
-    count = int(request.args.get("count", 5))
-
-    observation_data = generate_mock_observation_data(target, count)
-    literature_evidence = generate_mock_literature_evidence(f"关于{target}的假说")
-
-    return jsonify({
-        "target": target,
-        "observation_data": observation_data,
-        "literature_evidence": literature_evidence
-    })
 
 
 # ============ 告警 API ============
@@ -1979,8 +1824,7 @@ async def skychart():
 
 @app.route("/api/observation/data", methods=["GET"])
 async def observation_data():
-    """获取观测数据 (兼容前端 /api/observation/data)"""
-    from data.data_mode import get_observations_path, is_demo_mode
+    """获取观测数据"""
     import json
     
     obs_path = get_observations_path()
@@ -1990,13 +1834,11 @@ async def observation_data():
         return jsonify({
             "success": True,
             "data": data,
-            "demo_mode": is_demo_mode(),
             "source": str(obs_path)
         })
     return jsonify({
         "success": False,
         "data": [],
-        "demo_mode": is_demo_mode(),
         "message": "暂无观测数据"
     })
 
@@ -2053,65 +1895,24 @@ async def data_miner():
     })
 
 
-# ============ 望远镜控制 API (Plan A) ============
+# ============ 望远镜控制 API ============
 
 @app.route("/api/telescope/status", methods=["GET"])
 async def telescope_status():
-    """获取望远镜模拟器状态"""
-    if not _TELESCOPE_SIM_AVAILABLE:
-        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
-    
-    sim = _get_telescope_sim()
-    if not sim:
-        return jsonify({"error": "望远镜未初始化", "code": "NOT_INITIALIZED"}), 503
-    
-    state = sim.state
-    return jsonify({
-        "connected": sim.connected,
-        "status": state.status.value,
-        "ra": state.current_coords.ra,
-        "dec": state.current_coords.dec,
-        "tracking": state.tracking_enabled,
-        "pointing_error_arcmin": state.pointing_error,
-        "uptime_hours": state.uptime_hours,
-        "temperature": state.temperature,
-        "stats": sim.get_stats()
-    })
+    """获取望远镜状态"""
+    return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
 
 
 @app.route("/api/telescope/connect", methods=["POST"])
 async def telescope_connect():
-    """连接望远镜模拟器"""
-    if not _TELESCOPE_SIM_AVAILABLE:
-        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
-    
-    sim = _get_telescope_sim()
-    if not sim:
-        return jsonify({"error": "望远镜初始化失败", "code": "INIT_FAILED"}), 503
-    
-    if sim.connected:
-        return jsonify({"success": True, "message": "已连接", "specs": sim.SPECS})
-    
-    success = await sim.connect()
-    
-    if success:
-        return jsonify({"success": True, "message": "连接成功", "specs": sim.SPECS})
-    else:
-        return jsonify({"error": "连接失败", "code": "CONNECT_FAILED"}), 500
+    """连接望远镜"""
+    return jsonify({"error": "望远镜连接失败，未找到设备", "code": "NOT_FOUND"}), 503
 
 
 @app.route("/api/telescope/disconnect", methods=["POST"])
 async def telescope_disconnect():
     """断开望远镜连接"""
-    if not _TELESCOPE_SIM_AVAILABLE:
-        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
-    
-    sim = _get_telescope_sim()
-    if not sim:
-        return jsonify({"error": "望远镜未初始化", "code": "NOT_INITIALIZED"}), 503
-    
-    await sim.disconnect()
-    return jsonify({"success": True, "message": "已断开"})
+    return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
 
 
 @app.route("/api/telescope/goto", methods=["POST"])
@@ -2121,56 +1922,13 @@ async def telescope_goto():
     
     Body: {"target": "M31"} 或 {"target": "10.6847,41.2687"}
     """
-    if not _TELESCOPE_SIM_AVAILABLE:
-        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
-    
-    data = await request.get_json()
-    if not data or not data.get("target"):
-        return jsonify({"error": "未提供目标", "code": "NO_TARGET"}), 400
-    
-    sim = _get_telescope_sim()
-    if not sim or not sim.connected:
-        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
-    
-    target = data["target"]
-    success = await sim.goto(target)
-    
-    if success:
-        state = sim.state
-        return jsonify({
-            "success": True,
-            "target": target,
-            "ra": state.current_coords.ra,
-            "dec": state.current_coords.dec,
-            "pointing_error_arcmin": state.pointing_error
-        })
-    else:
-        return jsonify({"error": "GOTO失败", "code": "GOTO_FAILED"}), 500
+    return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
 
 
 @app.route("/api/telescope/plate_solve", methods=["POST"])
 async def telescope_plate_solve():
     """执行Plate Solving校准"""
-    if not _TELESCOPE_SIM_AVAILABLE:
-        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
-    
-    sim = _get_telescope_sim()
-    if not sim or not sim.connected:
-        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
-    
-    result = await sim.plate_solve()
-    
-    if result:
-        return jsonify({
-            "success": True,
-            "ra": result["ra"],
-            "dec": result["dec"],
-            "stars_matched": result["stars_matched"],
-            "rms_error_arcsec": result["rms_error"],
-            "solve_time_sec": result["solve_time"]
-        })
-    else:
-        return jsonify({"error": "Plate Solving失败", "code": "SOLVE_FAILED"}), 500
+    return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
 
 
 @app.route("/api/telescope/tracking", methods=["POST"])
@@ -2180,24 +1938,7 @@ async def telescope_tracking():
     
     Body: {"action": "start"} 或 {"action": "stop"}
     """
-    if not _TELESCOPE_SIM_AVAILABLE:
-        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
-    
-    data = await request.get_json()
-    action = data.get("action", "") if data else ""
-    
-    sim = _get_telescope_sim()
-    if not sim or not sim.connected:
-        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
-    
-    if action == "start":
-        success = await sim.start_tracking()
-        return jsonify({"success": success, "tracking": sim.state.tracking_enabled})
-    elif action == "stop":
-        await sim.stop_tracking()
-        return jsonify({"success": True, "tracking": False})
-    else:
-        return jsonify({"error": "无效操作", "code": "INVALID_ACTION"}), 400
+    return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
 
 
 @app.route("/api/telescope/expose", methods=["POST"])
@@ -2207,29 +1948,7 @@ async def telescope_expose():
     
     Body: {"exposure": 30, "count": 3, "target": "M31"}
     """
-    if not _TELESCOPE_SIM_AVAILABLE:
-        return jsonify({"error": "望远镜模拟器不可用", "code": "NOT_AVAILABLE"}), 503
-    
-    data = await request.get_json() or {}
-    exposure = data.get("exposure", 30)
-    count = data.get("count", 1)
-    target = data.get("target", None)
-    
-    sim = _get_telescope_sim()
-    if not sim or not sim.connected:
-        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
-    
-    result = await sim.expose(exposure=exposure, count=count, target=target)
-    
-    return jsonify({
-        "success": result.success,
-        "target": result.target_name,
-        "exposure_sec": result.exposure_sec,
-        "frame_count": result.frame_count,
-        "file_path": result.file_path,
-        "timestamp": result.timestamp,
-        "error": result.error_msg
-    })
+    return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
 
 
 @app.route("/api/telescope/window", methods=["GET"])
@@ -2252,14 +1971,11 @@ async def telescope_observation_window():
     if not coords or coords[0] is None:
         return jsonify({"error": f"无法解析目标: {target_name}"}), 400
     
-    window = _calc_window(coords[0], coords[1], latitude) if _calc_window else {}
-    
     return jsonify({
         "target": target_name,
         "latitude": latitude,
         "ra": coords[0],
         "dec": coords[1],
-        **window
     })
 
 

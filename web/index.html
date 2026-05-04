@@ -608,7 +608,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
       <h4 style="color:var(--accent);margin:16px 0 8px">5. 告警中心</h4>
       <p>显示系统告警信息，包括新天体发现、天气变化、设备异常等。</p>
       <h4 style="color:var(--accent);margin:16px 0 8px">6. 望远镜控制</h4>
-      <p>控制望远镜进行 GOTO 指向、跟踪、曝光等操作。当前使用模拟器，连接真实望远镜后可进行实际观测。</p>
+      <p>控制望远镜进行 GOTO 指向、跟踪、曝光等操作。需要连接真实望远镜设备后方可使用。</p>
       <h4 style="color:var(--accent);margin:16px 0 8px">7. 智能对话</h4>
       <p>与 AI 助手对话，查询天体信息、获取操作帮助。需配置 API Key 以启用 MiniMax LLM 功能。</p>
       <h4 style="color:var(--accent);margin:16px 0 8px">8. 系统日志</h4>
@@ -825,15 +825,21 @@ function renderDevices(devices){
   $('#deviceGrid').innerHTML = items.map(function(item){
     var d = devices[item.key];
     if (!d) return '';
-    var online = d.connected !== false;
+    var online = d.connected === true;
     var cls = online ? 'online' : 'offline';
     var detail = '';
-    if (item.key === 'telescope') detail = '状态: ' + (d.status||'--');
-    if (item.key === 'camera') detail = '增益: ' + (d.gain||'--') + ' | 曝光: ' + ((d.exposure_ms||0)/1000).toFixed(0) + 's';
-    if (item.key === 'filter_wheel') detail = '当前: ' + (d.current||'--');
-    if (item.key === 'dome') detail = '方位角: ' + (d.azimuth||'--') + '°';
-    if (item.key === 'weather') detail = '云量' + (d.cloud_cover||'--') + '% | ' + (d.temperature||'--') + '°C | 视宁度' + (d.seeing||'--') + '"';
-    return '<div class="device-item ' + cls + '"><div class="name">' + item.icon + ' ' + item.label + ' · ' + escHtml(d.name||'--') + '</div><div class="state">' + escHtml(d.status||'--') + '</div><div class="detail">' + detail + '</div></div>';
+    var statusText = '';
+    if (!online) {
+      statusText = '未找到' + item.label;
+    } else {
+      statusText = d.status || '运行中';
+      if (item.key === 'telescope') detail = '状态: ' + (d.status||'--');
+      if (item.key === 'camera') detail = '增益: ' + (d.gain||'--') + ' | 曝光: ' + ((d.exposure_ms||0)/1000).toFixed(0) + 's';
+      if (item.key === 'filter_wheel') detail = '当前: ' + (d.current||'--');
+      if (item.key === 'dome') detail = '方位角: ' + (d.azimuth||'--') + '°';
+      if (item.key === 'weather') detail = '云量' + (d.cloud_cover||'--') + '% | ' + (d.temperature||'--') + '°C | 视宁度' + (d.seeing||'--') + '"';
+    }
+    return '<div class="device-item ' + cls + '"><div class="name">' + item.icon + ' ' + item.label + ' · ' + escHtml(d.name||'--') + '</div><div class="state">' + escHtml(statusText) + '</div><div class="detail">' + detail + '</div></div>';
   }).join('');
 }
 
@@ -1356,58 +1362,6 @@ async function testConnectivity(){
     $('#connPingResult').className = 'ping-result fail';
     $('#connPingLatency').textContent = latency + 'ms (超时)';
     showToast('后端无法连接: ' + e.message, 'error');
-  }
-}
-
-var _demoDataLoaded = false;
-async function loadDemoData(){
-  if (_demoDataLoaded) return;
-  try {
-    var d = await apiGet('/demo/data');
-    if (d && d.observatory_state) {
-      renderDemoObservatory(d.observatory_state);
-      _demoDataLoaded = true;
-    }
-  } catch(e) { console.log('Demo data load failed:', e.message); }
-}
-
-function renderDemoObservatory(state){
-  var container = document.createElement('div');
-  container.innerHTML = 
-    '<h4 style="color:var(--accent);margin:16px 0 8px"> 示例：观测总控台</h4>' +
-    '<p>以下为系统连接真实望远镜后的数据展示示例：</p>' +
-    '<div style="background:var(--bg-secondary);padding:12px;border-radius:8px;margin:8px 0">' +
-    '<div style="display:flex;gap:16px;margin-bottom:12px">' +
-    '<div><span style="color:var(--text-secondary)">状态:</span> <span style="color:var(--success)">' + state.status + '</span></div>' +
-    '<div><span style="color:var(--text-secondary)">运行时间:</span> ' + state.uptime_hours + 'h</div>' +
-    '<div><span style="color:var(--text-secondary)">发现:</span> ' + state.discoveries + '</div>' +
-    '<div><span style="color:var(--text-secondary)">假说:</span> ' + state.hypotheses + '</div>' +
-    '</div>' +
-    (state.current_target ? 
-      '<div style="margin-bottom:12px"><strong>当前目标:</strong> ' + state.current_target.name + 
-      ' (RA: ' + state.current_target.ra + ', Dec: ' + state.current_target.dec + ')<br>' +
-      '类型: ' + state.current_target.type + ' | 星等: ' + state.current_target.magnitude + 
-      ' | 曝光: ' + state.current_target.exposure + ' | 进度: ' + state.current_target.progress + '%</div>' : '') +
-    (state.queue ? 
-      '<div style="margin-bottom:12px"><strong>观测队列:</strong><br>' +
-      state.queue.map(function(q){ return '&nbsp;&nbsp;[' + q.priority + '] ' + q.target + ' (' + q.type + ') - ' + q.status; }).join('<br>') +
-      '</div>' : '') +
-    (state.devices ? 
-      '<div><strong>设备状态:</strong><br>' +
-      '&nbsp;&nbsp;望远镜: ' + state.devices.telescope.name + ' - ' + state.devices.telescope.status + '<br>' +
-      '&nbsp;&nbsp;相机: ' + state.devices.camera.name + ' - ' + state.devices.camera.status + '<br>' +
-      '&nbsp;&nbsp;滤镜轮: ' + state.devices.filter_wheel.name + ' - ' + state.devices.filter_wheel.current + '<br>' +
-      '&nbsp;&nbsp;圆顶: ' + state.devices.dome.name + ' - ' + state.devices.dome.status + '<br>' +
-      '&nbsp;&nbsp;天气: 云量' + state.devices.weather.cloud_cover + '% 湿度' + state.devices.weather.humidity + '% 温度' + state.devices.weather.temperature + '°C 视宁度' + state.devices.weather.seeing + '"</div>' : '') +
-    '</div>';
-  
-  var manualPanel = $('#panel-manual');
-  if (manualPanel) {
-    var existing = manualPanel.querySelector('.demo-section');
-    if (!existing) {
-      container.className = 'demo-section';
-      manualPanel.querySelector('.card > div:last-child').after(container);
-    }
   }
 }
 
