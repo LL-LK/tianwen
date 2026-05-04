@@ -1,1 +1,1 @@
-vmcompute
+sc stop vmcompute
