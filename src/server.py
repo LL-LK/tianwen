@@ -309,11 +309,12 @@ def require_api_key(f):
     return decorated
 
 
-async def call_minimax(message: str) -> dict:
+async def call_minimax(message: str, api_key: str = None, group_id: str = None, endpoint: str = None, model: str = None) -> dict:
     """调用MiniMax API"""
-    group_id = os.environ.get("MINIMAX_GROUP_ID")
-    api_key = os.environ.get("MINIMAX_API_KEY")
-    model = os.environ.get("MINIMAX_MODEL", "MiniMax-Text-01")
+    group_id = group_id or os.environ.get("MINIMAX_GROUP_ID")
+    api_key = api_key or os.environ.get("MINIMAX_API_KEY")
+    model = model or os.environ.get("MINIMAX_MODEL", "MiniMax-Text-01")
+    endpoint = endpoint or "https://api.minimax.chat/v1"
     if not api_key or not group_id:
         return {"error": "MiniMax API key or Group ID not configured", "content": None}
 
@@ -322,7 +323,7 @@ async def call_minimax(message: str) -> dict:
 
     try:
         response = await client.post(
-            f"{config.endpoint}/text/chatcompletion_v2",
+            f"{endpoint}/text/chatcompletion_v2",
             json={
                 "model": config.name,
                 "messages": [{"role": "user", "content": message}],
@@ -346,6 +347,44 @@ async def call_minimax(message: str) -> dict:
             return {"error": "Content is None in response", "content": None}
         tokens = result.get("usage", {}).get("total_tokens", 0)
         return {"content": content, "tokens": tokens}
+    except Exception as e:
+        return {"error": str(e), "content": None}
+    finally:
+        await client.aclose()
+
+
+async def call_openai_compatible(message: str, api_key: str, endpoint: str, model: str) -> dict:
+    """调用OpenAI兼容格式的API (Qwen, OpenAI, 本地部署等)"""
+    if not api_key or not endpoint or not model:
+        return {"error": "API key, endpoint, or model not configured", "content": None}
+
+    client = httpx.AsyncClient(timeout=60.0)
+
+    try:
+        response = await client.post(
+            f"{endpoint}/chat/completions",
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": message}],
+                "max_tokens": 2000,
+                "temperature": 0.7,
+            },
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+        )
+        response.raise_for_status()
+        result = response.json()
+        logger.info(f"OpenAI-compatible response from {model}")
+        choices = result.get("choices", [])
+        if not choices:
+            return {"error": "No choices in response", "content": None}
+        content = choices[0].get("message", {}).get("content")
+        if content is None:
+            return {"error": "Content is None in response", "content": None}
+        tokens = result.get("usage", {}).get("total_tokens", 0)
+        return {"content": content, "tokens": tokens, "provider": model}
     except Exception as e:
         return {"error": str(e), "content": None}
     finally:
@@ -413,6 +452,8 @@ async def chat():
     data = await request.get_json()
     message = data.get("message", "")
     session_id = data.get("session_id")
+    provider = data.get("provider", "minimax")
+    provider_config = data.get("config", {})
 
     if not message:
         return jsonify({"error": "消息不能为空"}), 400
@@ -421,7 +462,6 @@ async def chat():
     if not _check_rate_limit(client_ip):
         return jsonify({"error": "请求过于频繁，请稍后再试", "code": "RATE_LIMITED"}), 429
 
-    # 创建新会话或使用现有会话（优先使用Redis Session存储）
     session = await _session_store.get(session_id) if session_id else None
     if not session:
         session_id = str(uuid.uuid4())
@@ -431,11 +471,9 @@ async def chat():
             "messages": [],
         }
     else:
-        # 确保是字典类型
         if not isinstance(session, dict):
             session = {"id": session_id, "created_at": datetime.now().isoformat(), "messages": []}
 
-    # 记录用户消息
     session["messages"].append({
         "role": "user",
         "content": message,
@@ -443,11 +481,31 @@ async def chat():
     })
 
     try:
-        # 调用MiniMax API
-        llm_result = await call_minimax(message)
+        llm_result = None
+        provider_name = provider
+
+        if provider == "minimax":
+            llm_result = await call_minimax(
+                message,
+                api_key=provider_config.get("api_key"),
+                group_id=provider_config.get("group_id"),
+                endpoint=provider_config.get("endpoint"),
+                model=provider_config.get("model"),
+            )
+            provider_name = provider_config.get("model", "MiniMax")
+        elif provider in ("qwen", "openai"):
+            llm_result = await call_openai_compatible(
+                message,
+                api_key=provider_config.get("api_key"),
+                endpoint=provider_config.get("endpoint"),
+                model=provider_config.get("model"),
+            )
+            provider_name = provider_config.get("model", provider)
+        else:
+            llm_result = await call_minimax(message)
+            provider_name = "MiniMax (env)"
 
         if llm_result.get("error"):
-            # LLM不可用时使用本地规则回复
             response_text = _generate_local_response(message)
             response_data = {
                 "session_id": session_id,
@@ -456,7 +514,7 @@ async def chat():
                 "output": response_text,
                 "metrics": {"tokens_used": 0, "latency_ms": 0},
                 "status": "local_response",
-                "note": "LLM API未配置，使用本地规则回复",
+                "note": f"LLM API ({provider_name}) 未配置或不可用，使用本地规则回复",
             }
         else:
             response_text = llm_result["content"]
@@ -478,11 +536,11 @@ async def chat():
                 "metrics": {
                     "tokens_used": llm_result.get("tokens", 0),
                     "latency_ms": 0,
+                    "provider": provider_name,
                 },
                 "status": "success",
             }
 
-        # 记录助手消息
         session["messages"].append({
             "role": "assistant",
             "content": response_text,
@@ -490,7 +548,6 @@ async def chat():
             "data": response_data,
         })
 
-        # 保存会话到Redis或内存存储
         await _session_store.set(session_id, session)
 
         return jsonify(response_data)

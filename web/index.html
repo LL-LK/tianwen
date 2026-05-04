@@ -273,12 +273,100 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 </div>
 
 <div id="apiKeyModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;justify-content:center;align-items:center">
-  <div class="card" style="width:400px;max-width:90%">
-    <div class="card-header"><span class="card-title">🔑 设置 API Key</span><button onclick="toggleApiKeyInput()" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px">&times;</button></div>
-    <input class="input" id="apiKeyInput" placeholder="输入你的 API Key" style="width:100%;margin-bottom:12px">
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button class="btn" onclick="toggleApiKeyInput()">取消</button>
-      <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
+  <div class="card" style="width:600px;max-width:95%;max-height:90vh;overflow-y:auto">
+    <div class="card-header"><span class="card-title">🔑 LLM 供应商配置</span><button onclick="toggleApiKeyInput()" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px">&times;</button></div>
+    <div style="padding:16px">
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">配置智能对话功能所需的 LLM 供应商。至少配置一个供应商即可使用对话功能。</p>
+
+      <div style="margin-bottom:20px">
+        <h4 style="color:var(--accent);margin-bottom:8px;font-size:14px">🤖 MiniMax (默认)</h4>
+        <div style="background:var(--bg-secondary);padding:12px;border-radius:8px">
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API Key</label>
+            <input class="input" id="minimaxApiKey" placeholder="输入 MiniMax API Key" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">Group ID</label>
+            <input class="input" id="minimaxGroupId" placeholder="输入 MiniMax Group ID" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API 端点</label>
+            <input class="input" id="minimaxEndpoint" placeholder="https://api.minimax.chat/v1" value="https://api.minimax.chat/v1" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">模型</label>
+            <select class="input" id="minimaxModel" style="width:100%;margin-top:4px">
+              <option value="MiniMax-M2.1">MiniMax-M2.1 (推荐)</option>
+              <option value="MiniMax-Text-01">MiniMax-Text-01</option>
+              <option value="MiniMax-VL-01">MiniMax-VL-01 (多模态)</option>
+            </select>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">
+            注册地址: <a href="https://platform.minimaxi.com" target="_blank" style="color:var(--accent)">platform.minimaxi.com</a>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px">
+        <h4 style="color:var(--accent);margin-bottom:8px;font-size:14px">🧠 通义千问 (Qwen)</h4>
+        <div style="background:var(--bg-secondary);padding:12px;border-radius:8px">
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API Key</label>
+            <input class="input" id="qwenApiKey" placeholder="输入 Qwen API Key" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API 端点</label>
+            <input class="input" id="qwenEndpoint" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" value="https://dashscope.aliyuncs.com/compatible-mode/v1" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">模型</label>
+            <select class="input" id="qwenModel" style="width:100%;margin-top:4px">
+              <option value="qwen-plus">qwen-plus (推荐)</option>
+              <option value="qwen-turbo">qwen-turbo (快速)</option>
+              <option value="qwen-max">qwen-max (最强)</option>
+              <option value="qwen-long">qwen-long (长文本)</option>
+            </select>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">
+            注册地址: <a href="https://dashscope.console.aliyun.com" target="_blank" style="color:var(--accent)">dashscope.console.aliyun.com</a>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px">
+        <h4 style="color:var(--accent);margin-bottom:8px;font-size:14px">🌐 OpenAI 兼容接口</h4>
+        <div style="background:var(--bg-secondary);padding:12px;border-radius:8px">
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API Key</label>
+            <input class="input" id="openaiApiKey" placeholder="输入 API Key" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API 端点</label>
+            <input class="input" id="openaiEndpoint" placeholder="https://api.openai.com/v1" value="https://api.openai.com/v1" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">模型</label>
+            <input class="input" id="openaiModel" placeholder="gpt-4o-mini" value="gpt-4o-mini" style="width:100%;margin-top:4px">
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">
+            支持 OpenAI 格式的任何供应商: OpenAI、Azure OpenAI、本地部署 (Ollama/vLLM) 等
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <h4 style="color:var(--accent);margin-bottom:8px;font-size:14px">⚙️ 默认供应商</h4>
+        <select class="input" id="defaultProvider" style="width:100%">
+          <option value="minimax">MiniMax</option>
+          <option value="qwen">通义千问</option>
+          <option value="openai">OpenAI 兼容</option>
+        </select>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="toggleApiKeyInput()">取消</button>
+        <button class="btn btn-primary" onclick="saveLlmConfig()">保存配置</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1101,14 +1189,39 @@ async function sendChat(){
   chatBox.innerHTML += '<div style="margin-bottom:8px;text-align:right"><span style="display:inline-block;background:var(--accent);color:#fff;padding:8px 14px;border-radius:12px 12px 0 12px;max-width:80%;text-align:left">' + escapeHtml(msg) + '</span></div>';
   chatBox.scrollTop = chatBox.scrollHeight;
 
-  var headers = {'Content-Type': 'application/json'};
+  var provider = LLM_CONFIG.defaultProvider;
+  var config = LLM_CONFIG[provider];
+
+  if (!config || !config.apiKey) {
+    chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">未配置 ' + (provider === 'minimax' ? 'MiniMax' : provider === 'qwen' ? 'Qwen' : 'OpenAI') + ' API Key，请点击 🔑 按钮配置</span></div>';
+    chatBox.scrollTop = chatBox.scrollHeight;
+    return;
+  }
+
+  var headers = {
+    'Content-Type': 'application/json',
+    'X-LLM-Provider': provider,
+  };
   if (API_KEY) headers['X-API-Key'] = API_KEY;
+
+  var body = {
+    message: msg,
+    provider: provider,
+    config: {
+      endpoint: config.endpoint,
+      model: config.model,
+      api_key: config.apiKey,
+    }
+  };
+  if (provider === 'minimax') {
+    body.config.group_id = config.groupId;
+  }
 
   try {
     var r = await fetch(API_BASE + '/chat', {
       method: 'POST',
       headers: headers,
-      body: JSON.stringify({message: msg})
+      body: JSON.stringify(body)
     });
     var data = await r.json();
 
@@ -1130,27 +1243,79 @@ function escapeHtml(text){
   return div.innerHTML;
 }
 
+var LLM_CONFIG = {
+  minimax: { apiKey: '', groupId: '', endpoint: 'https://api.minimax.chat/v1', model: 'MiniMax-M2.1' },
+  qwen: { apiKey: '', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
+  openai: { apiKey: '', endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  defaultProvider: 'minimax'
+};
+
 function toggleApiKeyInput(){
   var modal = $('#apiKeyModal');
   if (modal.style.display === 'none' || modal.style.display === '') {
-    $('#apiKeyInput').value = API_KEY;
+    loadLlmConfigToForm();
     modal.style.display = 'flex';
   } else {
     modal.style.display = 'none';
   }
 }
 
-function saveApiKey(){
-  var key = $('#apiKeyInput').value.trim();
-  API_KEY = key;
-  if (key) {
-    localStorage.setItem('tianwen_api_key', key);
-    showToast('API Key 已保存', 'success');
+function loadLlmConfigToForm(){
+  $('#minimaxApiKey').value = LLM_CONFIG.minimax.apiKey || '';
+  $('#minimaxGroupId').value = LLM_CONFIG.minimax.groupId || '';
+  $('#minimaxEndpoint').value = LLM_CONFIG.minimax.endpoint || 'https://api.minimax.chat/v1';
+  $('#minimaxModel').value = LLM_CONFIG.minimax.model || 'MiniMax-M2.1';
+
+  $('#qwenApiKey').value = LLM_CONFIG.qwen.apiKey || '';
+  $('#qwenEndpoint').value = LLM_CONFIG.qwen.endpoint || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  $('#qwenModel').value = LLM_CONFIG.qwen.model || 'qwen-plus';
+
+  $('#openaiApiKey').value = LLM_CONFIG.openai.apiKey || '';
+  $('#openaiEndpoint').value = LLM_CONFIG.openai.endpoint || 'https://api.openai.com/v1';
+  $('#openaiModel').value = LLM_CONFIG.openai.model || 'gpt-4o-mini';
+
+  $('#defaultProvider').value = LLM_CONFIG.defaultProvider || 'minimax';
+}
+
+function saveLlmConfig(){
+  LLM_CONFIG.minimax.apiKey = $('#minimaxApiKey').value.trim();
+  LLM_CONFIG.minimax.groupId = $('#minimaxGroupId').value.trim();
+  LLM_CONFIG.minimax.endpoint = $('#minimaxEndpoint').value.trim() || 'https://api.minimax.chat/v1';
+  LLM_CONFIG.minimax.model = $('#minimaxModel').value;
+
+  LLM_CONFIG.qwen.apiKey = $('#qwenApiKey').value.trim();
+  LLM_CONFIG.qwen.endpoint = $('#qwenEndpoint').value.trim() || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  LLM_CONFIG.qwen.model = $('#qwenModel').value;
+
+  LLM_CONFIG.openai.apiKey = $('#openaiApiKey').value.trim();
+  LLM_CONFIG.openai.endpoint = $('#openaiEndpoint').value.trim() || 'https://api.openai.com/v1';
+  LLM_CONFIG.openai.model = $('#openaiModel').value;
+
+  LLM_CONFIG.defaultProvider = $('#defaultProvider').value;
+
+  localStorage.setItem('tianwen_llm_config', JSON.stringify(LLM_CONFIG));
+
+  var configured = [];
+  if (LLM_CONFIG.minimax.apiKey) configured.push('MiniMax');
+  if (LLM_CONFIG.qwen.apiKey) configured.push('Qwen');
+  if (LLM_CONFIG.openai.apiKey) configured.push('OpenAI');
+
+  if (configured.length > 0) {
+    showToast('已保存 ' + configured.length + ' 个供应商: ' + configured.join(', '), 'success');
   } else {
-    localStorage.removeItem('tianwen_api_key');
-    showToast('API Key 已清除', 'info');
+    showToast('未配置任何供应商，对话功能将不可用', 'warning');
   }
   toggleApiKeyInput();
+}
+
+function loadLlmConfig(){
+  var saved = localStorage.getItem('tianwen_llm_config');
+  if (saved) {
+    try {
+      var parsed = JSON.parse(saved);
+      LLM_CONFIG = Object.assign(LLM_CONFIG, parsed);
+    } catch(e) {}
+  }
 }
 
 async function testConnectivity(){
@@ -1246,6 +1411,8 @@ window.addEventListener('DOMContentLoaded', function(){
   var savedKey = localStorage.getItem('tianwen_api_key');
   if (savedKey) API_KEY = savedKey;
 
+  loadLlmConfig();
+
   $('#connBackendUrl').textContent = BACKEND_URL;
 
   connectWS();
@@ -1259,7 +1426,6 @@ window.addEventListener('DOMContentLoaded', function(){
     navigator.serviceWorker.register('/sw.js').catch(function(){});
   }
 
-  // 页面加载时自动加载星表
   setTimeout(telLoadCatalog, 2000);
 });
 
