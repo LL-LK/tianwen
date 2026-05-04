@@ -41,6 +41,9 @@ COPY web /app/web
 # Install runtime dependencies only
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
+# Create cache directory and set permissions for non-root user
+RUN mkdir -p /app/src/.cache/skyviews && chown -R pyapp:pyapp /app/src/.cache
+
 # Switch to non-root user
 USER pyapp
 
