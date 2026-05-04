@@ -8,22 +8,18 @@
 <meta name="theme-color" content="#0a0e17">
 <link rel="manifest" href="/manifest.json">
 
-<!-- 预连接关键域名 -->
-<link rel="preconnect" href="https://tianwen-agi-production.up.railway.app">
-<link rel="preconnect" href="https://cdn.plot.ly">
-<link rel="preconnect" href="https://aladin.u-strasbg.fr">
-<link rel="dns-prefetch" href="https://tianwen-agi-production.up.railway.app">
-<link rel="dns-prefetch" href="https://cdn.plot.ly">
-<link rel="dns-prefetch" href="https://aladin.u-strasbg.fr">
+<link rel="preconnect" href="https://tianwen-agi-production.up.railway.app" crossorigin>
+<link rel="preconnect" href="https://cdn.plot.ly" crossorigin>
+<link rel="preconnect" href="https://aladin.u-strasbg.fr" crossorigin>
+<link rel="dns-prefetch" href="https://api.minimax.chat">
+<link rel="dns-prefetch" href="https://dashscope.aliyuncs.com">
 
-<!-- 预加载关键资源 -->
-<link rel="preload" href="https://cdn.plot.ly/plotly-2.32.0.min.js" as="script">
-<link rel="preload" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" as="style">
+<link rel="preload" href="https://cdn.plot.ly/plotly-2.32.0.min.js" as="script" crossorigin="anonymous">
+<link rel="preload" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" as="style" crossorigin="anonymous">
 
-<!-- 外部资源（异步加载） -->
-<script src="https://cdn.plot.ly/plotly-2.32.0.min.js" defer></script>
-<link rel="stylesheet" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" media="print" onload="this.media='all'" />
-<noscript><link rel="stylesheet" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" /></noscript>
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js" defer crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" media="print" onload="this.media='all'" crossorigin="anonymous">
+<noscript><link rel="stylesheet" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css"></noscript>
 <style>
 :root {
   --bg-primary: #0a0e17;
@@ -46,7 +42,7 @@
   --p2: #3b82f6;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;background:var(--bg-primary);color:var(--text-primary);min-height:100vh;overflow-x:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;font-display:swap;background:var(--bg-primary);color:var(--text-primary);min-height:100vh;overflow-x:hidden;content-visibility:auto}
 body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;background:radial-gradient(ellipse at 20% 50%,rgba(59,130,246,0.08) 0%,transparent 50%),radial-gradient(ellipse at 80% 20%,rgba(168,85,247,0.06) 0%,transparent 50%);pointer-events:none;z-index:0}
 
 .header{position:sticky;top:0;z-index:100;background:rgba(17,24,39,0.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:56px}
@@ -234,6 +230,9 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 .conn-panel .ping-result.ok{color:var(--success)}
 .conn-panel .ping-result.fail{color:var(--danger)}
 
+.offline-banner{display:none;align-items:center;gap:8px;padding:8px 16px;background:rgba(239,68,68,0.15);border-bottom:1px solid rgba(239,68,68,0.3);font-size:12px;color:var(--danger);text-align:center;justify-content:center}
+.offline-banner.show{display:flex}
+
 @media(max-width:768px){
   .grid-2,.grid-3,.grid-2-1,.grid-1-2{grid-template-columns:1fr}
   .header{padding:0 12px}
@@ -274,6 +273,8 @@ tr:hover td{background:rgba(59,130,246,0.04)}
     <button class="theme-toggle" id="exportBtn" title="导出数据" onclick="exportData('json')">📥</button>
   </div>
 </div>
+
+<div class="offline-banner" id="offlineBanner">📡 网络连接已断开，数据可能不是最新的</div>
 
 <div class="tab-nav">
   <button class="tab-btn active" data-tab="command">📡 观测总控台</button>
@@ -523,10 +524,21 @@ tr:hover td{background:rgba(59,130,246,0.04)}
         </div>
       </div>
       <div class="btn-group" style="margin-top:12px">
+        <select class="input" id="telConnType" style="width:130px">
+          <option value="simulation">模拟模式</option>
+          <option value="lan">局域网</option>
+          <option value="serial">串口/USB</option>
+          <option value="ascom">ASCOM</option>
+          <option value="indi">INDI</option>
+        </select>
+        <input class="input" id="telConnHost" placeholder="主机地址" style="width:140px" value="localhost">
+        <input class="input" id="telConnPort" type="number" placeholder="端口" style="width:80px" value="8765">
         <button class="btn btn-primary" onclick="telConnect()">连接</button>
         <button class="btn btn-warning" onclick="telDisconnect()">断开</button>
+        <button class="btn btn-info" onclick="telDiscover()" style="background:var(--info);color:#fff">🔍 发现设备</button>
         <button class="btn btn-success" onclick="telRefresh()">刷新状态</button>
       </div>
+      <div id="telDiscoveredDevices" style="margin-top:8px;font-size:12px"></div>
     </div>
     <div class="card">
       <div class="card-header"><span class="card-title"><span class="icon">🎯</span>GOTO 指向</span></div>
@@ -646,7 +658,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 
 </div>
 
-<div class="kbd-hint" id="kbdHint">快捷键: <kbd>1</kbd>-<kbd>6</kbd> 切换面板 · <kbd>R</kbd> 刷新数据 · <kbd>T</kbd> 连通性检测</div>
+<div class="kbd-hint" id="kbdHint">快捷键: <kbd>1</kbd>-<kbd>9</kbd> 切换面板 · <kbd>R</kbd> 刷新 · <kbd>T</kbd> 连通检测 · <kbd>L</kbd> LLM测试</div>
 
 <script>
 var BACKEND_URL = 'https://tianwen-agi-production.up.railway.app';
@@ -665,9 +677,24 @@ var allLogs = [];
 var isRefreshing = false;
 var lastRefreshTime = null;
 var dataFetchErrors = {};
+var _apiCache = {};
+var _cacheTTL = 5000;
+var _isOnline = navigator.onLine;
 
 function $(sel){return document.querySelector(sel)}
 function $$(sel){return document.querySelectorAll(sel)}
+
+window.addEventListener('online', function(){
+  _isOnline = true;
+  $('#offlineBanner').classList.remove('show');
+  showToast('网络已恢复', 'success');
+  loadAllData();
+});
+window.addEventListener('offline', function(){
+  _isOnline = false;
+  $('#offlineBanner').classList.add('show');
+  showToast('网络已断开，使用缓存数据', 'warning');
+});
 
 function showToast(msg, type){
   type = type || 'info';
@@ -733,16 +760,25 @@ function scheduleReconnect(){
 
 async function apiGet(path, timeoutMs){
   timeoutMs = timeoutMs || 8000;
+  var cacheKey = path;
+  var cached = _apiCache[cacheKey];
+  if (cached && (Date.now() - cached.time) < _cacheTTL) {
+    return cached.data;
+  }
+
   var controller = new AbortController();
   var timer = setTimeout(function(){ controller.abort(); }, timeoutMs);
   try {
     var r = await fetch(API_BASE + path, { signal: controller.signal });
     clearTimeout(timer);
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    return await r.json();
+    var data = await r.json();
+    _apiCache[cacheKey] = { data: data, time: Date.now() };
+    return data;
   } catch(e) {
     clearTimeout(timer);
     dataFetchErrors[path] = e.message;
+    if (cached) return cached.data;
     return null;
   }
 }
@@ -1131,7 +1167,25 @@ $$('.tab-btn').forEach(function(btn){
     }
     if (btn.dataset.tab === 'alerts') loadAlerts();
     if (btn.dataset.tab === 'logs') loadLogs();
+    if (btn.dataset.tab === 'telescope') { telRefresh(); }
     if (btn.dataset.tab === 'manual') loadDemoData();
+  });
+
+  btn.addEventListener('mouseenter', function(){
+    var tab = btn.dataset.tab;
+    if (tab === 'skychart' && !aladinInstance) {
+      if (typeof A === 'undefined') {
+        var s = document.createElement('script');
+        s.src = 'https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.js';
+        s.defer = true;
+        document.head.appendChild(s);
+      }
+    }
+    if (tab === 'data') { apiGet('/data/lightcurve'); }
+    if (tab === 'alerts') { apiGet('/alerts'); }
+    if (tab === 'logs') { apiGet('/logs'); }
+    if (tab === 'telescope') { apiGet('/telescope/status'); apiGet('/telescope/catalog'); }
+    if (tab === 'research') { apiGet('/research/status'); apiGet('/research/cycles'); }
   });
 });
 
@@ -1146,20 +1200,25 @@ async function loadLogs(){
 }
 
 document.addEventListener('keydown', function(e){
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
   var key = e.key.toLowerCase();
-  if (key >= '1' && key <= '6') {
+  if (key >= '1' && key <= '9') {
     var tabs = $$('.tab-btn');
     var idx = parseInt(key) - 1;
     if (tabs[idx]) tabs[idx].click();
   }
   if (key === 'r' && !e.ctrlKey && !e.metaKey) {
     e.preventDefault();
+    _apiCache = {};
     loadAllData();
   }
   if (key === 't' && !e.ctrlKey && !e.metaKey) {
     e.preventDefault();
     testConnectivity();
+  }
+  if (key === 'l' && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    testLlmConnectivity();
   }
 });
 
@@ -1398,7 +1457,7 @@ async function testConnectivity(){
   var startTime = performance.now();
 
   try {
-    var r = await fetch(API_BASE + '/health');
+    var r = await fetch(API_BASE + '/ping');
     var latency = Math.round(performance.now() - startTime);
 
     if (r.ok) {
@@ -1505,17 +1564,32 @@ var _telCatalogCache = null;
 async function telRefresh(){
   try {
     var resp = await fetch(API_BASE + '/telescope/status');
-    if (!resp.ok) throw new Error('状态获取失败');
     var data = await resp.json();
 
-    $('#telStatus').textContent = data.connected ? '已连接' : '未连接';
-    $('#telStatus').className = 'ping-result ' + (data.connected ? 'ok' : 'fail');
-    $('#telRa').textContent = data.ra ? data.ra.toFixed(4) + '\u00b0' : '--';
-    $('#telDec').textContent = data.dec ? data.dec.toFixed(4) + '\u00b0' : '--';
-    $('#telTracking').textContent = data.tracking ? '开启' : '关闭';
-    $('#telPointingError').textContent = data.pointing_error_arcmin ? data.pointing_error_arcmin.toFixed(2) + "'" : '--';
-    $('#telUptime').textContent = data.uptime_hours ? data.uptime_hours.toFixed(1) + 'h' : '--';
-    $('#telTemp').textContent = data.temperature ? data.temperature + '\u00b0C' : '--';
+    if (data.connected) {
+      var connLabel = data.connection_type || 'unknown';
+      var simLabel = data.simulation_mode ? ' [模拟]' : '';
+      $('#telStatus').textContent = '已连接 (' + connLabel + simLabel + ')';
+      $('#telStatus').className = 'ping-result ok';
+
+      if (data.position) {
+        $('#telRa').textContent = (data.position.ra || 0).toFixed(4) + '\u00b0';
+        $('#telDec').textContent = (data.position.dec || 0).toFixed(4) + '\u00b0';
+      }
+      $('#telTracking').textContent = data.status === 'tracking' ? '开启' : (data.status || '--');
+      $('#telPointingError').textContent = data.pointing_error_arcmin ? data.pointing_error_arcmin.toFixed(2) + "'" : '--';
+      $('#telUptime').textContent = data.uptime_hours ? data.uptime_hours.toFixed(1) + 'h' : '--';
+      $('#telTemp').textContent = data.temperature ? data.temperature + '\u00b0C' : '--';
+    } else {
+      $('#telStatus').textContent = '未连接';
+      $('#telStatus').className = 'ping-result fail';
+      $('#telRa').textContent = '--';
+      $('#telDec').textContent = '--';
+      $('#telTracking').textContent = '--';
+      $('#telPointingError').textContent = '--';
+      $('#telUptime').textContent = '--';
+      $('#telTemp').textContent = '--';
+    }
 
   } catch(e) {
     showToast('获取状态失败: ' + e.message, 'error');
@@ -1523,11 +1597,19 @@ async function telRefresh(){
 }
 
 async function telConnect(){
+  var connType = $('#telConnType').value;
+  var host = $('#telConnHost').value.trim() || 'localhost';
+  var port = parseInt($('#telConnPort').value) || 8765;
+
   try {
-    var resp = await fetch(API_BASE + '/telescope/connect', {method:'POST'});
+    var resp = await fetch(API_BASE + '/telescope/connect', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({type: connType, host: host, port: port})
+    });
     var data = await resp.json();
     if (data.success) {
-      showToast('望远镜连接成功', 'success');
+      showToast('望远镜连接成功 (' + data.connection_type + ')', 'success');
       telRefresh();
     } else {
       showToast('连接失败: ' + (data.error || '未知错误'), 'error');
@@ -1535,6 +1617,50 @@ async function telConnect(){
   } catch(e) {
     showToast('连接失败: ' + e.message, 'error');
   }
+}
+
+async function telDiscover(){
+  showToast('正在扫描设备...', 'info');
+  try {
+    var resp = await fetch(API_BASE + '/telescope/discover');
+    var data = await resp.json();
+
+    var html = '';
+    if (data.lan && data.lan.length > 0) {
+      html += '<div style="margin-bottom:4px"><strong>🌐 局域网设备:</strong></div>';
+      data.lan.forEach(function(d){
+        html += '<div style="padding:2px 8px;cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--bg-secondary)\'" onmouseout="this.style.background=\'transparent\'" onclick="telQuickConnect(\'' + d.host + '\',' + d.port + ')">📡 ' + d.host + ':' + d.port + ' <small style="color:var(--text-muted)">(' + d.method + ')</small></div>';
+      });
+    }
+    if (data.serial && data.serial.length > 0) {
+      html += '<div style="margin-bottom:4px;margin-top:8px"><strong>🔌 串口设备:</strong></div>';
+      data.serial.forEach(function(d){
+        html += '<div style="padding:2px 8px;cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--bg-secondary)\'" onmouseout="this.style.background=\'transparent\'" onclick="telQuickSerialConnect(\'' + d.device + '\')">🔌 ' + d.device + ' <small style="color:var(--text-muted)">' + (d.description||'') + '</small></div>';
+      });
+    }
+    if (!html) {
+      html = '<div style="color:var(--text-muted)">未发现设备，请检查连接</div>';
+    }
+
+    $('#telDiscoveredDevices').innerHTML = html;
+    showToast('发现 ' + data.total + ' 个设备', 'success');
+  } catch(e) {
+    showToast('设备发现失败: ' + e.message, 'error');
+  }
+}
+
+function telQuickConnect(host, port){
+  $('#telConnType').value = 'lan';
+  $('#telConnHost').value = host;
+  $('#telConnPort').value = port;
+  telConnect();
+}
+
+function telQuickSerialConnect(device){
+  $('#telConnType').value = 'serial';
+  $('#telConnHost').value = device;
+  $('#telConnPort').value = '0';
+  telConnect();
 }
 
 async function telDisconnect(){
