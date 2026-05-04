@@ -386,6 +386,12 @@ tr:hover td{background:rgba(59,130,246,0.04)}
         </select>
       </div>
 
+      <div style="margin-bottom:16px;padding:12px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--warning)">
+        <h4 style="color:var(--warning);margin-bottom:8px;font-size:14px">🔐 后端 API Key (可选)</h4>
+        <p style="color:var(--text-muted);font-size:11px;margin-bottom:8px">用于后端服务认证。如果后端未设置 API_KEY 环境变量（开发模式），则不需要填写。</p>
+        <input class="input" id="backendApiKey" placeholder="输入后端 API Key (可选)" style="width:100%">
+      </div>
+
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn" onclick="toggleApiKeyInput()">取消</button>
         <button class="btn btn-primary" onclick="saveLlmConfig()">保存配置</button>
@@ -1338,6 +1344,10 @@ function loadLlmConfigToForm(){
   $('#openaiModel').value = LLM_CONFIG.openai.model || 'gpt-4o-mini';
 
   $('#defaultProvider').value = LLM_CONFIG.defaultProvider || 'minimax';
+
+  // 加载后端 API Key
+  var savedBackendKey = localStorage.getItem('tianwen_api_key');
+  $('#backendApiKey').value = savedBackendKey || '';
 }
 
 function saveLlmConfig(){
@@ -1359,6 +1369,16 @@ function saveLlmConfig(){
 
   localStorage.setItem('tianwen_llm_config', JSON.stringify(LLM_CONFIG));
 
+  // 保存后端 API Key
+  var backendKey = $('#backendApiKey').value.trim();
+  if (backendKey) {
+    localStorage.setItem('tianwen_api_key', backendKey);
+    API_KEY = backendKey;
+  } else {
+    localStorage.removeItem('tianwen_api_key');
+    API_KEY = '';
+  }
+
   var configured = [];
   var missing = [];
 
@@ -1371,11 +1391,17 @@ function saveLlmConfig(){
   if (LLM_CONFIG.openai.apiKey) configured.push('OpenAI');
 
   if (configured.length > 0) {
-    showToast('已保存 ' + configured.length + ' 个供应商: ' + configured.join(', '), 'success');
+    var msg = '已保存 ' + configured.length + ' 个供应商: ' + configured.join(', ');
+    if (backendKey) msg += ' + 后端认证';
+    showToast(msg, 'success');
   } else if (missing.length > 0) {
     showToast('配置不完整: ' + missing.join('; '), 'warning');
   } else {
-    showToast('未配置任何供应商，对话功能将不可用', 'warning');
+    if (backendKey) {
+      showToast('已保存后端认证', 'success');
+    } else {
+      showToast('未配置任何供应商，对话功能将不可用', 'warning');
+    }
   }
   toggleApiKeyInput();
 }
