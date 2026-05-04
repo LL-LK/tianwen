@@ -91,6 +91,17 @@ agent = HermesAGI()
 dashboard = CycleStatisticsDashboard()
 hypothesis_tester = HypothesisTester()
 
+_http_client: httpx.AsyncClient = None
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(60.0, connect=10.0),
+            limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
+        )
+    return _http_client
+
 RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", 60))
 RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", 30))
 _rate_limit_store: dict = defaultdict(list)
@@ -329,86 +340,166 @@ def require_api_key(f):
     return decorated
 
 
-async def call_minimax(message: str, api_key: str = None, group_id: str = None, endpoint: str = None, model: str = None) -> dict:
-    """调用MiniMax API"""
+async def call_minimax(message: str, api_key: str = None, group_id: str = None, endpoint: str = None, model: str = None, api_format: str = None) -> dict:
+    """调用MiniMax API，支持原生格式和OpenAI兼容格式"""
     group_id = group_id or os.environ.get("MINIMAX_GROUP_ID")
     api_key = api_key or os.environ.get("MINIMAX_API_KEY")
-    model = model or os.environ.get("MINIMAX_MODEL", "MiniMax-Text-01")
+    model = model or os.environ.get("MINIMAX_MODEL", "MiniMax-M2.7")
     endpoint = endpoint or "https://api.minimax.chat/v1"
+    api_format = api_format or "native"
+
     if not api_key or not group_id:
-        return {"error": "MiniMax API key or Group ID not configured", "content": None}
+        logger.error(f"[MiniMax] 配置缺失: api_key={'***' if api_key else 'None'}, group_id={'***' if group_id else 'None'}")
+        return {"error": "MiniMax API key 或 Group ID 未配置", "content": None}
 
-    config = ModelConfig.minimax_api(api_key, model)
-    client = httpx.AsyncClient(timeout=60.0)
-
-    try:
-        response = await client.post(
-            f"{endpoint}/text/chatcompletion_v2",
-            json={
-                "model": config.name,
-                "messages": [{"role": "user", "content": message}],
-                "max_tokens": 2000,
-                "temperature": 0.7,
-            },
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "GroupId": group_id
-            }
-        )
-        response.raise_for_status()
-        result = response.json()
-        logger.info(f"MiniMax response: {result}")
-        choices = result.get("choices", [])
-        if not choices:
-            return {"error": "No choices in response", "content": None}
-        content = choices[0].get("message", {}).get("content")
-        if content is None:
-            return {"error": "Content is None in response", "content": None}
-        tokens = result.get("usage", {}).get("total_tokens", 0)
-        return {"content": content, "tokens": tokens}
-    except Exception as e:
-        return {"error": str(e), "content": None}
-    finally:
-        await client.aclose()
-
-
-async def call_openai_compatible(message: str, api_key: str, endpoint: str, model: str) -> dict:
-    """调用OpenAI兼容格式的API (Qwen, OpenAI, 本地部署等)"""
-    if not api_key or not endpoint or not model:
-        return {"error": "API key, endpoint, or model not configured", "content": None}
-
-    client = httpx.AsyncClient(timeout=60.0)
+    endpoint = endpoint.rstrip("/")
+    client = _get_http_client()
 
     try:
-        response = await client.post(
-            f"{endpoint}/chat/completions",
-            json={
+        if api_format == "openai":
+            url = f"{endpoint}/chat/completions"
+            payload = {
                 "model": model,
                 "messages": [{"role": "user", "content": message}],
                 "max_tokens": 2000,
                 "temperature": 0.7,
-            },
-            headers={
+            }
+            headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
-        )
-        response.raise_for_status()
+        else:
+            url = f"{endpoint}/text/chatcompletion_v2"
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": message}],
+                "max_tokens": 2000,
+                "temperature": 0.7,
+            }
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "GroupId": group_id,
+            }
+
+        logger.info(f"[MiniMax] 请求: endpoint={endpoint}, model={model}, format={api_format}")
+        response = await client.post(url, json=payload, headers=headers)
+
+        if response.status_code != 200:
+            error_detail = response.text[:500]
+            logger.error(f"[MiniMax] HTTP {response.status_code}: {error_detail}")
+            return {"error": f"MiniMax API 返回错误 ({response.status_code}): {error_detail}", "content": None}
+
         result = response.json()
-        logger.info(f"OpenAI-compatible response from {model}")
-        choices = result.get("choices", [])
-        if not choices:
-            return {"error": "No choices in response", "content": None}
-        content = choices[0].get("message", {}).get("content")
+        logger.info(f"[MiniMax] 响应: {json.dumps(result, ensure_ascii=False)[:300]}")
+
+        if api_format == "openai":
+            choices = result.get("choices", [])
+            if not choices:
+                return {"error": "MiniMax OpenAI格式响应无choices", "content": None}
+            content = choices[0].get("message", {}).get("content")
+            tokens = result.get("usage", {}).get("total_tokens", 0)
+        else:
+            choices = result.get("choices", [])
+            if not choices:
+                return {"error": "MiniMax 原生格式响应无choices", "content": None}
+            content = choices[0].get("message", {}).get("content")
+            tokens = result.get("usage", {}).get("total_tokens", 0)
+
         if content is None:
-            return {"error": "Content is None in response", "content": None}
-        tokens = result.get("usage", {}).get("total_tokens", 0)
-        return {"content": content, "tokens": tokens, "provider": model}
+            logger.error(f"[MiniMax] content为None, 完整响应: {json.dumps(result, ensure_ascii=False)[:500]}")
+            return {"error": "MiniMax 返回内容为空", "content": None}
+
+        logger.info(f"[MiniMax] 成功: tokens={tokens}, content_len={len(content)}")
+        return {"content": content, "tokens": tokens}
+
+    except httpx.TimeoutException:
+        logger.error(f"[MiniMax] 请求超时: {endpoint}")
+        return {"error": "MiniMax API 请求超时(60s)", "content": None}
+    except httpx.ConnectError as e:
+        logger.error(f"[MiniMax] 连接失败: {endpoint} - {e}")
+        return {"error": f"无法连接到 MiniMax API: {endpoint}", "content": None}
     except Exception as e:
-        return {"error": str(e), "content": None}
-    finally:
-        await client.aclose()
+        logger.error(f"[MiniMax] 异常: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+        return {"error": f"MiniMax调用异常: {type(e).__name__}: {str(e)}", "content": None}
+
+
+async def call_openai_compatible(message: str, api_key: str, endpoint: str, model: str, api_format: str = None) -> dict:
+    """调用OpenAI兼容格式的API (Qwen, OpenAI, 本地部署等)，支持Anthropic格式"""
+    if not api_key or not endpoint or not model:
+        logger.error(f"[LLM] 配置缺失: api_key={'***' if api_key else 'None'}, endpoint={endpoint}, model={model}")
+        return {"error": "API key, endpoint, or model not configured", "content": None}
+
+    api_format = api_format or "openai"
+    endpoint = endpoint.rstrip("/")
+    client = _get_http_client()
+
+    try:
+        if api_format == "anthropic":
+            url = f"{endpoint}/v1/messages"
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": message}],
+                "max_tokens": 2000,
+                "temperature": 0.7,
+            }
+            headers = {
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            }
+        else:
+            url = f"{endpoint}/chat/completions"
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": message}],
+                "max_tokens": 2000,
+                "temperature": 0.7,
+            }
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+
+        logger.info(f"[LLM] 请求: endpoint={endpoint}, model={model}, format={api_format}")
+        response = await client.post(url, json=payload, headers=headers)
+
+        if response.status_code != 200:
+            error_detail = response.text[:500]
+            logger.error(f"[LLM] HTTP {response.status_code}: {error_detail}")
+            return {"error": f"API 返回错误 ({response.status_code}): {error_detail}", "content": None}
+
+        result = response.json()
+        logger.info(f"[LLM] 响应: {json.dumps(result, ensure_ascii=False)[:300]}")
+
+        if api_format == "anthropic":
+            content = result.get("content", [{}])[0].get("text") if result.get("content") else None
+            input_tokens = result.get("usage", {}).get("input_tokens", 0)
+            output_tokens = result.get("usage", {}).get("output_tokens", 0)
+            tokens = input_tokens + output_tokens
+        else:
+            choices = result.get("choices", [])
+            if not choices:
+                return {"error": "API响应无choices", "content": None}
+            content = choices[0].get("message", {}).get("content")
+            tokens = result.get("usage", {}).get("total_tokens", 0)
+
+        if content is None:
+            logger.error(f"[LLM] content为None, 完整响应: {json.dumps(result, ensure_ascii=False)[:500]}")
+            return {"error": "API 返回内容为空", "content": None}
+
+        logger.info(f"[LLM] 成功: tokens={tokens}, content_len={len(content)}")
+        return {"content": content, "tokens": tokens, "provider": model}
+
+    except httpx.TimeoutException:
+        logger.error(f"[LLM] 请求超时: {endpoint}")
+        return {"error": "API 请求超时(60s)", "content": None}
+    except httpx.ConnectError as e:
+        logger.error(f"[LLM] 连接失败: {endpoint} - {e}")
+        return {"error": f"无法连接到 API: {endpoint}", "content": None}
+    except Exception as e:
+        logger.error(f"[LLM] 异常: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+        return {"error": f"API调用异常: {type(e).__name__}: {str(e)}", "content": None}
 
 # 会话存储
 sessions: dict = {}
@@ -511,6 +602,7 @@ async def chat():
                 group_id=provider_config.get("group_id"),
                 endpoint=provider_config.get("endpoint"),
                 model=provider_config.get("model"),
+                api_format=provider_config.get("api_format"),
             )
             provider_name = provider_config.get("model", "MiniMax")
         elif provider in ("qwen", "openai"):
@@ -519,6 +611,7 @@ async def chat():
                 api_key=provider_config.get("api_key"),
                 endpoint=provider_config.get("endpoint"),
                 model=provider_config.get("model"),
+                api_format=provider_config.get("api_format"),
             )
             provider_name = provider_config.get("model", provider)
         else:
@@ -577,6 +670,63 @@ async def chat():
             "error": str(e),
             "session_id": session_id,
         }), 500
+
+
+@app.route("/api/llm/test", methods=["POST"])
+@require_api_key
+async def test_llm_connectivity():
+    """测试LLM API连通性"""
+    data = await request.get_json()
+    provider = data.get("provider", "minimax")
+    config = data.get("config", {})
+
+    result = {
+        "provider": provider,
+        "status": "unknown",
+        "latency_ms": 0,
+        "error": None,
+        "details": {},
+    }
+
+    start = time.time()
+
+    try:
+        if provider == "minimax":
+            llm_result = await call_minimax(
+                "Hello, this is a connectivity test. Please reply with 'OK'.",
+                api_key=config.get("api_key"),
+                group_id=config.get("group_id"),
+                endpoint=config.get("endpoint"),
+                model=config.get("model"),
+                api_format=config.get("api_format"),
+            )
+        else:
+            llm_result = await call_openai_compatible(
+                "Hello, this is a connectivity test. Please reply with 'OK'.",
+                api_key=config.get("api_key"),
+                endpoint=config.get("endpoint"),
+                model=config.get("model"),
+                api_format=config.get("api_format"),
+            )
+
+        result["latency_ms"] = round((time.time() - start) * 1000)
+
+        if llm_result.get("error"):
+            result["status"] = "error"
+            result["error"] = llm_result["error"]
+        else:
+            result["status"] = "success"
+            result["details"] = {
+                "content_preview": llm_result.get("content", "")[:100],
+                "tokens": llm_result.get("tokens", 0),
+            }
+
+    except Exception as e:
+        result["status"] = "error"
+        result["error"] = f"{type(e).__name__}: {str(e)}"
+        result["latency_ms"] = round((time.time() - start) * 1000)
+
+    return jsonify(result)
 
 
 def _generate_local_response(message: str) -> str:

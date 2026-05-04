@@ -317,6 +317,13 @@ tr:hover td{background:rgba(59,130,246,0.04)}
               <option value="MiniMax-VL-01">MiniMax-VL-01 (多模态)</option>
             </select>
           </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API 格式</label>
+            <select class="input" id="minimaxApiFormat" style="width:100%;margin-top:4px">
+              <option value="native">原生格式 (推荐)</option>
+              <option value="openai">OpenAI 兼容格式</option>
+            </select>
+          </div>
           <div style="font-size:11px;color:var(--text-muted)">
             注册地址: <a href="https://platform.minimaxi.com" target="_blank" style="color:var(--accent)">platform.minimaxi.com</a>
           </div>
@@ -398,6 +405,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
     <span class="label">延迟:</span>
     <span class="ping-result" id="connPingLatency">--</span>
     <button class="btn btn-primary" style="padding:4px 12px;font-size:11px;margin-left:auto" onclick="testConnectivity()">🩺 连通性检测</button>
+    <button class="btn btn-primary" style="padding:4px 12px;font-size:11px" onclick="testLlmConnectivity()">🤖 LLM测试</button>
   </div>
   <div class="grid-2-1">
     <div class="card">
@@ -1220,6 +1228,12 @@ async function sendChat(){
     return;
   }
 
+  if (provider === 'minimax' && !config.groupId) {
+    chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">未配置 MiniMax Group ID，请点击 🔑 按钮配置</span></div>';
+    chatBox.scrollTop = chatBox.scrollHeight;
+    return;
+  }
+
   var headers = {
     'Content-Type': 'application/json',
     'X-LLM-Provider': provider,
@@ -1233,28 +1247,54 @@ async function sendChat(){
       endpoint: config.endpoint,
       model: config.model,
       api_key: config.apiKey,
+      api_format: config.apiFormat || 'native',
     }
   };
   if (provider === 'minimax') {
     body.config.group_id = config.groupId;
   }
 
-  try {
-    var r = await fetch(API_BASE + '/chat', {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(body)
-    });
-    var data = await r.json();
+  var maxRetries = 2;
+  var retryCount = 0;
+  var lastError = null;
 
-    if (data.error) {
-      chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">' + escapeHtml(data.error) + '</span></div>';
-    } else {
-      var reply = data.output || data.response || JSON.stringify(data);
-      chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--bg-card);border:1px solid var(--border);padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">' + escapeHtml(reply) + '</span></div>';
+  while (retryCount <= maxRetries) {
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function(){ controller.abort(); }, 60000);
+
+    try {
+      var r = await fetch(API_BASE + '/chat', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      var data = await r.json();
+
+      if (data.error) {
+        chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">错误: ' + escapeHtml(data.error) + '</span></div>';
+      } else {
+        var reply = data.output || data.response || JSON.stringify(data);
+        chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--bg-card);border:1px solid var(--border);padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">' + escapeHtml(reply) + '</span></div>';
+      }
+      break;
+    } catch(e) {
+      clearTimeout(timeoutId);
+      lastError = e;
+      retryCount++;
+
+      if (retryCount <= maxRetries) {
+        await new Promise(function(resolve) { setTimeout(resolve, 1000 * retryCount); });
+        continue;
+      }
+
+      if (e.name === 'AbortError') {
+        chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">请求超时(60s)，请检查网络或API配置</span></div>';
+      } else {
+        chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">请求失败: ' + escapeHtml(e.message) + '</span></div>';
+      }
     }
-  } catch(e) {
-    chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">请求失败: ' + escapeHtml(e.message) + '</span></div>';
   }
   chatBox.scrollTop = chatBox.scrollHeight;
 }
@@ -1266,9 +1306,9 @@ function escapeHtml(text){
 }
 
 var LLM_CONFIG = {
-  minimax: { apiKey: '', groupId: '', endpoint: 'https://api.minimax.chat/v1', model: 'MiniMax-M2.7' },
-  qwen: { apiKey: '', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
-  openai: { apiKey: '', endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  minimax: { apiKey: '', groupId: '', endpoint: 'https://api.minimax.chat/v1', model: 'MiniMax-M2.7', apiFormat: 'native' },
+  qwen: { apiKey: '', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', apiFormat: 'openai' },
+  openai: { apiKey: '', endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini', apiFormat: 'openai' },
   defaultProvider: 'minimax'
 };
 
@@ -1287,6 +1327,7 @@ function loadLlmConfigToForm(){
   $('#minimaxGroupId').value = LLM_CONFIG.minimax.groupId || '';
   $('#minimaxEndpoint').value = LLM_CONFIG.minimax.endpoint || 'https://api.minimax.chat/v1';
   $('#minimaxModel').value = LLM_CONFIG.minimax.model || 'MiniMax-M2.7';
+  $('#minimaxApiFormat').value = LLM_CONFIG.minimax.apiFormat || 'native';
 
   $('#qwenApiKey').value = LLM_CONFIG.qwen.apiKey || '';
   $('#qwenEndpoint').value = LLM_CONFIG.qwen.endpoint || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
@@ -1304,6 +1345,7 @@ function saveLlmConfig(){
   LLM_CONFIG.minimax.groupId = $('#minimaxGroupId').value.trim();
   LLM_CONFIG.minimax.endpoint = $('#minimaxEndpoint').value.trim() || 'https://api.minimax.chat/v1';
   LLM_CONFIG.minimax.model = $('#minimaxModel').value;
+  LLM_CONFIG.minimax.apiFormat = $('#minimaxApiFormat').value || 'native';
 
   LLM_CONFIG.qwen.apiKey = $('#qwenApiKey').value.trim();
   LLM_CONFIG.qwen.endpoint = $('#qwenEndpoint').value.trim() || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
@@ -1377,6 +1419,52 @@ async function testConnectivity(){
     $('#connPingResult').className = 'ping-result fail';
     $('#connPingLatency').textContent = latency + 'ms (超时)';
     showToast('后端无法连接: ' + e.message, 'error');
+  }
+}
+
+async function testLlmConnectivity(){
+  var provider = LLM_CONFIG.defaultProvider;
+  var config = LLM_CONFIG[provider];
+
+  if (!config || !config.apiKey) {
+    showToast('请先配置 ' + (provider === 'minimax' ? 'MiniMax' : provider) + ' API Key', 'warning');
+    return;
+  }
+  if (provider === 'minimax' && (!config.groupId)) {
+    showToast('请先配置 MiniMax Group ID', 'warning');
+    return;
+  }
+
+  showToast('正在测试 ' + (provider === 'minimax' ? 'MiniMax' : provider) + ' API 连通性...', 'info');
+
+  var body = {
+    provider: provider,
+    config: {
+      api_key: config.apiKey,
+      endpoint: config.endpoint,
+      model: config.model,
+      api_format: config.apiFormat || 'native',
+    }
+  };
+  if (provider === 'minimax') {
+    body.config.group_id = config.groupId;
+  }
+
+  try {
+    var r = await fetch(API_BASE + '/llm/test', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    var data = await r.json();
+
+    if (data.status === 'success') {
+      showToast('✅ ' + (provider === 'minimax' ? 'MiniMax' : provider) + ' API 连通正常 · 延迟: ' + data.latency_ms + 'ms', 'success');
+    } else {
+      showToast('❌ API 连通失败: ' + (data.error || '未知错误'), 'error');
+    }
+  } catch(e) {
+    showToast('❌ 测试请求失败: ' + e.message, 'error');
   }
 }
 
