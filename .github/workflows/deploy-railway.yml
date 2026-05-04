@@ -5,6 +5,7 @@ on:
     branches: [main, trae]
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   deploy:
