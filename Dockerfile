@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file first
-COPY runtime/requirements.txt /app/
+COPY requirements.txt /app/
 
 # Install Python dependencies in user space
 RUN python -m venv /app/venv
@@ -34,7 +34,7 @@ COPY --from=builder /app/venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
 # Copy only necessary files (multi-stage optimization)
-COPY runtime/requirements.txt /app/
+COPY requirements.txt /app/
 COPY src/server.py /app/runtime/
 COPY src/main.py /app/runtime/
 COPY src/*.py /app/runtime/
