@@ -1,0 +1,610 @@
+{
+  "dd73d649-0409-4b6b-b972-387a0245b01a": {
+    "id": "dd73d649-0409-4b6b-b972-387a0245b01a",
+    "created_at": "2026-05-04T05:23:10.988366",
+    "messages": [
+      {
+        "role": "user",
+        "content": "M31是什么",
+        "timestamp": "2026-05-04T05:23:10.988373"
+      },
+      {
+        "role": "assistant",
+        "content": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+        "timestamp": "2026-05-04T05:23:10.988404",
+        "data": {
+          "session_id": "dd73d649-0409-4b6b-b972-387a0245b01a",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "a3fb6350-b5fc-4c5d-a6d6-4922c2fc1d81",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+          "metrics": {
+            "tokens_used": 89,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_knowledge_base"
+        }
+      }
+    ]
+  },
+  "c7417cf8-92ac-42c9-89f1-f6c4fff90f0e": {
+    "id": "c7417cf8-92ac-42c9-89f1-f6c4fff90f0e",
+    "created_at": "2026-05-04T05:23:13.047322",
+    "messages": [
+      {
+        "role": "user",
+        "content": "黑洞是什么",
+        "timestamp": "2026-05-04T05:23:13.047328"
+      },
+      {
+        "role": "assistant",
+        "content": "黑洞是时空曲率大到光都无法逃脱的天体。由大质量恒星引力坍缩形成，其边界称为事件视界。银河系中心有一个约400万倍太阳质量的超大质量黑洞——人马座A*。",
+        "timestamp": "2026-05-04T05:23:13.047358",
+        "data": {
+          "session_id": "c7417cf8-92ac-42c9-89f1-f6c4fff90f0e",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "55114b55-df88-4651-8c10-e2078b2e3938",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "黑洞是时空曲率大到光都无法逃脱的天体。由大质量恒星引力坍缩形成，其边界称为事件视界。银河系中心有一个约400万倍太阳质量的超大质量黑洞——人马座A*。",
+          "metrics": {
+            "tokens_used": 75,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_knowledge_base"
+        }
+      }
+    ]
+  },
+  "c22a9818-fb03-41e7-816e-cc0223f752ea": {
+    "id": "c22a9818-fb03-41e7-816e-cc0223f752ea",
+    "created_at": "2026-05-04T05:23:15.098603",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你好",
+        "timestamp": "2026-05-04T05:23:15.098610"
+      },
+      {
+        "role": "assistant",
+        "content": "关于「你好」的问题，当前LLM服务未配置（需要MINIMAX_API_KEY环境变量）。\n\n系统内置了以下天文知识库，你可以尝试询问：\n- M31仙女座星系、M42猎户座大星云、M45昴星团\n- M51涡状星系、M57环状星云、M1蟹状星云\n- M13武仙座球状星团、M81波德星系、M101风车星系\n- 黑洞、超新星、暗物质、暗能量\n- 系外行星、引力波、韦伯望远镜、哈勃望远镜\n- 观测流程、天问系统介绍",
+        "timestamp": "2026-05-04T05:23:15.098631",
+        "data": {
+          "session_id": "c22a9818-fb03-41e7-816e-cc0223f752ea",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "bb420371-1b67-4ef4-b740-d39a58847a68",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "关于「你好」的问题，当前LLM服务未配置（需要MINIMAX_API_KEY环境变量）。\n\n系统内置了以下天文知识库，你可以尝试询问：\n- M31仙女座星系、M42猎户座大星云、M45昴星团\n- M51涡状星系、M57环状星云、M1蟹状星云\n- M13武仙座球状星团、M81波德星系、M101风车星系\n- 黑洞、超新星、暗物质、暗能量\n- 系外行星、引力波、韦伯望远镜、哈勃望远镜\n- 观测流程、天问系统介绍",
+          "metrics": {
+            "tokens_used": 0,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_fallback"
+        }
+      }
+    ]
+  },
+  "f522d90e-156c-415c-acd9-ee6fe24e906f": {
+    "id": "f522d90e-156c-415c-acd9-ee6fe24e906f",
+    "created_at": "2026-05-04T05:24:43.425263",
+    "messages": [
+      {
+        "role": "user",
+        "content": "M31是什么",
+        "timestamp": "2026-05-04T05:24:43.425269"
+      },
+      {
+        "role": "assistant",
+        "content": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+        "timestamp": "2026-05-04T05:24:43.425291",
+        "data": {
+          "session_id": "f522d90e-156c-415c-acd9-ee6fe24e906f",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "a4d62cc7-f731-4a79-af15-14275a0b3abf",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+          "metrics": {
+            "tokens_used": 89,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_knowledge_base"
+        }
+      }
+    ]
+  },
+  "f3ff7a2c-7d95-4c44-881a-5cfd9c98ddee": {
+    "id": "f3ff7a2c-7d95-4c44-881a-5cfd9c98ddee",
+    "created_at": "2026-05-04T05:24:45.473672",
+    "messages": [
+      {
+        "role": "user",
+        "content": "黑洞是什么",
+        "timestamp": "2026-05-04T05:24:45.473680"
+      },
+      {
+        "role": "assistant",
+        "content": "黑洞是时空曲率大到光都无法逃脱的天体。由大质量恒星引力坍缩形成，其边界称为事件视界。银河系中心有一个约400万倍太阳质量的超大质量黑洞——人马座A*。",
+        "timestamp": "2026-05-04T05:24:45.473705",
+        "data": {
+          "session_id": "f3ff7a2c-7d95-4c44-881a-5cfd9c98ddee",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "94e5e448-616b-4bb0-b6d9-a53e3b66cd63",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "黑洞是时空曲率大到光都无法逃脱的天体。由大质量恒星引力坍缩形成，其边界称为事件视界。银河系中心有一个约400万倍太阳质量的超大质量黑洞——人马座A*。",
+          "metrics": {
+            "tokens_used": 75,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_knowledge_base"
+        }
+      }
+    ]
+  },
+  "bc3d4f57-169f-4648-820f-54ea7a1c34d4": {
+    "id": "bc3d4f57-169f-4648-820f-54ea7a1c34d4",
+    "created_at": "2026-05-04T05:24:47.497426",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你好",
+        "timestamp": "2026-05-04T05:24:47.497438"
+      },
+      {
+        "role": "assistant",
+        "content": "关于「你好」的问题，当前LLM服务未配置（需要MINIMAX_API_KEY环境变量）。\n\n系统内置了以下天文知识库，你可以尝试询问：\n- M31仙女座星系、M42猎户座大星云、M45昴星团\n- M51涡状星系、M57环状星云、M1蟹状星云\n- M13武仙座球状星团、M81波德星系、M101风车星系\n- 黑洞、超新星、暗物质、暗能量\n- 系外行星、引力波、韦伯望远镜、哈勃望远镜\n- 观测流程、天问系统介绍",
+        "timestamp": "2026-05-04T05:24:47.497465",
+        "data": {
+          "session_id": "bc3d4f57-169f-4648-820f-54ea7a1c34d4",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "d0e1bfc6-9dc8-40d2-9a89-f7758794089c",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "关于「你好」的问题，当前LLM服务未配置（需要MINIMAX_API_KEY环境变量）。\n\n系统内置了以下天文知识库，你可以尝试询问：\n- M31仙女座星系、M42猎户座大星云、M45昴星团\n- M51涡状星系、M57环状星云、M1蟹状星云\n- M13武仙座球状星团、M81波德星系、M101风车星系\n- 黑洞、超新星、暗物质、暗能量\n- 系外行星、引力波、韦伯望远镜、哈勃望远镜\n- 观测流程、天问系统介绍",
+          "metrics": {
+            "tokens_used": 0,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_fallback"
+        }
+      }
+    ]
+  },
+  "5e10a444-37b3-469e-9007-d7bb45fc221c": {
+    "id": "5e10a444-37b3-469e-9007-d7bb45fc221c",
+    "created_at": "2026-05-04T05:25:18.034185",
+    "messages": [
+      {
+        "role": "user",
+        "content": "M31是什么",
+        "timestamp": "2026-05-04T05:25:18.034190"
+      },
+      {
+        "role": "assistant",
+        "content": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+        "timestamp": "2026-05-04T05:25:18.034209",
+        "data": {
+          "session_id": "5e10a444-37b3-469e-9007-d7bb45fc221c",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "40b0587e-3c09-4931-afe7-f69df53fbfc7",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+          "metrics": {
+            "tokens_used": 89,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_knowledge_base"
+        }
+      }
+    ]
+  },
+  "35176c18-84de-4d61-acbb-0d235dc18a32": {
+    "id": "35176c18-84de-4d61-acbb-0d235dc18a32",
+    "created_at": "2026-05-04T05:26:01.273503",
+    "messages": [
+      {
+        "role": "user",
+        "content": "M31是什么",
+        "timestamp": "2026-05-04T05:26:01.273513"
+      },
+      {
+        "role": "assistant",
+        "content": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+        "timestamp": "2026-05-04T05:26:01.273544",
+        "data": {
+          "session_id": "35176c18-84de-4d61-acbb-0d235dc18a32",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "789ed8ad-57ee-436d-a084-81258fe12fcd",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+          "metrics": {
+            "tokens_used": 89,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_knowledge_base"
+        }
+      }
+    ]
+  },
+  "ff0a04f7-d9a2-4a28-be35-0fb68a324d8e": {
+    "id": "ff0a04f7-d9a2-4a28-be35-0fb68a324d8e",
+    "created_at": "2026-05-04T05:26:03.330625",
+    "messages": [
+      {
+        "role": "user",
+        "content": "黑洞是什么",
+        "timestamp": "2026-05-04T05:26:03.330633"
+      },
+      {
+        "role": "assistant",
+        "content": "黑洞是时空曲率大到光都无法逃脱的天体。由大质量恒星引力坍缩形成，其边界称为事件视界。银河系中心有一个约400万倍太阳质量的超大质量黑洞——人马座A*。",
+        "timestamp": "2026-05-04T05:26:03.330657",
+        "data": {
+          "session_id": "ff0a04f7-d9a2-4a28-be35-0fb68a324d8e",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "84d5b4d3-ad79-4794-a0c5-ae1b38e30802",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "黑洞是时空曲率大到光都无法逃脱的天体。由大质量恒星引力坍缩形成，其边界称为事件视界。银河系中心有一个约400万倍太阳质量的超大质量黑洞——人马座A*。",
+          "metrics": {
+            "tokens_used": 75,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_knowledge_base"
+        }
+      }
+    ]
+  },
+  "4d9918c3-b88d-4a62-adb5-024474cee508": {
+    "id": "4d9918c3-b88d-4a62-adb5-024474cee508",
+    "created_at": "2026-05-04T05:26:05.385193",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你好",
+        "timestamp": "2026-05-04T05:26:05.385200"
+      },
+      {
+        "role": "assistant",
+        "content": "关于「你好」的问题，当前LLM服务未配置（需要MINIMAX_API_KEY环境变量）。\n\n系统内置了以下天文知识库，你可以尝试询问：\n- M31仙女座星系、M42猎户座大星云、M45昴星团\n- M51涡状星系、M57环状星云、M1蟹状星云\n- M13武仙座球状星团、M81波德星系、M101风车星系\n- 黑洞、超新星、暗物质、暗能量\n- 系外行星、引力波、韦伯望远镜、哈勃望远镜\n- 观测流程、天问系统介绍",
+        "timestamp": "2026-05-04T05:26:05.385232",
+        "data": {
+          "session_id": "4d9918c3-b88d-4a62-adb5-024474cee508",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "0fd220ae-4fcc-4ee7-997c-fdac7df689f8",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "关于「你好」的问题，当前LLM服务未配置（需要MINIMAX_API_KEY环境变量）。\n\n系统内置了以下天文知识库，你可以尝试询问：\n- M31仙女座星系、M42猎户座大星云、M45昴星团\n- M51涡状星系、M57环状星云、M1蟹状星云\n- M13武仙座球状星团、M81波德星系、M101风车星系\n- 黑洞、超新星、暗物质、暗能量\n- 系外行星、引力波、韦伯望远镜、哈勃望远镜\n- 观测流程、天问系统介绍",
+          "metrics": {
+            "tokens_used": 0,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_fallback"
+        }
+      }
+    ]
+  },
+  "dd31afa9-f7b9-4af8-af12-28a417ae596d": {
+    "id": "dd31afa9-f7b9-4af8-af12-28a417ae596d",
+    "created_at": "2026-05-04T05:26:51.159760",
+    "messages": [
+      {
+        "role": "user",
+        "content": "M31",
+        "timestamp": "2026-05-04T05:26:51.159769"
+      },
+      {
+        "role": "assistant",
+        "content": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+        "timestamp": "2026-05-04T05:26:51.159796",
+        "data": {
+          "session_id": "dd31afa9-f7b9-4af8-af12-28a417ae596d",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "b1aae17a-7651-4890-9f24-bd2d2e3e7d05",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+          "metrics": {
+            "tokens_used": 89,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_knowledge_base"
+        }
+      }
+    ]
+  },
+  "d8744e0e-df1f-4ced-8f6c-9c6aa0247423": {
+    "id": "d8744e0e-df1f-4ced-8f6c-9c6aa0247423",
+    "created_at": "2026-05-04T05:27:21.451260",
+    "messages": [
+      {
+        "role": "user",
+        "content": "M31",
+        "timestamp": "2026-05-04T05:27:21.451266"
+      },
+      {
+        "role": "assistant",
+        "content": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+        "timestamp": "2026-05-04T05:27:21.451283",
+        "data": {
+          "session_id": "d8744e0e-df1f-4ced-8f6c-9c6aa0247423",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "d75eb491-bcf5-4a15-ab6d-f6abad633f60",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+          "metrics": {
+            "tokens_used": 89,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_knowledge_base"
+        }
+      }
+    ]
+  },
+  "ba6efa50-fa93-44f0-9c70-71b4edea6166": {
+    "id": "ba6efa50-fa93-44f0-9c70-71b4edea6166",
+    "created_at": "2026-05-04T05:30:00.521354",
+    "messages": [
+      {
+        "role": "user",
+        "content": "M31",
+        "timestamp": "2026-05-04T05:30:00.521361"
+      },
+      {
+        "role": "assistant",
+        "content": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+        "timestamp": "2026-05-04T05:30:00.521381",
+        "data": {
+          "session_id": "ba6efa50-fa93-44f0-9c70-71b4edea6166",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "5feb2f46-3825-4a47-a052-476169c05d7e",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+          "metrics": {
+            "tokens_used": 89,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_knowledge_base"
+        }
+      }
+    ]
+  },
+  "1328633a-b78f-42b7-b502-f3d665cb5f3d": {
+    "id": "1328633a-b78f-42b7-b502-f3d665cb5f3d",
+    "created_at": "2026-05-04T05:33:59.017759",
+    "messages": [
+      {
+        "role": "user",
+        "content": "M31是什么",
+        "timestamp": "2026-05-04T05:33:59.017765"
+      },
+      {
+        "role": "assistant",
+        "content": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+        "timestamp": "2026-05-04T05:33:59.017807",
+        "data": {
+          "session_id": "1328633a-b78f-42b7-b502-f3d665cb5f3d",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "0f0bac68-5b75-4c84-acd1-d150207cf7fc",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "仙女座星系（M31）是距离银河系最近的大型旋涡星系，距离约250万光年，直径约22万光年，包含约1万亿颗恒星。它是本星系群中最大的星系，预计在约45亿年后将与银河系发生碰撞合并。",
+          "metrics": {
+            "tokens_used": 89,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_knowledge_base"
+        }
+      }
+    ]
+  },
+  "2a6bc731-71a2-4336-93c2-586183424fcb": {
+    "id": "2a6bc731-71a2-4336-93c2-586183424fcb",
+    "created_at": "2026-05-04T05:34:01.070139",
+    "messages": [
+      {
+        "role": "user",
+        "content": "黑洞",
+        "timestamp": "2026-05-04T05:34:01.070147"
+      },
+      {
+        "role": "assistant",
+        "content": "黑洞是时空曲率大到光都无法逃脱的天体。由大质量恒星引力坍缩形成，其边界称为事件视界。银河系中心有一个约400万倍太阳质量的超大质量黑洞——人马座A*。",
+        "timestamp": "2026-05-04T05:34:01.070178",
+        "data": {
+          "session_id": "2a6bc731-71a2-4336-93c2-586183424fcb",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "a7954b54-26b7-482b-be75-e33a525618c3",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "黑洞是时空曲率大到光都无法逃脱的天体。由大质量恒星引力坍缩形成，其边界称为事件视界。银河系中心有一个约400万倍太阳质量的超大质量黑洞——人马座A*。",
+          "metrics": {
+            "tokens_used": 75,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_knowledge_base"
+        }
+      }
+    ]
+  },
+  "26de9596-d8ac-44b3-96e4-7cb5f1afeb06": {
+    "id": "26de9596-d8ac-44b3-96e4-7cb5f1afeb06",
+    "created_at": "2026-05-04T05:34:03.113338",
+    "messages": [
+      {
+        "role": "user",
+        "content": "你好",
+        "timestamp": "2026-05-04T05:34:03.113345"
+      },
+      {
+        "role": "assistant",
+        "content": "关于「你好」的问题，当前LLM服务未配置（需要MINIMAX_API_KEY环境变量）。\n\n系统内置了以下天文知识库，你可以尝试询问：\n- M31仙女座星系、M42猎户座大星云、M45昴星团\n- M51涡状星系、M57环状星云、M1蟹状星云\n- M13武仙座球状星团、M81波德星系、M101风车星系\n- 黑洞、超新星、暗物质、暗能量\n- 系外行星、引力波、韦伯望远镜、哈勃望远镜\n- 观测流程、天问系统介绍",
+        "timestamp": "2026-05-04T05:34:03.113368",
+        "data": {
+          "session_id": "26de9596-d8ac-44b3-96e4-7cb5f1afeb06",
+          "cognitive": {
+            "intent": "chat",
+            "entities": [],
+            "skills": [],
+            "complexity": "low"
+          },
+          "plan": {
+            "task_id": "bd7cb387-b88c-4f97-bb59-00b240e3fb1f",
+            "subtasks": [],
+            "estimated_time": "0s",
+            "risks": []
+          },
+          "output": "关于「你好」的问题，当前LLM服务未配置（需要MINIMAX_API_KEY环境变量）。\n\n系统内置了以下天文知识库，你可以尝试询问：\n- M31仙女座星系、M42猎户座大星云、M45昴星团\n- M51涡状星系、M57环状星云、M1蟹状星云\n- M13武仙座球状星团、M81波德星系、M101风车星系\n- 黑洞、超新星、暗物质、暗能量\n- 系外行星、引力波、韦伯望远镜、哈勃望远镜\n- 观测流程、天问系统介绍",
+          "metrics": {
+            "tokens_used": 0,
+            "latency_ms": 0
+          },
+          "status": "local_fallback",
+          "source": "local_fallback"
+        }
+      }
+    ]
+  }
+}

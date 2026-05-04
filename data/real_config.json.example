@@ -1,0 +1,26 @@
+{
+    "mode": "real",
+    "description": "真实数据模式配置 - 连接真实天文API",
+    "features": {
+        "telescope": "seestar_s50",
+        "data_source": "real",
+        "literature": "real",
+        "hypothesis_testing": "real"
+    },
+    "paths": {
+        "star_catalogs": "data/star_catalogs.db",
+        "sessions": "data/sessions.json"
+    },
+    "api_config": {
+        "use_real_kepler": true,
+        "use_real_arxiv": true,
+        "use_real_nasa_ads": true,
+        "kepler_archive_url": "https://archive.stsci.edu/hlsp/kepler/kepcotc/cosmic_lab",
+        "arxiv_api_url": "https://export.arxiv.org/api/query",
+        "nasa_ads_url": "https://ui.adsabs.harvard.edu/v1/search/q"
+    },
+    "credentials": {
+        "nasa_ads_token": "${NASA_ADS_TOKEN}",
+        "openai_api_key": "${OPENAI_API_KEY}"
+    }
+}

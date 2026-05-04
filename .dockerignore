@@ -1,0 +1,70 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.pth
+*.pt
+*.egg-info/
+.eggs/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.nox/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Documentation
+docs/_build/
+build/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific - exclude large files and credentials
+*.log
+*.key
+*.pem
+.env
+.env.*
+credentials.json
+secrets.json
+
+# Backups
+backups/
+*.bak
+
+# Large model files
+runtime/models/
+*.bin
+*.h5
+*.ckpt
+
+# PRO documents - not needed in container
+docs/PRO/
+docs/reports/
+docs/search-results/

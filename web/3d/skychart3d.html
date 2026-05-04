@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天问-AGI 3D星图</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: #0a0a1a;
+            color: #ecf0f1;
+            overflow: hidden;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .control-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(20, 30, 50, 0.9);
+            border: 1px solid rgba(100, 150, 200, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            min-width: 280px;
+            max-height: 90vh;
+            overflow-y: auto;
+            z-index: 100;
+        }
+
+        .control-panel h2 {
+            color: #3498db;
+            font-size: 18px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(100, 150, 200, 0.3);
+            padding-bottom: 10px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: #2c3e50;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #3498db;
+            cursor: pointer;
+        }
+
+        .control-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid rgba(100, 150, 200, 0.3);
+            border-radius: 5px;
+            background: #1a252f;
+            color: #ecf0f1;
+            font-size: 13px;
+        }
+
+        .btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+        }
+
+        .btn-secondary {
+            background: #34495e;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #2c3e50;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(20, 30, 50, 0.9);
+            border: 1px solid rgba(100, 150, 200, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            min-width: 200px;
+            z-index: 100;
+        }
+
+        .info-panel h3 {
+            color: #3498db;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .info-item .label {
+            color: #7f8c8d;
+        }
+
+        .info-item .value {
+            color: #ecf0f1;
+            font-weight: bold;
+        }
+
+        .star-tooltip {
+            position: absolute;
+            background: rgba(20, 30, 50, 0.95);
+            border: 1px solid #3498db;
+            border-radius: 8px;
+            padding: 12px;
+            pointer-events: none;
+            display: none;
+            z-index: 200;
+            max-width: 300px;
+        }
+
+        .star-tooltip h4 {
+            color: #3498db;
+            margin-bottom: 8px;
+        }
+
+        .star-tooltip p {
+            font-size: 12px;
+            margin-bottom: 5px;
+            color: #bdc3c7;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 26, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(100, 150, 200, 0.3);
+            border-top-color: #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(20, 30, 50, 0.9);
+            border: 1px solid rgba(100, 150, 200, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            z-index: 100;
+        }
+
+        .legend h4 {
+            color: #3498db;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+            font-size: 11px;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .time-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(20, 30, 50, 0.9);
+            border: 1px solid rgba(100, 150, 200, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            z-index: 100;
+        }
+
+        .time-controls h4 {
+            color: #3498db;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+
+        .time-display {
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 10px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="loading" class="loading-overlay">
+            <div class="loading-spinner"></div>
+        </div>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="control-panel">
+            <h2>3D星图控制</h2>
+
+            <div class="control-group">
+                <label>星等显示阈值</label>
+                <input type="range" id="magnitudeThreshold" min="0" max="6" step="0.5" value="4">
+                <span id="magnitudeValue">4</span>
+            </div>
+
+            <div class="control-group">
+                <label>恒星大小</label>
+                <input type="range" id="starSize" min="1" max="10" step="0.5" value="3">
+                <span id="starSizeValue">3</span>
+            </div>
+
+            <div class="control-group">
+                <label>显示模式</label>
+                <select id="displayMode">
+                    <option value="stars">仅恒星</option>
+                    <option value="constellations">星座连线</option>
+                    <option value="galaxies">星系标记</option>
+                    <option value="all">全部显示</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>颜色方案</label>
+                <select id="colorScheme">
+                    <option value="temperature">按恒星温度</option>
+                    <option value="distance">按距离</option>
+                    <option value="magnitude">按星等</option>
+                    <option value="type">按类型</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>旋转速度</label>
+                <input type="range" id="rotationSpeed" min="0" max="10" step="0.5" value="2">
+            </div>
+
+            <div class="control-group">
+                <button class="btn btn-primary" id="resetView">重置视角</button>
+                <button class="btn btn-secondary" id="toggleControls">隐藏控制面板</button>
+            </div>
+        </div>
+
+        <div class="info-panel">
+            <h3>观测信息</h3>
+            <div class="info-item">
+                <span class="label">恒星数量:</span>
+                <span class="value" id="starCount">0</span>
+            </div>
+            <div class="info-item">
+                <span class="label">可见恒星:</span>
+                <span class="value" id="visibleCount">0</span>
+            </div>
+            <div class="info-item">
+                <span class="label">帧率:</span>
+                <span class="value" id="fps">0</span>
+            </div>
+            <div class="info-item">
+                <span class="label">相机距离:</span>
+                <span class="value" id="cameraDistance">0</span>
+            </div>
+        </div>
+
+        <div class="legend">
+            <h4>恒星类型</h4>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #fff5f5;"></div>
+                <span>O型 (蓝巨星)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #fff0e0;"></div>
+                <span>B型 (蓝白星)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ffe8d0;"></div>
+                <span>A型 (白星)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #fff4d0;"></div>
+                <span>F型 (黄白星)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ffebc0;"></div>
+                <span>G型 (黄矮星)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ffd080;"></div>
+                <span>K型 (橙巨星)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ffb050;"></div>
+                <span>M型 (红矮星)</span>
+            </div>
+        </div>
+
+        <div class="time-controls">
+            <h4>时间控制</h4>
+            <div class="time-display" id="timeDisplay">2026-05-03 20:00:00</div>
+            <input type="range" id="timeSlider" min="0" max="100" value="50" style="width: 150px;">
+            <div style="display: flex; gap: 5px; margin-top: 10px;">
+                <button class="btn btn-secondary" id="playPause">暂停</button>
+                <button class="btn btn-secondary" id="timeBack">-1小时</button>
+                <button class="btn btn-secondary" id="timeForward">+1小时</button>
+            </div>
+        </div>
+
+        <div class="star-tooltip" id="tooltip">
+            <h4 id="tooltipTitle">恒星信息</h4>
+            <p id="tooltipName">名称: -</p>
+            <p id="tooltipRA">赤经: -</p>
+            <p id="tooltipDec">赤纬: -</p>
+            <p id="tooltipMag">视星等: -</p>
+            <p id="tooltipDist">距离: -</p>
+            <p id="tooltipType">光谱类型: -</p>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ============ 全局变量 ============
+        let scene, camera, renderer, controls;
+        let stars = [];
+        let constellationLines = [];
+        let galaxyMarkers = [];
+        let clock = new THREE.Clock();
+        let isPlaying = true;
+        let currentTime = new Date('2026-05-03T20:00:00');
+
+        // ============ 配置 ============
+        const CONFIG = {
+            starCount: 5000,
+            fov: 60,
+            near: 0.1,
+            far: 50000,
+            rotationSpeed: 0.001,
+            starColorByType: {
+                'O': 0xfff5f5,
+                'B': 0xfff0e0,
+                'A': 0xffe8d0,
+                'F': 0xfff4d0,
+                'G': 0xffebc0,
+                'K': 0xffd080,
+                'M': 0xffb050
+            }
+        };
+
+        // ============ 初始化 ============
+        function init() {
+            const canvas = document.getElementById('canvas');
+
+            // 场景
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a1a);
+            scene.fog = new THREE.FogExp2(0x0a0a1a, 0.00003);
+
+            // 相机
+            camera = new THREE.PerspectiveCamera(
+                CONFIG.fov,
+                window.innerWidth / window.innerHeight,
+                CONFIG.near,
+                CONFIG.far
+            );
+            camera.position.set(0, 50, 150);
+
+            // 渲染器
+            renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                antialias: true,
+                alpha: true
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // 控制器
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxDistance = 1000;
+            controls.minDistance = 50;
+
+            // 添加星空背景
+            createStarfield();
+
+            // 生成星星数据
+            generateStars();
+
+            // 添加星座连线
+            createConstellations();
+
+            // 隐藏加载动画
+            document.getElementById('loading').style.display = 'none';
+
+            // 绑定事件
+            bindEvents();
+
+            // 开始动画
+            animate();
+        }
+
+        // ============ 创建星空背景 ============
+        function createStarfield() {
+            const starfieldGeometry = new THREE.BufferGeometry();
+            const starfieldCount = 10000;
+            const positions = new Float32Array(starfieldCount * 3);
+
+            for (let i = 0; i < starfieldCount * 3; i += 3) {
+                const radius = 5000 + Math.random() * 5000;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+
+                positions[i] = radius * Math.sin(phi) * Math.cos(theta);
+                positions[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
+                positions[i + 2] = radius * Math.cos(phi);
+            }
+
+            starfieldGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const starfieldMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 2,
+                transparent: true,
+                opacity: 0.6
+            });
+
+            const starfield = new THREE.Points(starfieldGeometry, starfieldMaterial);
+            scene.add(starfield);
+        }
+
+        // ============ 生成星星 ============
+        function generateStars() {
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(CONFIG.starCount * 3);
+            const colors = new Float32Array(CONFIG.starCount * 3);
+            const sizes = new Float32Array(CONFIG.starCount);
+
+            const starTypes = ['O', 'B', 'A', 'F', 'G', 'K', 'M'];
+
+            for (let i = 0; i < CONFIG.starCount; i++) {
+                // 随机位置 (简化的球面分布)
+                const ra = Math.random() * 360;
+                const dec = (Math.random() - 0.5) * 180;
+                const distance = 10 + Math.random() * 200;
+
+                const raRad = ra * Math.PI / 180;
+                const decRad = dec * Math.PI / 180;
+
+                positions[i * 3] = distance * Math.cos(decRad) * Math.cos(raRad);
+                positions[i * 3 + 1] = distance * Math.sin(decRad);
+                positions[i * 3 + 2] = distance * Math.cos(decRad) * Math.sin(raRad);
+
+                // 随机颜色
+                const type = starTypes[Math.floor(Math.random() * starTypes.length)];
+                const color = new THREE.Color(CONFIG.starColorByType[type]);
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+
+                // 随机大小
+                sizes[i] = 0.5 + Math.random() * 2;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+            const material = new THREE.PointsMaterial({
+                size: 2,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.9,
+                sizeAttenuation: true
+            });
+
+            const starPoints = new THREE.Points(geometry, material);
+            scene.add(starPoints);
+
+            document.getElementById('starCount').textContent = CONFIG.starCount;
+        }
+
+        // ============ 创建星座连线 ============
+        function createConstellations() {
+            // 简化: 创建几条示例星座线
+            const constellationData = [
+                // 大熊座 (部分)
+                [[44.5, 54.9], [45.5, 52.5], [48.3, 50.2], [51.5, 50.5], [54.8, 49.8]],
+                // 猎户座 (部分)
+                [[89.3, -2.4], [88.3, -4.5], [87.5, -6.8], [86.8, -9.2], [86.2, -11.5]]
+            ];
+
+            constellationData.forEach(constellation => {
+                const points = constellation.map(([ra, dec]) => {
+                    const raRad = ra * Math.PI / 180;
+                    const decRad = dec * Math.PI / 180;
+                    const distance = 80;
+                    return new THREE.Vector3(
+                        distance * Math.cos(decRad) * Math.cos(raRad),
+                        distance * Math.sin(decRad),
+                        distance * Math.cos(decRad) * Math.sin(raRad)
+                    );
+                });
+
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const material = new THREE.LineBasicMaterial({
+                    color: 0x3498db,
+                    transparent: true,
+                    opacity: 0.3
+                });
+
+                const line = new THREE.Line(geometry, material);
+                constellationLines.push(line);
+                scene.add(line);
+            });
+        }
+
+        // ============ 事件绑定 ============
+        function bindEvents() {
+            // 窗口调整
+            window.addEventListener('resize', onWindowResize);
+
+            // 控制滑块
+            document.getElementById('magnitudeThreshold').addEventListener('input', (e) => {
+                document.getElementById('magnitudeValue').textContent = e.target.value;
+            });
+
+            document.getElementById('starSize').addEventListener('input', (e) => {
+                document.getElementById('starSizeValue').textContent = e.target.value;
+            });
+
+            // 按钮
+            document.getElementById('resetView').addEventListener('click', resetView);
+            document.getElementById('toggleControls').addEventListener('click', toggleControls);
+
+            // 时间控制
+            document.getElementById('playPause').addEventListener('click', togglePlayPause);
+            document.getElementById('timeBack').addEventListener('click', () => adjustTime(-1));
+            document.getElementById('timeForward').addEventListener('click', () => adjustTime(1));
+            document.getElementById('timeSlider').addEventListener('input', onTimeSliderChange);
+        }
+
+        // ============ 窗口调整 ============
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ============ 重置视角 ============
+        function resetView() {
+            camera.position.set(0, 50, 150);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
+
+        // ============ 切换控制面板 ============
+        function toggleControls() {
+            const panel = document.querySelector('.control-panel');
+            const btn = document.getElementById('toggleControls');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                btn.textContent = '隐藏控制面板';
+            } else {
+                panel.style.display = 'none';
+                btn.textContent = '显示控制面板';
+            }
+        }
+
+        // ============ 时间控制 ============
+        function togglePlayPause() {
+            isPlaying = !isPlaying;
+            document.getElementById('playPause').textContent = isPlaying ? '暂停' : '播放';
+        }
+
+        function adjustTime(hours) {
+            currentTime.setHours(currentTime.getHours() + hours);
+            updateTimeDisplay();
+        }
+
+        function onTimeSliderChange(e) {
+            const progress = e.target.value / 100;
+            const dayProgress = progress * 24;
+            currentTime.setHours(Math.floor(dayProgress));
+            updateTimeDisplay();
+        }
+
+        function updateTimeDisplay() {
+            const timeStr = currentTime.toISOString().replace('T', ' ').substring(0, 19);
+            document.getElementById('timeDisplay').textContent = timeStr;
+        }
+
+        // ============ 动画循环 ============
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            // 自动旋转
+            const rotationSpeed = parseFloat(document.getElementById('rotationSpeed').value) * 0.001;
+            if (rotationSpeed > 0) {
+                scene.rotation.y += rotationSpeed;
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+
+            // 更新帧率
+            updateFPS();
+        }
+
+        // ============ 更新帧率 ============
+        let frameCount = 0;
+        let lastFPSUpdate = 0;
+
+        function updateFPS() {
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFPSUpdate > 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                document.getElementById('cameraDistance').textContent =
+                    Math.round(camera.position.length());
+                frameCount = 0;
+                lastFPSUpdate = now;
+            }
+        }
+
+        // 初始化
+        init();
+    </script>
+</body>
+</html>
