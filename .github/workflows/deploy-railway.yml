@@ -5,10 +5,12 @@ on:
     branches: [main, trae]
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +34,7 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
+          railway link --environment production || true
           railway up --service server --detach || true
 
       - name: Health check

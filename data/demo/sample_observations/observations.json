@@ -1,0 +1,40 @@
+[
+    {
+        "id": "obs_demo_001",
+        "target": "Kepler-186f",
+        "type": "exoplanet_transit",
+        "date": "2026-01-15T20:30:00Z",
+        "duration_minutes": 180,
+        "data": {
+            "lightcurve": "sample_observations/kepler186f_lightcurve.csv",
+            "transit_depth": 0.00015,
+            "period_days": 129.9,
+            "snr": 45.2
+        }
+    },
+    {
+        "id": "obs_demo_002",
+        "target": "TRAPPIST-1e",
+        "type": "exoplanet_transit",
+        "date": "2026-01-20T22:00:00Z",
+        "duration_minutes": 240,
+        "data": {
+            "lightcurve": "sample_observations/trappist1e_lightcurve.csv",
+            "transit_depth": 0.00038,
+            "period_days": 6.1,
+            "snr": 62.8
+        }
+    },
+    {
+        "id": "obs_demo_003",
+        "target": "Proxima Centauri b",
+        "type": "radial_velocity",
+        "date": "2026-01-25T18:00:00Z",
+        "duration_minutes": 300,
+        "data": {
+            "rv_amplitude": 1.38,
+            "period_days": 11.2,
+            "snr": 28.5
+        }
+    }
+]

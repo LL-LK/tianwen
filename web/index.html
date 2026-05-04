@@ -7,8 +7,23 @@
 <meta name="description" content="天问-AGI 全自动天文观测站 - 无人值守自主发现与观测">
 <meta name="theme-color" content="#0a0e17">
 <link rel="manifest" href="/manifest.json">
-<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
-<link rel="stylesheet" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" />
+
+<!-- 预连接关键域名 -->
+<link rel="preconnect" href="https://tianwen-agi-production.up.railway.app">
+<link rel="preconnect" href="https://cdn.plot.ly">
+<link rel="preconnect" href="https://aladin.u-strasbg.fr">
+<link rel="dns-prefetch" href="https://tianwen-agi-production.up.railway.app">
+<link rel="dns-prefetch" href="https://cdn.plot.ly">
+<link rel="dns-prefetch" href="https://aladin.u-strasbg.fr">
+
+<!-- 预加载关键资源 -->
+<link rel="preload" href="https://cdn.plot.ly/plotly-2.32.0.min.js" as="script">
+<link rel="preload" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" as="style">
+
+<!-- 外部资源（异步加载） -->
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js" defer></script>
+<link rel="stylesheet" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" media="print" onload="this.media='all'" />
+<noscript><link rel="stylesheet" href="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.min.css" /></noscript>
 <style>
 :root {
   --bg-primary: #0a0e17;
@@ -230,18 +245,6 @@ tr:hover td{background:rgba(59,130,246,0.04)}
   .target-card{flex-wrap:wrap}
   .target-progress{margin-left:0;width:100%;text-align:left;margin-top:8px}
 }
-.chat-msg{display:flex;margin-bottom:4px}
-.chat-msg.user{justify-content:flex-end}
-.chat-msg.assistant{justify-content:flex-start}
-.chat-bubble{max-width:80%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;word-break:break-word}
-.chat-msg.user .chat-bubble{background:var(--accent);color:#fff;border-bottom-right-radius:4px}
-.chat-msg.assistant .chat-bubble{background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-bottom-left-radius:4px}
-.chat-msg.error .chat-bubble{background:rgba(239,68,68,0.15);color:var(--danger);border:1px solid rgba(239,68,68,0.3)}
-.chat-typing{display:flex;gap:4px;padding:8px 14px}
-.chat-typing span{width:6px;height:6px;background:var(--text-muted);border-radius:50%;animation:chatBounce 1.4s infinite ease-in-out}
-.chat-typing span:nth-child(2){animation-delay:0.2s}
-.chat-typing span:nth-child(3){animation-delay:0.4s}
-@keyframes chatBounce{0%,80%,100%{transform:scale(0.6);opacity:0.4}40%{transform:scale(1);opacity:1}}
 </style>
 </head>
 <body>
@@ -267,6 +270,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
       <span id="refreshLabel">刷新</span>
     </div>
     <button class="theme-toggle" id="themeToggle" title="切换主题">🌙</button>
+    <button class="theme-toggle" id="apiKeyBtn" title="设置API Key" onclick="toggleApiKeyInput()">🔑</button>
     <button class="theme-toggle" id="exportBtn" title="导出数据" onclick="exportData('json')">📥</button>
   </div>
 </div>
@@ -278,10 +282,116 @@ tr:hover td{background:rgba(59,130,246,0.04)}
   <button class="tab-btn" data-tab="research">🔬 研究闭环</button>
   <button class="tab-btn" data-tab="alerts">🔔 告警中心<span class="tab-badge" id="alertBadge" style="display:none">0</span></button>
   <button class="tab-btn" data-tab="telescope">🔭 望远镜控制</button>
-  <button class="tab-btn" data-tab="chat">💬 AI 助手</button>
-  <button class="tab-btn" data-tab="evolution">🧠 进化系统</button>
-  <button class="tab-btn" data-tab="monitor">📈 系统监控</button>
-  <button class="tab-btn" data-tab="logs">📋 系统日志</button>
+  <button class="tab-btn" data-tab="chat">💬 智能对话</button>
+  <button class="tab-btn" data-tab="logs"> 系统日志</button>
+  <button class="tab-btn" data-tab="manual">📖 说明书</button>
+</div>
+
+<div id="apiKeyModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;justify-content:center;align-items:center">
+  <div class="card" style="width:600px;max-width:95%;max-height:90vh;overflow-y:auto">
+    <div class="card-header"><span class="card-title">🔑 LLM 供应商配置</span><button onclick="toggleApiKeyInput()" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px">&times;</button></div>
+    <div style="padding:16px">
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px">配置智能对话功能所需的 LLM 供应商。至少配置一个供应商即可使用对话功能。</p>
+
+      <div style="margin-bottom:20px">
+        <h4 style="color:var(--accent);margin-bottom:8px;font-size:14px">🤖 MiniMax (默认)</h4>
+        <div style="background:var(--bg-secondary);padding:12px;border-radius:8px">
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API Key</label>
+            <input class="input" id="minimaxApiKey" placeholder="输入 MiniMax API Key" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">Group ID</label>
+            <input class="input" id="minimaxGroupId" placeholder="输入 MiniMax Group ID" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API 端点</label>
+            <input class="input" id="minimaxEndpoint" placeholder="https://api.minimax.chat/v1" value="https://api.minimax.chat/v1" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">模型</label>
+            <select class="input" id="minimaxModel" style="width:100%;margin-top:4px">
+              <option value="MiniMax-M2.7">MiniMax-M2.7 (推荐)</option>
+              <option value="MiniMax-M2.1">MiniMax-M2.1</option>
+              <option value="MiniMax-Text-01">MiniMax-Text-01</option>
+              <option value="MiniMax-VL-01">MiniMax-VL-01 (多模态)</option>
+            </select>
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API 格式</label>
+            <select class="input" id="minimaxApiFormat" style="width:100%;margin-top:4px">
+              <option value="native">原生格式 (推荐)</option>
+              <option value="openai">OpenAI 兼容格式</option>
+            </select>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">
+            注册地址: <a href="https://platform.minimaxi.com" target="_blank" style="color:var(--accent)">platform.minimaxi.com</a>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px">
+        <h4 style="color:var(--accent);margin-bottom:8px;font-size:14px">🧠 通义千问 (Qwen)</h4>
+        <div style="background:var(--bg-secondary);padding:12px;border-radius:8px">
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API Key</label>
+            <input class="input" id="qwenApiKey" placeholder="输入 Qwen API Key" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API 端点</label>
+            <input class="input" id="qwenEndpoint" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" value="https://dashscope.aliyuncs.com/compatible-mode/v1" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">模型</label>
+            <select class="input" id="qwenModel" style="width:100%;margin-top:4px">
+              <option value="qwen-plus">qwen-plus (推荐)</option>
+              <option value="qwen-turbo">qwen-turbo (快速)</option>
+              <option value="qwen-max">qwen-max (最强)</option>
+              <option value="qwen-long">qwen-long (长文本)</option>
+            </select>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">
+            注册地址: <a href="https://dashscope.console.aliyun.com" target="_blank" style="color:var(--accent)">dashscope.console.aliyun.com</a>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px">
+        <h4 style="color:var(--accent);margin-bottom:8px;font-size:14px">🌐 OpenAI 兼容接口</h4>
+        <div style="background:var(--bg-secondary);padding:12px;border-radius:8px">
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API Key</label>
+            <input class="input" id="openaiApiKey" placeholder="输入 API Key" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">API 端点</label>
+            <input class="input" id="openaiEndpoint" placeholder="https://api.openai.com/v1" value="https://api.openai.com/v1" style="width:100%;margin-top:4px">
+          </div>
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;color:var(--text-secondary)">模型</label>
+            <input class="input" id="openaiModel" placeholder="gpt-4o-mini" value="gpt-4o-mini" style="width:100%;margin-top:4px">
+          </div>
+          <div style="font-size:11px;color:var(--text-muted)">
+            支持 OpenAI 格式的任何供应商: OpenAI、Azure OpenAI、本地部署 (Ollama/vLLM) 等
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <h4 style="color:var(--accent);margin-bottom:8px;font-size:14px">⚙️ 默认供应商</h4>
+        <select class="input" id="defaultProvider" style="width:100%">
+          <option value="minimax">MiniMax</option>
+          <option value="qwen">通义千问</option>
+          <option value="openai">OpenAI 兼容</option>
+        </select>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="toggleApiKeyInput()">取消</button>
+        <button class="btn btn-primary" onclick="saveLlmConfig()">保存配置</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="main-content">
@@ -295,6 +405,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
     <span class="label">延迟:</span>
     <span class="ping-result" id="connPingLatency">--</span>
     <button class="btn btn-primary" style="padding:4px 12px;font-size:11px;margin-left:auto" onclick="testConnectivity()">🩺 连通性检测</button>
+    <button class="btn btn-primary" style="padding:4px 12px;font-size:11px" onclick="testLlmConnectivity()">🤖 LLM测试</button>
   </div>
   <div class="grid-2-1">
     <div class="card">
@@ -478,98 +589,12 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 </div>
 
 <div class="tab-panel" id="panel-chat">
-  <div class="grid-2-1">
-    <div class="card" style="display:flex;flex-direction:column;height:500px">
-      <div class="card-header"><span class="card-title"><span class="icon">💬</span>AI 天文助手</span><span style="font-size:12px;color:var(--text-muted)">MiniMax LLM</span></div>
-      <div id="chatMessages" style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px">
-        <div class="chat-msg assistant"><div class="chat-bubble">你好！我是天问 AI 天文助手，可以帮你分析观测数据、规划观测计划、解答天文问题。请随时提问。</div></div>
-      </div>
-      <div style="padding:12px;border-top:1px solid var(--border);display:flex;gap:8px">
-        <input class="input" id="chatInput" placeholder="输入天文问题..." style="flex:1" onkeydown="if(event.key==='Enter')sendChat()">
-        <button class="btn btn-primary" onclick="sendChat()">发送</button>
-        <button class="btn btn-warning" onclick="clearChat()" style="font-size:11px">清空</button>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title"><span class="icon">🧠</span>认知引擎分析</span></div>
-      <div id="cognitivePreview" style="font-size:13px;color:var(--text-secondary)">
-        <div class="empty-state"><div class="icon">🔍</div><div>输入消息后自动分析意图和实体</div></div>
-      </div>
-      <div class="card-header" style="margin-top:16px"><span class="card-title"><span class="icon">📋</span>会话历史</span></div>
-      <div id="sessionList" style="max-height:200px;overflow-y:auto;font-size:12px">
-        <div class="empty-state"><div class="icon">💬</div><div>暂无会话</div></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="tab-panel" id="panel-evolution">
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-header"><span class="card-title"><span class="icon">📈</span>进化统计</span></div>
-      <div id="evolutionStats"><div class="skeleton skeleton-card"></div></div>
-    </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title"><span class="icon">🗺</span>知识图谱</span></div>
-      <div id="knowledgeGraph" style="min-height:250px">
-        <div class="empty-state"><div class="icon">🧠</div><div>加载知识图谱中...</div></div>
-      </div>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-header"><span class="card-title"><span class="icon">🔄</span>自我进化日志</span></div>
-    <div id="evolutionLog" style="max-height:300px;overflow-y:auto;font-size:13px">
-      <div class="empty-state"><div class="icon">📜</div><div>加载进化日志中...</div></div>
-    </div>
-  </div>
-</div>
-
-<div class="tab-panel" id="panel-monitor">
-  <div class="grid-3">
-    <div class="card">
-      <div class="card-header"><span class="card-title"><span class="icon">🎯</span>RL 调度统计</span></div>
-      <div id="rlStats">
-        <div class="stat-grid">
-          <div class="stat-item"><div class="stat-label">调度效率</div><div class="stat-val" style="color:var(--success)" id="rlEfficiency">--</div></div>
-          <div class="stat-item"><div class="stat-label">平均等待时间</div><div class="stat-val" id="rlAvgWait">--</div></div>
-          <div class="stat-item"><div class="stat-label">调度成功率</div><div class="stat-val" style="color:var(--accent)" id="rlSuccessRate">--</div></div>
-          <div class="stat-item"><div class="stat-label">学习轮次</div><div class="stat-val" id="rlEpisodes">--</div></div>
-        </div>
-      </div>
-      <div class="chart-container" id="rlChart" style="height:200px;margin-top:12px"></div>
-    </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title"><span class="icon">⚡</span>系统性能</span></div>
-      <div id="perfStats">
-        <div class="stat-grid">
-          <div class="stat-item"><div class="stat-label">API 调用/分钟</div><div class="stat-val" style="color:var(--accent)" id="perfApiRate">--</div></div>
-          <div class="stat-item"><div class="stat-label">平均响应时间</div><div class="stat-val" id="perfAvgLatency">--</div></div>
-          <div class="stat-item"><div class="stat-label">WebSocket 客户端</div><div class="stat-val" style="color:var(--success)" id="perfWsClients">--</div></div>
-          <div class="stat-item"><div class="stat-label">内存使用</div><div class="stat-val" id="perfMemory">--</div></div>
-        </div>
-      </div>
-      <div class="chart-container" id="perfChart" style="height:200px;margin-top:12px"></div>
-    </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title"><span class="icon">📊</span>闭合统计</span></div>
-      <div id="loopStats">
-        <div class="stat-grid">
-          <div class="stat-item"><div class="stat-label">总周期数</div><div class="stat-val" style="color:var(--accent)" id="loopTotalCycles">--</div></div>
-          <div class="stat-item"><div class="stat-label">完成率</div><div class="stat-val" style="color:var(--success)" id="loopCompletionRate">--</div></div>
-          <div class="stat-item"><div class="stat-label">总发现数</div><div class="stat-val" id="loopDiscoveries">--</div></div>
-          <div class="stat-item"><div class="stat-label">总假说数</div><div class="stat-val" id="loopHypotheses">--</div></div>
-        </div>
-      </div>
-      <div class="chart-container" id="loopChart" style="height:200px;margin-top:12px"></div>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-header"><span class="card-title"><span class="icon">📋</span>系统模块状态</span></div>
-    <div style="overflow-x:auto">
-      <table><thead><tr><th>模块</th><th>详情</th><th>状态</th></tr></thead>
-      <tbody id="moduleTimingBody">
-        <tr><td colspan="3" style="text-align:center;color:var(--text-muted)">加载中...</td></tr>
-      </tbody></table>
+  <div class="card" style="display:flex;flex-direction:column;height:calc(100vh - 180px)">
+    <div class="card-header"><span class="card-title"><span class="icon">💬</span>智能对话</span></div>
+    <div id="chatMessages" style="flex:1;overflow-y:auto;margin-bottom:12px;padding:12px;background:var(--bg-secondary);border-radius:8px"></div>
+    <div style="display:flex;gap:8px">
+      <input class="input" id="chatInput" placeholder="输入消息..." style="flex:1" onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="btn btn-primary" onclick="sendChat()">发送</button>
     </div>
   </div>
 </div>
@@ -589,13 +614,44 @@ tr:hover td{background:rgba(59,130,246,0.04)}
   </div>
 </div>
 
+<div class="tab-panel" id="panel-manual">
+  <div class="card">
+    <div class="card-header"><span class="card-title"><span class="icon">📖</span>使用说明书</span></div>
+    <div style="color:var(--text-secondary);line-height:1.8">
+      <h3 style="color:var(--text-primary);margin-bottom:12px"> 天问-AGI 全自动天文观测站</h3>
+      <p>天问-AGI 是一个全自动天文观测系统，支持无人值守自主发现与观测。以下为系统功能说明：</p>
+      <h4 style="color:var(--accent);margin:16px 0 8px">1. 观测总控台</h4>
+      <p>显示观测站实时状态，包括当前观测目标、设备状态、观测队列等。连接真实望远镜后，此处将显示实时数据。</p>
+      <h4 style="color:var(--accent);margin:16px 0 8px">2. 实时星图</h4>
+      <p>通过 NASA SkyView API 获取真实天文图像。支持 DSS、2MASS、SDSS 等多种巡天数据。输入天体名称（如 M31、M42）即可查看。</p>
+      <h4 style="color:var(--accent);margin:16px 0 8px">3. 数据面板</h4>
+      <p>展示观测数据统计，包括检测结果、光变曲线、研究周期历史等。</p>
+      <h4 style="color:var(--accent);margin:16px 0 8px">4. 研究闭环</h4>
+      <p>自动研究循环：文献检索 → 假说生成 → 假说检验 → 发现确认 → 观测调度 → 自我进化。</p>
+      <h4 style="color:var(--accent);margin:16px 0 8px">5. 告警中心</h4>
+      <p>显示系统告警信息，包括新天体发现、天气变化、设备异常等。</p>
+      <h4 style="color:var(--accent);margin:16px 0 8px">6. 望远镜控制</h4>
+      <p>控制望远镜进行 GOTO 指向、跟踪、曝光等操作。需要连接真实望远镜设备后方可使用。</p>
+      <h4 style="color:var(--accent);margin:16px 0 8px">7. 智能对话</h4>
+      <p>与 AI 助手对话，查询天体信息、获取操作帮助。需配置 API Key 以启用 MiniMax LLM 功能。</p>
+      <h4 style="color:var(--accent);margin:16px 0 8px">8. 系统日志</h4>
+      <p>查看系统运行日志，按级别筛选（发现、检测、望远镜、相机、系统）。</p>
+      <h4 style="color:var(--warning);margin:16px 0 8px">️ 关于数据真实性</h4>
+      <p>当前系统未连接真实望远镜，观测总控台显示的是空状态。连接真实设备后，所有数据将来自实际观测。</p>
+      <p>实时星图数据来自 NASA SkyView API，是真实的天文图像。</p>
+      <p>天体坐标数据来自内置星表，基于真实天文数据。</p>
+    </div>
+  </div>
 </div>
 
-<div class="kbd-hint" id="kbdHint">快捷键: <kbd>1</kbd>-<kbd>9</kbd><kbd>0</kbd> 切换面板 · <kbd>R</kbd> 刷新数据 · <kbd>T</kbd> 连通性检测</div>
+</div>
+
+<div class="kbd-hint" id="kbdHint">快捷键: <kbd>1</kbd>-<kbd>6</kbd> 切换面板 · <kbd>R</kbd> 刷新数据 · <kbd>T</kbd> 连通性检测</div>
 
 <script>
 var BACKEND_URL = 'https://tianwen-agi-production.up.railway.app';
-var API_BASE = '/api';
+var API_BASE = BACKEND_URL + '/api';
+var API_KEY = '';
 var WS_URL = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws/observatory';
 
 var ws = null;
@@ -693,9 +749,11 @@ async function apiGet(path, timeoutMs){
 
 async function apiPost(path, body){
   try {
+    var headers = {'Content-Type': 'application/json'};
+    if (API_KEY) headers['X-API-Key'] = API_KEY;
     var r = await fetch(API_BASE + path, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
       body: JSON.stringify(body)
     });
     return await r.json();
@@ -790,15 +848,21 @@ function renderDevices(devices){
   $('#deviceGrid').innerHTML = items.map(function(item){
     var d = devices[item.key];
     if (!d) return '';
-    var online = d.connected !== false;
+    var online = d.connected === true;
     var cls = online ? 'online' : 'offline';
     var detail = '';
-    if (item.key === 'telescope') detail = '状态: ' + (d.status||'--');
-    if (item.key === 'camera') detail = '增益: ' + (d.gain||'--') + ' | 曝光: ' + ((d.exposure_ms||0)/1000).toFixed(0) + 's';
-    if (item.key === 'filter_wheel') detail = '当前: ' + (d.current||'--');
-    if (item.key === 'dome') detail = '方位角: ' + (d.azimuth||'--') + '°';
-    if (item.key === 'weather') detail = '云量' + (d.cloud_cover||'--') + '% | ' + (d.temperature||'--') + '°C | 视宁度' + (d.seeing||'--') + '"';
-    return '<div class="device-item ' + cls + '"><div class="name">' + item.icon + ' ' + item.label + ' · ' + escHtml(d.name||'--') + '</div><div class="state">' + escHtml(d.status||'--') + '</div><div class="detail">' + detail + '</div></div>';
+    var statusText = '';
+    if (!online) {
+      statusText = '未找到' + item.label;
+    } else {
+      statusText = d.status || '运行中';
+      if (item.key === 'telescope') detail = '状态: ' + (d.status||'--');
+      if (item.key === 'camera') detail = '增益: ' + (d.gain||'--') + ' | 曝光: ' + ((d.exposure_ms||0)/1000).toFixed(0) + 's';
+      if (item.key === 'filter_wheel') detail = '当前: ' + (d.current||'--');
+      if (item.key === 'dome') detail = '方位角: ' + (d.azimuth||'--') + '°';
+      if (item.key === 'weather') detail = '云量' + (d.cloud_cover||'--') + '% | ' + (d.temperature||'--') + '°C | 视宁度' + (d.seeing||'--') + '"';
+    }
+    return '<div class="device-item ' + cls + '"><div class="name">' + item.icon + ' ' + item.label + ' · ' + escHtml(d.name||'--') + '</div><div class="state">' + escHtml(statusText) + '</div><div class="detail">' + detail + '</div></div>';
   }).join('');
 }
 
@@ -1049,11 +1113,7 @@ function initAladin(){
       reticleColor: '#3b82f6',
       reticleSize: 32,
     });
-  } catch(e) {
-    console.log('Aladin Lite unavailable:', e.message);
-    var div = document.getElementById('aladin-lite-div');
-    if (div) div.innerHTML = '<div class="empty-state"><div class="icon">🔭</div><div>Aladin Lite 星图不可用</div><div style="font-size:12px;color:var(--text-muted);margin-top:4px">请使用支持 WebGL 的浏览器查看</div></div>';
-  }
+  } catch(e) { console.log('Aladin init delayed:', e.message); }
 }
 
 $$('.tab-btn').forEach(function(btn){
@@ -1070,11 +1130,8 @@ $$('.tab-btn').forEach(function(btn){
       apiGet('/data/lightcurve').then(function(d){ if (d && d.data) renderLightCurve(d.data); });
     }
     if (btn.dataset.tab === 'alerts') loadAlerts();
-    if (btn.dataset.tab === 'telescope') { telRefresh(); telLoadCatalog(); }
-    if (btn.dataset.tab === 'chat') { loadSessions(); }
-    if (btn.dataset.tab === 'evolution') { loadEvolution(); }
-    if (btn.dataset.tab === 'monitor') { loadMonitor(); }
     if (btn.dataset.tab === 'logs') loadLogs();
+    if (btn.dataset.tab === 'manual') loadDemoData();
   });
 });
 
@@ -1091,14 +1148,10 @@ async function loadLogs(){
 document.addEventListener('keydown', function(e){
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   var key = e.key.toLowerCase();
-  if (key >= '1' && key <= '9') {
+  if (key >= '1' && key <= '6') {
     var tabs = $$('.tab-btn');
     var idx = parseInt(key) - 1;
     if (tabs[idx]) tabs[idx].click();
-  }
-  if (key === '0') {
-    var tabs = $$('.tab-btn');
-    if (tabs[9]) tabs[9].click();
   }
   if (key === 'r' && !e.ctrlKey && !e.metaKey) {
     e.preventDefault();
@@ -1156,6 +1209,187 @@ updateUI = function(state){
   origUpdateUI(state);
 };
 
+async function sendChat(){
+  var input = $('#chatInput');
+  var msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+
+  var chatBox = $('#chatMessages');
+  chatBox.innerHTML += '<div style="margin-bottom:8px;text-align:right"><span style="display:inline-block;background:var(--accent);color:#fff;padding:8px 14px;border-radius:12px 12px 0 12px;max-width:80%;text-align:left">' + escapeHtml(msg) + '</span></div>';
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  var provider = LLM_CONFIG.defaultProvider;
+  var config = LLM_CONFIG[provider];
+
+  if (!config || !config.apiKey) {
+    chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">未配置 ' + (provider === 'minimax' ? 'MiniMax' : provider === 'qwen' ? 'Qwen' : 'OpenAI') + ' API Key，请点击 🔑 按钮配置</span></div>';
+    chatBox.scrollTop = chatBox.scrollHeight;
+    return;
+  }
+
+  if (provider === 'minimax' && !config.groupId) {
+    chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">未配置 MiniMax Group ID，请点击 🔑 按钮配置</span></div>';
+    chatBox.scrollTop = chatBox.scrollHeight;
+    return;
+  }
+
+  var headers = {
+    'Content-Type': 'application/json',
+    'X-LLM-Provider': provider,
+  };
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
+
+  var body = {
+    message: msg,
+    provider: provider,
+    config: {
+      endpoint: config.endpoint,
+      model: config.model,
+      api_key: config.apiKey,
+      api_format: config.apiFormat || 'native',
+    }
+  };
+  if (provider === 'minimax') {
+    body.config.group_id = config.groupId;
+  }
+
+  var maxRetries = 2;
+  var retryCount = 0;
+  var lastError = null;
+
+  while (retryCount <= maxRetries) {
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function(){ controller.abort(); }, 60000);
+
+    try {
+      var r = await fetch(API_BASE + '/chat', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      var data = await r.json();
+
+      if (data.error) {
+        chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">错误: ' + escapeHtml(data.error) + '</span></div>';
+      } else {
+        var reply = data.output || data.response || JSON.stringify(data);
+        chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--bg-card);border:1px solid var(--border);padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">' + escapeHtml(reply) + '</span></div>';
+      }
+      break;
+    } catch(e) {
+      clearTimeout(timeoutId);
+      lastError = e;
+      retryCount++;
+
+      if (retryCount <= maxRetries) {
+        await new Promise(function(resolve) { setTimeout(resolve, 1000 * retryCount); });
+        continue;
+      }
+
+      if (e.name === 'AbortError') {
+        chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">请求超时(60s)，请检查网络或API配置</span></div>';
+      } else {
+        chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">请求失败: ' + escapeHtml(e.message) + '</span></div>';
+      }
+    }
+  }
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+function escapeHtml(text){
+  var div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+var LLM_CONFIG = {
+  minimax: { apiKey: '', groupId: '', endpoint: 'https://api.minimax.chat/v1', model: 'MiniMax-M2.7', apiFormat: 'native' },
+  qwen: { apiKey: '', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', apiFormat: 'openai' },
+  openai: { apiKey: '', endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini', apiFormat: 'openai' },
+  defaultProvider: 'minimax'
+};
+
+function toggleApiKeyInput(){
+  var modal = $('#apiKeyModal');
+  if (modal.style.display === 'none' || modal.style.display === '') {
+    loadLlmConfigToForm();
+    modal.style.display = 'flex';
+  } else {
+    modal.style.display = 'none';
+  }
+}
+
+function loadLlmConfigToForm(){
+  $('#minimaxApiKey').value = LLM_CONFIG.minimax.apiKey || '';
+  $('#minimaxGroupId').value = LLM_CONFIG.minimax.groupId || '';
+  $('#minimaxEndpoint').value = LLM_CONFIG.minimax.endpoint || 'https://api.minimax.chat/v1';
+  $('#minimaxModel').value = LLM_CONFIG.minimax.model || 'MiniMax-M2.7';
+  $('#minimaxApiFormat').value = LLM_CONFIG.minimax.apiFormat || 'native';
+
+  $('#qwenApiKey').value = LLM_CONFIG.qwen.apiKey || '';
+  $('#qwenEndpoint').value = LLM_CONFIG.qwen.endpoint || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  $('#qwenModel').value = LLM_CONFIG.qwen.model || 'qwen-plus';
+
+  $('#openaiApiKey').value = LLM_CONFIG.openai.apiKey || '';
+  $('#openaiEndpoint').value = LLM_CONFIG.openai.endpoint || 'https://api.openai.com/v1';
+  $('#openaiModel').value = LLM_CONFIG.openai.model || 'gpt-4o-mini';
+
+  $('#defaultProvider').value = LLM_CONFIG.defaultProvider || 'minimax';
+}
+
+function saveLlmConfig(){
+  LLM_CONFIG.minimax.apiKey = $('#minimaxApiKey').value.trim();
+  LLM_CONFIG.minimax.groupId = $('#minimaxGroupId').value.trim();
+  LLM_CONFIG.minimax.endpoint = $('#minimaxEndpoint').value.trim() || 'https://api.minimax.chat/v1';
+  LLM_CONFIG.minimax.model = $('#minimaxModel').value;
+  LLM_CONFIG.minimax.apiFormat = $('#minimaxApiFormat').value || 'native';
+
+  LLM_CONFIG.qwen.apiKey = $('#qwenApiKey').value.trim();
+  LLM_CONFIG.qwen.endpoint = $('#qwenEndpoint').value.trim() || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  LLM_CONFIG.qwen.model = $('#qwenModel').value;
+
+  LLM_CONFIG.openai.apiKey = $('#openaiApiKey').value.trim();
+  LLM_CONFIG.openai.endpoint = $('#openaiEndpoint').value.trim() || 'https://api.openai.com/v1';
+  LLM_CONFIG.openai.model = $('#openaiModel').value;
+
+  LLM_CONFIG.defaultProvider = $('#defaultProvider').value;
+
+  localStorage.setItem('tianwen_llm_config', JSON.stringify(LLM_CONFIG));
+
+  var configured = [];
+  var missing = [];
+
+  if (LLM_CONFIG.minimax.apiKey && LLM_CONFIG.minimax.groupId) configured.push('MiniMax');
+  else if (LLM_CONFIG.minimax.apiKey || LLM_CONFIG.minimax.groupId) missing.push('MiniMax (缺少 API Key 或 Group ID)');
+
+  if (LLM_CONFIG.qwen.apiKey) configured.push('Qwen');
+  else if (LLM_CONFIG.qwen.apiKey === '' && ($('#qwenEndpoint').value.trim() || $('#qwenModel').value)) {}
+
+  if (LLM_CONFIG.openai.apiKey) configured.push('OpenAI');
+
+  if (configured.length > 0) {
+    showToast('已保存 ' + configured.length + ' 个供应商: ' + configured.join(', '), 'success');
+  } else if (missing.length > 0) {
+    showToast('配置不完整: ' + missing.join('; '), 'warning');
+  } else {
+    showToast('未配置任何供应商，对话功能将不可用', 'warning');
+  }
+  toggleApiKeyInput();
+}
+
+function loadLlmConfig(){
+  var saved = localStorage.getItem('tianwen_llm_config');
+  if (saved) {
+    try {
+      var parsed = JSON.parse(saved);
+      LLM_CONFIG = Object.assign(LLM_CONFIG, parsed);
+    } catch(e) {}
+  }
+}
+
 async function testConnectivity(){
   $('#connPingResult').textContent = '检测中...';
   $('#connPingResult').className = 'ping-result';
@@ -1188,18 +1422,71 @@ async function testConnectivity(){
   }
 }
 
+async function testLlmConnectivity(){
+  var provider = LLM_CONFIG.defaultProvider;
+  var config = LLM_CONFIG[provider];
+
+  if (!config || !config.apiKey) {
+    showToast('请先配置 ' + (provider === 'minimax' ? 'MiniMax' : provider) + ' API Key', 'warning');
+    return;
+  }
+  if (provider === 'minimax' && (!config.groupId)) {
+    showToast('请先配置 MiniMax Group ID', 'warning');
+    return;
+  }
+
+  showToast('正在测试 ' + (provider === 'minimax' ? 'MiniMax' : provider) + ' API 连通性...', 'info');
+
+  var body = {
+    provider: provider,
+    config: {
+      api_key: config.apiKey,
+      endpoint: config.endpoint,
+      model: config.model,
+      api_format: config.apiFormat || 'native',
+    }
+  };
+  if (provider === 'minimax') {
+    body.config.group_id = config.groupId;
+  }
+
+  try {
+    var headers = {'Content-Type': 'application/json'};
+    if (API_KEY) headers['X-API-Key'] = API_KEY;
+
+    var r = await fetch(API_BASE + '/llm/test', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(body)
+    });
+    var data = await r.json();
+
+    if (data.status === 'success') {
+      showToast('✅ ' + (provider === 'minimax' ? 'MiniMax' : provider) + ' API 连通正常 · 延迟: ' + data.latency_ms + 'ms', 'success');
+    } else {
+      showToast('❌ API 连通失败: ' + (data.error || '未知错误'), 'error');
+    }
+  } catch(e) {
+    showToast('❌ 测试请求失败: ' + e.message, 'error');
+  }
+}
+
 var autoRefreshInterval = setInterval(function(){
   if (!wsConnected) loadAllData();
   updateRefreshLabel();
 }, 10000);
 
 window.addEventListener('DOMContentLoaded', function(){
+  var savedKey = localStorage.getItem('tianwen_api_key');
+  if (savedKey) API_KEY = savedKey;
+
+  loadLlmConfig();
+
   $('#connBackendUrl').textContent = BACKEND_URL;
 
   connectWS();
   loadAllData();
   testConnectivity();
-  telCheckAvailable();
 
   setTimeout(function(){ $('#kbdHint').classList.add('visible'); }, 1000);
   setTimeout(function(){ $('#kbdHint').classList.remove('visible'); }, 8000);
@@ -1211,294 +1498,11 @@ window.addEventListener('DOMContentLoaded', function(){
   setTimeout(telLoadCatalog, 2000);
 });
 
-// ============ AI 助手函数 ============
-
-var chatSessionId = null;
-
-function addChatMessage(role, text, isError){
-  var container = $('#chatMessages');
-  var div = document.createElement('div');
-  div.className = 'chat-msg ' + role + (isError ? ' error' : '');
-  var bubble = document.createElement('div');
-  bubble.className = 'chat-bubble';
-  bubble.textContent = text;
-  div.appendChild(bubble);
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-function showChatTyping(){
-  var container = $('#chatMessages');
-  var div = document.createElement('div');
-  div.className = 'chat-msg assistant';
-  div.id = 'chatTyping';
-  div.innerHTML = '<div class="chat-bubble"><div class="chat-typing"><span></span><span></span><span></span></div></div>';
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-function hideChatTyping(){
-  var el = $('#chatTyping');
-  if (el) el.remove();
-}
-
-async function sendChat(){
-  var input = $('#chatInput');
-  var msg = input.value.trim();
-  if (!msg) return;
-
-  addChatMessage('user', msg);
-  input.value = '';
-  showChatTyping();
-
-  try {
-    var r = await apiPost('/chat', {message: msg, session_id: chatSessionId});
-    hideChatTyping();
-
-    if (r && r.output) {
-      chatSessionId = r.session_id;
-      addChatMessage('assistant', r.output);
-      if (r.cognitive) renderCognitive(r.cognitive);
-      loadSessions();
-    } else if (r && r.error) {
-      addChatMessage('assistant', '错误: ' + r.error, true);
-    } else {
-      addChatMessage('assistant', '未收到回复', true);
-    }
-  } catch(e) {
-    hideChatTyping();
-    addChatMessage('assistant', '请求失败: ' + e.message, true);
-  }
-}
-
-function clearChat(){
-  chatSessionId = null;
-  $('#chatMessages').innerHTML = '<div class="chat-msg assistant"><div class="chat-bubble">对话已清空。有什么天文问题需要帮助？</div></div>';
-  $('#cognitivePreview').innerHTML = '<div class="empty-state"><div class="icon">🔍</div><div>输入消息后自动分析意图和实体</div></div>';
-}
-
-function renderCognitive(cog){
-  if (!cog) return;
-  var entities = (cog.entities || []).map(function(e){
-    return '<span style="display:inline-block;padding:2px 8px;background:var(--bg-secondary);border-radius:4px;margin:2px;font-size:12px">' + escHtml(e.type) + ': ' + escHtml(e.value) + ' (' + (e.confidence*100).toFixed(0) + '%)</span>';
-  }).join('') || '无';
-
-  $('#cognitivePreview').innerHTML =
-    '<div style="display:flex;flex-direction:column;gap:8px">' +
-    '<div><b>意图:</b> <span style="color:var(--accent)">' + escHtml(cog.intent || '未知') + '</span></div>' +
-    '<div><b>复杂度:</b> ' + escHtml(cog.complexity || '--') + '</div>' +
-    '<div><b>所需技能:</b> ' + (cog.skills || []).join(', ') || '无' + '</div>' +
-    '<div><b>实体:</b> <div style="margin-top:4px">' + entities + '</div></div>' +
-    '</div>';
-}
-
-async function loadSessions(){
-  var d = await apiGet('/sessions');
-  if (!d || !d.sessions || !d.sessions.length) {
-    $('#sessionList').innerHTML = '<div class="empty-state"><div class="icon">💬</div><div>暂无会话</div></div>';
-    return;
-  }
-  $('#sessionList').innerHTML = d.sessions.map(function(s){
-    return '<div style="padding:8px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between" onclick="loadSession(\'' + escHtml(s.id) + '\')">' +
-      '<span>' + escHtml(s.id.substring(0,8)) + '...</span>' +
-      '<span style="color:var(--text-muted)">' + s.message_count + '条消息</span></div>';
-  }).join('');
-}
-
-async function loadSession(id){
-  var d = await apiGet('/sessions/' + id);
-  if (!d || !d.messages) return;
-  chatSessionId = id;
-  $('#chatMessages').innerHTML = '';
-  d.messages.forEach(function(m){
-    addChatMessage(m.role === 'user' ? 'user' : 'assistant', m.content);
-  });
-}
-
-// ============ 进化系统函数 ============
-
-async function loadEvolution(){
-  var stats = await apiGet('/evolution/stats');
-  if (stats) {
-    $('#evolutionStats').innerHTML =
-      '<div class="stat-grid">' +
-      '<div class="stat-item"><div class="stat-label">进化代数</div><div class="stat-val" style="color:var(--accent)">' + (stats.generations || 0) + '</div></div>' +
-      '<div class="stat-item"><div class="stat-label">技能数量</div><div class="stat-val" style="color:var(--success)">' + (stats.skills_count || 0) + '</div></div>' +
-      '<div class="stat-item"><div class="stat-label">知识节点</div><div class="stat-val">' + (stats.knowledge_nodes || 0) + '</div></div>' +
-      '<div class="stat-item"><div class="stat-label">学习率</div><div class="stat-val">' + ((stats.learning_rate || 0) * 100).toFixed(1) + '%</div></div>' +
-      '</div>';
-  }
-
-  var health = await apiGet('/health');
-  if (health && health.dependencies) {
-    var deps = health.dependencies;
-    var nodes = [
-      {name: '认知引擎', ok: deps.cognitive_engine},
-      {name: '规划引擎', ok: deps.planning_engine},
-      {name: '执行引擎', ok: deps.execution_engine},
-      {name: '进化系统', ok: deps.evolution_system},
-    ];
-    $('#knowledgeGraph').innerHTML =
-      '<div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;padding:20px">' +
-      nodes.map(function(n, i){
-        return '<div style="text-align:center;padding:16px 20px;background:' + (n.ok ? 'var(--bg-secondary)' : 'rgba(239,68,68,0.1)') + ';border-radius:12px;border:2px solid ' + (n.ok ? 'var(--success)' : 'var(--danger)') + '">' +
-          '<div style="font-size:24px;margin-bottom:4px">' + (n.ok ? '✅' : '❌') + '</div>' +
-          '<div style="font-size:13px">' + n.name + '</div>' +
-          '<div style="font-size:11px;color:var(--text-muted)">' + (n.ok ? '正常' : '未初始化') + '</div></div>';
-      }).join('') +
-      (nodes.length > 1 ? '<div style="width:100%;text-align:center;color:var(--text-muted);font-size:12px;margin-top:8px">' + nodes.map(function(_,i){ return i < nodes.length-1 ? '⬇' : ''; }).join(' ') + '</div>' : '') +
-      '</div>';
-  }
-
-  var logs = await apiGet('/logs', 3000);
-  if (logs && logs.logs) {
-    var evoLogs = logs.logs.filter(function(l){ return l.level === 'RESEARCH' || l.level === 'DISCOVERY'; }).slice(0, 20);
-    $('#evolutionLog').innerHTML = evoLogs.length === 0
-      ? '<div class="empty-state"><div class="icon">📜</div><div>暂无进化日志</div></div>'
-      : evoLogs.map(function(l){
-        return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">' +
-          '<span style="color:var(--text-muted)">' + escHtml(l.time) + '</span> ' +
-          '<span style="color:var(--accent)">[' + escHtml(l.level) + ']</span> ' +
-          escHtml(l.message) + '</div>';
-      }).join('');
-  }
-}
-
-// ============ 系统监控函数 ============
-
-async function loadMonitor(){
-  var summary = await apiGet('/stats/summary');
-  if (summary) {
-    $('#loopTotalCycles').textContent = summary.total_cycles || 0;
-    $('#loopCompletionRate').textContent = summary.total_cycles ? (summary.completed_cycles / summary.total_cycles * 100).toFixed(1) + '%' : '--';
-    $('#loopDiscoveries').textContent = summary.total_discoveries || 0;
-    $('#loopHypotheses').textContent = summary.total_hypotheses || 0;
-    $('#perfWsClients').textContent = summary.active_ws_clients || 0;
-  }
-
-  var health = await apiGet('/health');
-  if (health && health.system) {
-    $('#perfMemory').textContent = (health.system.process.memory_mb || 0).toFixed(0) + ' MB';
-    $('#perfApiRate').textContent = health.system.api_calls_last_min || '--';
-    $('#perfAvgLatency').textContent = health.system.avg_latency_ms ? health.system.avg_latency_ms.toFixed(0) + 'ms' : '--';
-  }
-
-  var rlStats = await apiGet('/rl/stats');
-  if (rlStats) {
-    $('#rlEfficiency').textContent = (rlStats.efficiency || 0).toFixed(1) + '%';
-    $('#rlAvgWait').textContent = (rlStats.avg_wait_min || 0).toFixed(1) + 'min';
-    $('#rlSuccessRate').textContent = (rlStats.success_rate || 0).toFixed(1) + '%';
-    $('#rlEpisodes').textContent = rlStats.total_episodes || 0;
-  } else {
-    $('#rlEfficiency').textContent = '--';
-    $('#rlAvgWait').textContent = '--';
-    $('#rlSuccessRate').textContent = '--';
-    $('#rlEpisodes').textContent = '--';
-  }
-
-  renderMonitorCharts();
-  renderModuleTiming();
-}
-
-function renderMonitorCharts(){
-  if (typeof Plotly === 'undefined') return;
-
-  var noDataLayout = {paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#a0aec0',size:10}, xaxis:{visible:false}, yaxis:{visible:false}, margin:{l:10,r:10,t:10,b:10}, showlegend:false, height:200,
-    annotations: [{text:'暂无历史数据', xref:'paper', yref:'paper', x:0.5, y:0.5, showarrow:false, font:{color:'#718096',size:13}}]};
-
-  apiGet('/rl/stats').then(function(rlStats){
-    if (rlStats && rlStats.total_episodes > 0) {
-      var val = rlStats.efficiency || 0;
-      var rlTrace = {x:[1], y:[val], type:'bar', marker:{color:'#10b981'}, name:'调度效率', text:[val.toFixed(1)+'%'], textposition:'auto', textfont:{color:'#fff'}};
-      var rlLayout = {paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#a0aec0',size:10}, xaxis:{showticklabels:false}, yaxis:{title:'效率%',gridcolor:'rgba(45,55,72,0.3)',zeroline:false,range:[0,100]}, margin:{l:40,r:10,t:10,b:30}, showlegend:false, height:200};
-      Plotly.newPlot('rlChart', [rlTrace], rlLayout, {displayModeBar:false,responsive:true});
-    } else {
-      Plotly.newPlot('rlChart', [], noDataLayout, {displayModeBar:false,responsive:true});
-    }
-  }).catch(function(){ Plotly.newPlot('rlChart', [], noDataLayout, {displayModeBar:false,responsive:true}); });
-
-  apiGet('/health').then(function(health){
-    if (health && health.system && health.system.avg_latency_ms) {
-      var val = health.system.avg_latency_ms;
-      var perfTrace = {x:[1], y:[val], type:'bar', marker:{color:'#3b82f6'}, name:'响应时间', text:[val.toFixed(0)+'ms'], textposition:'auto', textfont:{color:'#fff'}};
-      var perfLayout = {paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#a0aec0',size:10}, xaxis:{showticklabels:false}, yaxis:{title:'ms',gridcolor:'rgba(45,55,72,0.3)',zeroline:false}, margin:{l:40,r:10,t:10,b:30}, showlegend:false, height:200};
-      Plotly.newPlot('perfChart', [perfTrace], perfLayout, {displayModeBar:false,responsive:true});
-    } else {
-      Plotly.newPlot('perfChart', [], noDataLayout, {displayModeBar:false,responsive:true});
-    }
-  }).catch(function(){ Plotly.newPlot('perfChart', [], noDataLayout, {displayModeBar:false,responsive:true}); });
-
-  apiGet('/stats/summary').then(function(summary){
-    if (summary && summary.total_cycles > 0) {
-      var val = summary.total_discoveries || 0;
-      var loopTrace = {x:[1], y:[val], type:'bar', marker:{color:'#8b5cf6'}, name:'发现数', text:[String(val)], textposition:'auto', textfont:{color:'#fff'}};
-      var loopLayout = {paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)', font:{color:'#a0aec0',size:10}, xaxis:{showticklabels:false}, yaxis:{title:'发现',gridcolor:'rgba(45,55,72,0.3)',zeroline:false}, margin:{l:40,r:10,t:10,b:30}, showlegend:false, height:200};
-      Plotly.newPlot('loopChart', [loopTrace], loopLayout, {displayModeBar:false,responsive:true});
-    } else {
-      Plotly.newPlot('loopChart', [], noDataLayout, {displayModeBar:false,responsive:true});
-    }
-  }).catch(function(){ Plotly.newPlot('loopChart', [], noDataLayout, {displayModeBar:false,responsive:true}); });
-}
-
-function renderModuleTiming(){
-  apiGet('/health').then(function(health){
-    var deps = health && health.dependencies ? health.dependencies : {};
-    var modules = [
-      {name:'cognitive_engine', label:'认知引擎', ok:!!deps.cognitive_engine},
-      {name:'planning_engine', label:'规划引擎', ok:!!deps.planning_engine},
-      {name:'execution_engine', label:'执行引擎', ok:!!deps.execution_engine},
-      {name:'evolution_system', label:'进化系统', ok:!!deps.evolution_system},
-      {name:'agent_initialized', label:'Agent初始化', ok:!!deps.agent_initialized},
-    ];
-    if (health && health.system) {
-      modules.push({name:'api_server', label:'API服务器', ok:true, detail:'PID '+health.system.process.pid+' | '+health.system.process.threads+'线程'});
-    }
-    $('#moduleTimingBody').innerHTML = modules.map(function(m){
-      return '<tr>' +
-        '<td>' + m.label + '</td>' +
-        '<td>' + (m.detail || '--') + '</td>' +
-        '<td><span class="status-badge ' + (m.ok?'completed':'pending') + '">' + (m.ok?'正常':'未初始化') + '</span></td></tr>';
-    }).join('');
-  }).catch(function(){
-    $('#moduleTimingBody').innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted)">无法获取模块状态</td></tr>';
-  });
-}
-
 // ============ 望远镜控制函数 ============
 
 var _telCatalogCache = null;
-var _telAvailable = null;
-
-async function telCheckAvailable(){
-  try {
-    var resp = await fetch(API_BASE + '/telescope/status');
-    _telAvailable = resp.ok;
-  } catch(e) {
-    _telAvailable = false;
-  }
-  if (!_telAvailable) {
-    var panel = $('#panel-telescope');
-    if (panel) {
-      var banner = document.createElement('div');
-      banner.id = 'telUnavailableBanner';
-      banner.style.cssText = 'background:rgba(239,68,68,0.1);border:1px solid var(--danger);border-radius:8px;padding:12px 16px;margin-bottom:16px;text-align:center';
-      banner.innerHTML = '<span style="font-size:18px">⚠️</span> <b>望远镜控制端点未部署</b><br><span style="font-size:12px;color:var(--text-muted)">Railway 后端需重新部署以包含最新 server.py 中的望远镜 API</span>';
-      panel.insertBefore(banner, panel.firstChild);
-    }
-  }
-  return _telAvailable;
-}
-
-function telGuard(){
-  if (_telAvailable === false) {
-    showToast('望远镜控制功能未部署，请重新部署 Railway 后端', 'error');
-    return false;
-  }
-  return true;
-}
 
 async function telRefresh(){
-  if (!telGuard()) return;
   try {
     var resp = await fetch(API_BASE + '/telescope/status');
     if (!resp.ok) throw new Error('状态获取失败');
@@ -1519,7 +1523,6 @@ async function telRefresh(){
 }
 
 async function telConnect(){
-  if (!telGuard()) return;
   try {
     var resp = await fetch(API_BASE + '/telescope/connect', {method:'POST'});
     var data = await resp.json();
@@ -1535,7 +1538,6 @@ async function telConnect(){
 }
 
 async function telDisconnect(){
-  if (!telGuard()) return;
   try {
     await fetch(API_BASE + '/telescope/disconnect', {method:'POST'});
     showToast('已断开望远镜', 'info');
@@ -1547,7 +1549,6 @@ async function telDisconnect(){
 }
 
 async function telGoto(){
-  if (!telGuard()) return;
   var target = $('#telGotoTarget').value.trim();
   if (!target) { showToast('请输入目标', 'error'); return; }
 
@@ -1571,7 +1572,6 @@ async function telGoto(){
 }
 
 async function telTracking(action){
-  if (!telGuard()) return;
   try {
     var resp = await fetch(API_BASE + '/telescope/tracking', {
       method:'POST',
@@ -1591,7 +1591,6 @@ async function telTracking(action){
 }
 
 async function telPlateSolve(){
-  if (!telGuard()) return;
   try {
     var resp = await fetch(API_BASE + '/telescope/plate_solve', {method:'POST'});
     var data = await resp.json();
@@ -1608,7 +1607,6 @@ async function telPlateSolve(){
 }
 
 async function telExpose(){
-  if (!telGuard()) return;
   var expTime = parseFloat($('#telExpTime').value) || 30;
   var count = parseInt($('#telExpCount').value) || 1;
   var target = $('#telExpTarget').value.trim() || 'unknown';
@@ -1637,7 +1635,6 @@ async function telExpose(){
 }
 
 async function telLoadCatalog(){
-  if (!telGuard()) return;
   var typeFilter = $('#telCatalogType') ? $('#telCatalogType').value : '';
 
   try {
@@ -1730,16 +1727,11 @@ function telSearchCatalog(){
 }
 
 async function telCalcWindow(){
-  if (!telGuard()) return;
   var target = ($('#telWindowTarget') ? $('#telWindowTarget').value.trim() : '') || 'M31';
   var lat = parseFloat($('#telWindowLat') ? $('#telWindowLat').value : '40') || 40.0;
 
   try {
-    var resp = await fetch(API_BASE + '/telescope/window', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({target: target, latitude: lat})
-    });
+    var resp = await fetch(API_BASE + '/telescope/window?target=' + encodeURIComponent(target) + '&latitude=' + lat);
     var data = await resp.json();
 
     if (data.error) {
@@ -1748,13 +1740,12 @@ async function telCalcWindow(){
     }
 
     var html = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">';
-    html += '<div><strong>目标:</strong> ' + escHtml(data.target) + '</div>';
-    html += '<div><strong>距中天:</strong> ' + (data.hours_to_meridian || 0).toFixed(1) + 'h</div>';
-    html += '<div><strong>中天时间:</strong> ' + escHtml(data.meridian_time || '--') + '</div>';
-    html += '<div><strong>夜间开始:</strong> ' + escHtml(data.night_start || '--') + '</div>';
-    html += '<div><strong>夜间结束:</strong> ' + escHtml(data.night_end || '--') + '</div>';
-    html += '<div><strong>月相:</strong> ' + (data.moon_phase || 0).toFixed(0) + '%</div>';
-    html += '<div><strong>可观测:</strong> ' + (data.observable ? '<span style="color:var(--success)">✅ 是</span>' : '<span style="color:var(--danger)">❌ 否</span>') + '</div>';
+    html += '<div><strong>目标:</strong> ' + data.target + '</div>';
+    html += '<div><strong>坐标:</strong> RA=' + (data.ra || 0).toFixed(4) + '\u00b0, Dec=' + (data.dec || 0).toFixed(4) + '\u00b0</div>';
+    html += '<div><strong>当前高度:</strong> ' + (data.current_altitude || 0).toFixed(1) + '\u00b0</div>';
+    html += '<div><strong>最高高度:</strong> ' + (data.max_altitude || 0).toFixed(1) + '\u00b0</div>';
+    html += '<div><strong>可见性:</strong> ' + ((data.is_visible || false) ? '<span style="color:var(--success)">可见</span>' : '<span style="color:var(--danger)">不可见</span>') + '</div>';
+    html += '<div><strong>观测窗口:</strong> ' + (data.window_start || '--') + ' ~ ' + (data.window_end || '--') + '</div>';
     html += '</div>';
 
     if ($('#telWindowResult')) $('#telWindowResult').innerHTML = html;

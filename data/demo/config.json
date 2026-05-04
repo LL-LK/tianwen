@@ -1,0 +1,19 @@
+{
+    "mode": "demo",
+    "description": "演示模式配置 - 使用模拟数据",
+    "features": {
+        "telescope": "simulator",
+        "data_source": "mock",
+        "literature": "sample",
+        "hypothesis_testing": "mock"
+    },
+    "paths": {
+        "observations": "data/demo/sample_observations",
+        "sessions": "data/demo/sessions.json"
+    },
+    "api_config": {
+        "use_real_kepler": false,
+        "use_real_arxiv": false,
+        "use_real_nasa_ads": false
+    }
+}
