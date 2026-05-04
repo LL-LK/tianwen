@@ -655,10 +655,10 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 <div class="kbd-hint" id="kbdHint">快捷键: <kbd>1</kbd>-<kbd>6</kbd> 切换面板 · <kbd>R</kbd> 刷新数据 · <kbd>T</kbd> 连通性检测</div>
 
 <script>
-var BACKEND_URL = 'https://tianwen-agi-production.up.railway.app';
+var BACKEND_URL = 'https://tianwen-agi.pages.dev';
 var API_BASE = BACKEND_URL + '/api';
-var API_KEY = '';
-var WS_URL = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws/observatory';
+
+var WS_URL = 'wss://tianwen-agi.pages.dev/api/ws/observatory';
 
 var ws = null;
 var wsConnected = false;

@@ -3,7 +3,7 @@ const BACKEND = 'https://tianwen-agi-production.up.railway.app';
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS, PATCH',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, X-LLM-Provider',
   'Access-Control-Max-Age': '86400',
 };
 
@@ -18,7 +18,7 @@ export async function onRequest(context) {
   const targetUrl = BACKEND + url.pathname + url.search;
 
   const headers = new Headers();
-  const safeKeys = ['accept', 'content-type', 'content-length', 'authorization', 'x-api-key'];
+  const safeKeys = ['accept', 'content-type', 'content-length', 'authorization', 'x-api-key', 'x-llm-provider'];
   for (const [key, value] of request.headers.entries()) {
     if (safeKeys.includes(key.toLowerCase())) {
       headers.set(key, value);
