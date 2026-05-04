@@ -255,6 +255,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
       <span id="refreshLabel">刷新</span>
     </div>
     <button class="theme-toggle" id="themeToggle" title="切换主题">🌙</button>
+    <button class="theme-toggle" id="apiKeyBtn" title="设置API Key" onclick="toggleApiKeyInput()">🔑</button>
     <button class="theme-toggle" id="exportBtn" title="导出数据" onclick="exportData('json')">📥</button>
   </div>
 </div>
@@ -266,7 +267,19 @@ tr:hover td{background:rgba(59,130,246,0.04)}
   <button class="tab-btn" data-tab="research">🔬 研究闭环</button>
   <button class="tab-btn" data-tab="alerts">🔔 告警中心<span class="tab-badge" id="alertBadge" style="display:none">0</span></button>
   <button class="tab-btn" data-tab="telescope">🔭 望远镜控制</button>
+  <button class="tab-btn" data-tab="chat">💬 智能对话</button>
   <button class="tab-btn" data-tab="logs">📋 系统日志</button>
+</div>
+
+<div id="apiKeyModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;justify-content:center;align-items:center">
+  <div class="card" style="width:400px;max-width:90%">
+    <div class="card-header"><span class="card-title">🔑 设置 API Key</span><button onclick="toggleApiKeyInput()" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:18px">&times;</button></div>
+    <input class="input" id="apiKeyInput" placeholder="输入你的 API Key" style="width:100%;margin-bottom:12px">
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="toggleApiKeyInput()">取消</button>
+      <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
+    </div>
+  </div>
 </div>
 
 <div class="main-content">
@@ -462,6 +475,17 @@ tr:hover td{background:rgba(59,130,246,0.04)}
   </div>
 </div>
 
+<div class="tab-panel" id="panel-chat">
+  <div class="card" style="display:flex;flex-direction:column;height:calc(100vh - 180px)">
+    <div class="card-header"><span class="card-title"><span class="icon">💬</span>智能对话</span></div>
+    <div id="chatMessages" style="flex:1;overflow-y:auto;margin-bottom:12px;padding:12px;background:var(--bg-secondary);border-radius:8px"></div>
+    <div style="display:flex;gap:8px">
+      <input class="input" id="chatInput" placeholder="输入消息..." style="flex:1" onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="btn btn-primary" onclick="sendChat()">发送</button>
+    </div>
+  </div>
+</div>
+
 <div class="tab-panel" id="panel-logs">
   <div class="card">
     <div class="card-header"><span class="card-title"><span class="icon">📋</span>系统日志</span></div>
@@ -484,6 +508,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 <script>
 var BACKEND_URL = 'https://tianwen-agi-production.up.railway.app';
 var API_BASE = '/api';
+var API_KEY = '';
 var WS_URL = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws/observatory';
 
 var ws = null;
@@ -581,9 +606,11 @@ async function apiGet(path, timeoutMs){
 
 async function apiPost(path, body){
   try {
+    var headers = {'Content-Type': 'application/json'};
+    if (API_KEY) headers['X-API-Key'] = API_KEY;
     var r = await fetch(API_BASE + path, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
       body: JSON.stringify(body)
     });
     return await r.json();
@@ -1032,6 +1059,68 @@ updateUI = function(state){
   origUpdateUI(state);
 };
 
+async function sendChat(){
+  var input = $('#chatInput');
+  var msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+
+  var chatBox = $('#chatMessages');
+  chatBox.innerHTML += '<div style="margin-bottom:8px;text-align:right"><span style="display:inline-block;background:var(--accent);color:#fff;padding:8px 14px;border-radius:12px 12px 0 12px;max-width:80%;text-align:left">' + escapeHtml(msg) + '</span></div>';
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  var headers = {'Content-Type': 'application/json'};
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
+
+  try {
+    var r = await fetch(API_BASE + '/chat', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({message: msg})
+    });
+    var data = await r.json();
+
+    if (data.error) {
+      chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">' + escapeHtml(data.error) + '</span></div>';
+    } else {
+      var reply = data.output || data.response || JSON.stringify(data);
+      chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--bg-card);border:1px solid var(--border);padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">' + escapeHtml(reply) + '</span></div>';
+    }
+  } catch(e) {
+    chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">请求失败: ' + escapeHtml(e.message) + '</span></div>';
+  }
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+function escapeHtml(text){
+  var div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function toggleApiKeyInput(){
+  var modal = $('#apiKeyModal');
+  if (modal.style.display === 'none' || modal.style.display === '') {
+    $('#apiKeyInput').value = API_KEY;
+    modal.style.display = 'flex';
+  } else {
+    modal.style.display = 'none';
+  }
+}
+
+function saveApiKey(){
+  var key = $('#apiKeyInput').value.trim();
+  API_KEY = key;
+  if (key) {
+    localStorage.setItem('tianwen_api_key', key);
+    showToast('API Key 已保存', 'success');
+  } else {
+    localStorage.removeItem('tianwen_api_key');
+    showToast('API Key 已清除', 'info');
+  }
+  toggleApiKeyInput();
+}
+
 async function testConnectivity(){
   $('#connPingResult').textContent = '检测中...';
   $('#connPingResult').className = 'ping-result';
@@ -1070,6 +1159,9 @@ var autoRefreshInterval = setInterval(function(){
 }, 10000);
 
 window.addEventListener('DOMContentLoaded', function(){
+  var savedKey = localStorage.getItem('tianwen_api_key');
+  if (savedKey) API_KEY = savedKey;
+
   $('#connBackendUrl').textContent = BACKEND_URL;
 
   connectWS();
