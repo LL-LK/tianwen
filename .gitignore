@@ -77,3 +77,4 @@ data/demo/sessions.json
 railway_deploy.log
 railway_log.txt
 run_logs.txt
+runtime/data/chroma_db/
