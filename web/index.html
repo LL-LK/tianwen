@@ -1223,8 +1223,12 @@ async function sendChat(){
 
   var chatBox = $('#chatMessages');
   chatBox.innerHTML += '<div style="margin-bottom:8px;text-align:right"><span style="display:inline-block;background:var(--accent);color:#fff;padding:8px 14px;border-radius:12px 12px 0 12px;max-width:80%;text-align:left">' + escapeHtml(msg) + '</span></div>';
+  chatBox.innerHTML += '<div id="chatLoading" style="margin-bottom:8px"><span style="display:inline-block;background:var(--bg-card);border:1px solid var(--border);padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%"><span id="chatLoadingText">思考中...</span><span id="chatLoadingDots"></span></span></div>';
   chatBox.scrollTop = chatBox.scrollHeight;
-
+  var loadingInterval = setInterval(function(){
+    var dots = $('#chatLoadingDots');
+    if (dots) dots.textContent = dots.textContent.length >= 3 ? '' : dots.textContent + '.';
+  }, 500);
   var provider = LLM_CONFIG.defaultProvider;
   var config = LLM_CONFIG[provider];
 
@@ -1266,7 +1270,7 @@ async function sendChat(){
 
   while (retryCount <= maxRetries) {
     var controller = new AbortController();
-    var timeoutId = setTimeout(function(){ controller.abort(); }, 60000);
+    var timeoutId = setTimeout(function(){ controller.abort(); }, 30000);
 
     try {
       var r = await fetch(API_BASE + '/chat', {
@@ -1278,15 +1282,26 @@ async function sendChat(){
       clearTimeout(timeoutId);
       var data = await r.json();
 
+      clearTimeout(timeoutId);
+      clearInterval(loadingInterval);
+      var loadingEl = $('#chatLoading');
+      if (loadingEl) loadingEl.remove();
+
       if (data.error) {
         chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">错误: ' + escapeHtml(data.error) + '</span></div>';
       } else {
-        var reply = data.output || data.response || JSON.stringify(data);
+        var reply = data.output || data.response || '';
+        if (!reply || !reply.trim()) {
+          reply = '[AI 返回了空内容，可能是模型暂时不可用，请稍后重试]';
+        }
         chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--bg-card);border:1px solid var(--border);padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">' + escapeHtml(reply) + '</span></div>';
       }
       break;
     } catch(e) {
       clearTimeout(timeoutId);
+      clearInterval(loadingInterval);
+      var loadingEl = $('#chatLoading');
+      if (loadingEl) loadingEl.remove();
       lastError = e;
       retryCount++;
 
@@ -1296,14 +1311,13 @@ async function sendChat(){
       }
 
       if (e.name === 'AbortError') {
-        chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">请求超时(60s)，请检查网络或API配置</span></div>';
+        chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">请求超时(30s)，请检查网络或API配置</span></div>';
       } else {
         chatBox.innerHTML += '<div style="margin-bottom:8px"><span style="display:inline-block;background:var(--danger);color:#fff;padding:8px 14px;border-radius:12px 12px 12px 0;max-width:80%">请求失败: ' + escapeHtml(e.message) + '</span></div>';
       }
     }
+    chatBox.scrollTop = chatBox.scrollHeight;
   }
-  chatBox.scrollTop = chatBox.scrollHeight;
-}
 
 function escapeHtml(text){
   var div = document.createElement('div');

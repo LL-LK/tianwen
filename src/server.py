@@ -405,8 +405,8 @@ async def call_minimax(message: str, api_key: str = None, group_id: str = None, 
             content = choices[0].get("message", {}).get("content")
             tokens = result.get("usage", {}).get("total_tokens", 0)
 
-        if content is None:
-            logger.error(f"[MiniMax] content为None, 完整响应: {json.dumps(result, ensure_ascii=False)[:500]}")
+        if not content:  # catches None, empty string, and whitespace-only
+            logger.error(f"[MiniMax] content为空, 完整响应: {json.dumps(result, ensure_ascii=False)[:500]}")
             return {"error": "MiniMax 返回内容为空", "content": None}
 
         logger.info(f"[MiniMax] 成功: tokens={tokens}, content_len={len(content)}")
@@ -483,8 +483,8 @@ async def call_openai_compatible(message: str, api_key: str, endpoint: str, mode
             content = choices[0].get("message", {}).get("content")
             tokens = result.get("usage", {}).get("total_tokens", 0)
 
-        if content is None:
-            logger.error(f"[LLM] content为None, 完整响应: {json.dumps(result, ensure_ascii=False)[:500]}")
+        if not content:  # catches None, empty string, and whitespace-only
+            logger.error(f"[LLM] content为空, 完整响应: {json.dumps(result, ensure_ascii=False)[:500]}")
             return {"error": "API 返回内容为空", "content": None}
 
         logger.info(f"[LLM] 成功: tokens={tokens}, content_len={len(content)}")
