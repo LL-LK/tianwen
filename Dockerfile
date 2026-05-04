@@ -35,9 +35,10 @@ ENV PATH="/app/venv/bin:$PATH"
 
 # Copy only necessary files (multi-stage optimization)
 COPY runtime/requirements.txt /app/
-COPY runtime/server.py /app/runtime/
-COPY runtime/main.py /app/runtime/
-COPY runtime/*.py /app/runtime/
+COPY src/server.py /app/runtime/
+COPY src/main.py /app/runtime/
+COPY src/*.py /app/runtime/
+COPY src /app/src
 COPY web /app/web
 
 # Install runtime dependencies only
