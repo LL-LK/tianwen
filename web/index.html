@@ -296,7 +296,8 @@ tr:hover td{background:rgba(59,130,246,0.04)}
           <div style="margin-bottom:8px">
             <label style="font-size:12px;color:var(--text-secondary)">模型</label>
             <select class="input" id="minimaxModel" style="width:100%;margin-top:4px">
-              <option value="MiniMax-M2.1">MiniMax-M2.1 (推荐)</option>
+              <option value="MiniMax-M2.7">MiniMax-M2.7 (推荐)</option>
+              <option value="MiniMax-M2.1">MiniMax-M2.1</option>
               <option value="MiniMax-Text-01">MiniMax-Text-01</option>
               <option value="MiniMax-VL-01">MiniMax-VL-01 (多模态)</option>
             </select>
@@ -1244,7 +1245,7 @@ function escapeHtml(text){
 }
 
 var LLM_CONFIG = {
-  minimax: { apiKey: '', groupId: '', endpoint: 'https://api.minimax.chat/v1', model: 'MiniMax-M2.1' },
+  minimax: { apiKey: '', groupId: '', endpoint: 'https://api.minimax.chat/v1', model: 'MiniMax-M2.7' },
   qwen: { apiKey: '', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
   openai: { apiKey: '', endpoint: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
   defaultProvider: 'minimax'
@@ -1264,7 +1265,7 @@ function loadLlmConfigToForm(){
   $('#minimaxApiKey').value = LLM_CONFIG.minimax.apiKey || '';
   $('#minimaxGroupId').value = LLM_CONFIG.minimax.groupId || '';
   $('#minimaxEndpoint').value = LLM_CONFIG.minimax.endpoint || 'https://api.minimax.chat/v1';
-  $('#minimaxModel').value = LLM_CONFIG.minimax.model || 'MiniMax-M2.1';
+  $('#minimaxModel').value = LLM_CONFIG.minimax.model || 'MiniMax-M2.7';
 
   $('#qwenApiKey').value = LLM_CONFIG.qwen.apiKey || '';
   $('#qwenEndpoint').value = LLM_CONFIG.qwen.endpoint || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
@@ -1296,12 +1297,20 @@ function saveLlmConfig(){
   localStorage.setItem('tianwen_llm_config', JSON.stringify(LLM_CONFIG));
 
   var configured = [];
-  if (LLM_CONFIG.minimax.apiKey) configured.push('MiniMax');
+  var missing = [];
+
+  if (LLM_CONFIG.minimax.apiKey && LLM_CONFIG.minimax.groupId) configured.push('MiniMax');
+  else if (LLM_CONFIG.minimax.apiKey || LLM_CONFIG.minimax.groupId) missing.push('MiniMax (缺少 API Key 或 Group ID)');
+
   if (LLM_CONFIG.qwen.apiKey) configured.push('Qwen');
+  else if (LLM_CONFIG.qwen.apiKey === '' && ($('#qwenEndpoint').value.trim() || $('#qwenModel').value)) {}
+
   if (LLM_CONFIG.openai.apiKey) configured.push('OpenAI');
 
   if (configured.length > 0) {
     showToast('已保存 ' + configured.length + ' 个供应商: ' + configured.join(', '), 'success');
+  } else if (missing.length > 0) {
+    showToast('配置不完整: ' + missing.join('; '), 'warning');
   } else {
     showToast('未配置任何供应商，对话功能将不可用', 'warning');
   }
