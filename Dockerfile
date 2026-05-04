@@ -35,9 +35,6 @@ ENV PATH="/app/venv/bin:$PATH"
 
 # Copy only necessary files (multi-stage optimization)
 COPY requirements.txt /app/
-COPY src/server.py /app/runtime/
-COPY src/main.py /app/runtime/
-COPY src/*.py /app/runtime/
 COPY src /app/src
 COPY web /app/web
 
@@ -55,4 +52,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')" || exit 1
 
 # Run as non-root user
-CMD ["python", "runtime/server.py"]
+CMD ["python", "src/server.py"]
