@@ -1,481 +1,675 @@
-# 天问-AGI (Tianwen-AGI) / Hermes-AGI
+<p align="center">
+  <img src="https://img.shields.io/badge/version-2.3.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/python-3.11+-green?style=flat-square&logo=python" alt="Python">
+  <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/platform-Railway%20%7C%20Docker%20%7C%20Cloudflare-9cf?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/github/actions/workflow/status/LL-LK/tianwen-agi/ci.yml?branch=main&style=flat-square&label=CI" alt="CI Status">
+</p>
 
-全自动天文观测站 —— 基于多智能体协作的 AI 天文研究系统。
+<h1 align="center">🔭 天问-AGI (Tianwen-AGI)</h1>
+<h3 align="center">全自动天文观测站 · 无人值守自主发现与观测</h3>
 
-## 项目简介
+<p align="center">
+  <b>天问-AGI</b> 是一个基于 AI Agent 的全自动天文观测系统，集成了认知引擎、规划引擎、执行引擎和自我进化系统，支持从假说生成到观测验证的完整科学研究闭环。
+</p>
 
-天问-AGI 是一个**全自动天文观测与研究系统**，通过多个 AI Agent 协作，实现从观测计划制定、数据采集、文献研究、假说生成与验证到新发现追踪的完整科研闭环。
+---
 
-### 核心范式
+## 📑 目录
 
-```
-观测 → 数据挖掘 → 文献研究 → 假说生成 → 假说验证 → 发现追踪 → 自我进化
-  ↑                                                              ↓
-  └──────────────────── 闭环自动迭代 ─────────────────────────────┘
-```
+- [功能特性](#-功能特性)
+- [系统架构](#-系统架构)
+- [快速开始](#-快速开始)
+  - [环境要求](#环境要求)
+  - [本地开发](#本地开发)
+  - [Docker 部署](#docker-部署)
+  - [Railway 一键部署](#railway-一键部署)
+- [Web 界面](#-web-界面)
+- [API 文档](#-api-文档)
+- [LLM 配置](#-llm-智能对话配置)
+- [项目结构](#-项目结构)
+- [CI/CD 流程](#-cicd-流程)
+- [安全说明](#-安全说明)
+- [路线图](#-路线图)
+- [贡献指南](#-贡献指南)
+- [许可证](#-许可证)
 
-## 核心特性
+---
 
-| 特性 | 说明 |
-|------|------|
-| **多智能体协作** | 3+ Agent 协同工作（数据挖掘/文献研究/观测执行/假说验证） |
-| **全自动观测** | 自动制定观测计划、调度望远镜、采集数据 |
-| **文献研究** | 自动检索 arXiv/SAO/NASA ADS 论文，提取关键信息 |
-| **假说引擎** | 从数据中自动生成科学假说，贝叶斯推断验证 |
-| **发现追踪** | 追踪新发现，评估科学意义，生成报告 |
-| **Web 控制台** | 实时 WebSocket 推送，3D 星图可视化，全功能 API |
-| **向量记忆** | 基于 ChromaDB 的语义搜索，持久化知识图谱 |
-| **自我进化** | 从成功/失败中学习，优化策略参数 |
+## ✨ 功能特性
 
-## 系统架构
+### 🧠 AI Agent 引擎
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Web 前端 (web/)                       │
-│  实时仪表盘 │ 3D星图 │ 观测控制 │ 假说管理 │ 发现日志    │
-└──────────────────────┬──────────────────────────────────┘
-                       │ WebSocket / REST API
-┌──────────────────────┴──────────────────────────────────┐
-│                  API Server (server.py)                  │
-│  Quart 异步框架 │ WebSocket 实时推送 │ CORS 安全配置     │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────┴──────────────────────────────────┐
-│              核心引擎 (main.py / CognitiveEngine)        │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
-│  │ 数据挖掘 │ │ 文献研究 │ │ 假说生成 │ │ 假说验证 │   │
-│  │  Agent   │ │  Agent   │ │  Agent   │ │  Agent   │   │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
-│  │ 观测执行 │ │ 发现追踪 │ │ 自我审查 │ │ 技能集成 │   │
-│  │  Agent   │ │  Agent   │ │  Agent   │ │  Agent   │   │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────┴──────────────────────────────────┐
-│                   基础设施层                              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
-│  │ 向量记忆 │ │ 知识图谱 │ │ 会话存储 │ │ 日志系统 │   │
-│  │ ChromaDB │ │ NetworkX │ │  Redis   │ │  Logger  │   │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │
-└─────────────────────────────────────────────────────────┘
-```
+| 引擎 | 功能 | 说明 |
+|------|------|------|
+| **认知引擎** (CognitiveEngine) | 意图识别、实体提取、复杂度评估 | 理解用户自然语言输入，自动识别观测意图 |
+| **规划引擎** (PlanningEngine) | 任务分解、并行规划、风险评估 | 将复杂观测任务拆解为可执行的子任务序列 |
+| **执行引擎** (ExecutionEngine) | 技能调度、任务执行、结果汇总 | 执行观测计划并收集各阶段结果 |
+| **进化系统** (EvolutionSystem) | 模式学习、经验积累、自我优化 | 基于历史任务持续改进，支持持久化记忆 |
 
-## 目录结构
+### 🔬 科学研究闭环
 
 ```
-tianwen-agi/
-│
-├── src/                          # 核心源码
-│   ├── main.py                   # 主入口，HermesAGI 核心类
-│   ├── server.py                 # Web API 服务器 (Quart)
-│   │
-│   ├── core/                     # 核心引擎
-│   │   ├── reasoning.py          # 推理引擎 (LLM 调用)
-│   │   └── cognitive.py          # 认知引擎
-│   │
-│   ├── agents/                   # 智能体
-│   │   ├── data_miner.py         # 数据挖掘 Agent
-│   │   ├── literature.py         # 文献研究 Agent
-│   │   ├── hypothesis_gen.py     # 假说生成 Agent
-│   │   ├── hypothesis_test.py    # 假说验证 Agent
-│   │   ├── observation.py        # 观测执行 Agent
-│   │   ├── discovery.py          # 发现追踪 Agent
-│   │   ├── self_review.py        # 自我审查 Agent
-│   │   └── coordinator.py        # 多智能体协调器
-│   │
-│   ├── telescope/                # 望远镜控制
-│   │   ├── simulator.py          # 望远镜模拟器
-│   │   ├── seestar_client.py     # Seestar MCP 客户端
-│   │   └── scheduler.py          # 观测调度器
-│   │
-│   ├── astronomy/                # 天文算法
-│   │   ├── algorithms.py         # 天文计算
-│   │   ├── star_recognizer.py    # 星图识别
-│   │   ├── fits_processor.py     # FITS 文件处理
-│   │   └── platesolver.py        # 天测定位
-│   │
-│   ├── observation/              # 观测工作流
-│   │   ├── workflow.py           # 观测工作流引擎
-│   │   ├── executor.py           # 观测执行器
-│   │   └── realtime.py           # 实时数据处理
-│   │
-│   ├── research/                 # 研究工具
-│   │   ├── literature.py         # 文献检索
-│   │   ├── loop.py               # 研究循环
-│   │   └── linker.py             # 研究-观测连接器
-│   │
-│   ├── data/                     # 数据处理
-│   │   ├── models.py             # 统一数据模型
-│   │   ├── pipeline.py           # 数据管道
-│   │   ├── analysis.py           # 数据分析
-│   │   └── kepler_client.py      # Kepler/TESS 客户端
-│   │
-│   ├── memory/                   # 记忆系统
-│   │   ├── vector.py             # 向量记忆 (ChromaDB)
-│   │   ├── vector_store.py       # 向量存储
-│   │   ├── persistence.py        # 持久化记忆
-│   │   ├── scenario.py           # 场景记忆
-│   │   └── rag.py                # RAG 检索增强
-│   │
-│   ├── learning/                 # 学习与进化
-│   │   ├── rl_scheduler.py       # 强化学习调度
-│   │   ├── overfit_correction.py # 过拟合自校正
-│   │   └── skill_tester.py       # 技能测试
-│   │
-│   ├── web/                      # Web 服务
-│   │   ├── dashboard.py          # 统计仪表盘
-│   │   ├── bridge.py             # 实时桥接
-│   │   └── session.py            # 会话管理
-│   │
-│   └── utils/                    # 工具
-│       ├── logger.py             # 日志系统
-│       ├── models.py             # 模型配置
-│       └── sandbox.py            # 沙箱执行
-│
-├── web/                          # 前端静态文件
-│   ├── index.html                # 主控制台
-│   ├── manifest.json             # PWA 清单
-│   ├── sw.js                     # Service Worker
-│   └── 3d/                       # 3D 可视化
-│       ├── orbit_viewer.html     # 轨道查看器
-│       └── skychart3d.html       # 3D 星图
-│
-├── tests/                        # 测试套件
-│   ├── test_runtime_modules.py   # 单元测试
-│   ├── integration_test.py       # 集成测试
-│   ├── test_observation_loop.py  # 观测循环测试
-│   └── test_embodied.py          # 具身观测测试
-│
-├── scripts/                      # 工具脚本
-│   ├── init_star_catalog.py      # 星表初始化
-│   ├── start_ollama_network.bat  # Ollama 网络启动
-│   └── tools/                    # 辅助工具
-│       ├── browser_search.py     # 浏览器搜索
-│       ├── download_models.sh    # 模型下载
-│       ├── multi_agent_search.py # 多智能体搜索
-│       ├── reproduction.py       # 复现实验
-│       └── verify_models.py      # 模型验证
-│
-├── docs/                         # 文档
-│   ├── PRO/                      # 专业分析文档
-│   ├── deploy/                   # 部署文档
-│   ├── issues/                   # Issue 回复
-│   ├── literature/               # 文献索引
-│   ├── models/                   # 模型分析
-│   ├── reports/                  # 报告
-│   ├── research/                 # 研究文档
-│   └── search-results/           # 搜索结果
-│
-├── data/                         # 数据文件
-│   ├── star_catalogs.db          # 星表数据库
-│   └── sessions.json             # 会话数据
-│
-├── memory/                       # 运行时记忆
-│   ├── evolution-log.md          # 进化日志
-│   ├── knowledge-graph.md        # 知识图谱
-│   ├── learned-patterns.md       # 学习模式
-│   ├── skill-feedback.md         # 技能反馈
-│   ├── task-history.md           # 任务历史
-│   └── user-preferences.md       # 用户偏好
-│
-├── deploy/                       # 部署配置
-│   └── cloudflare/               # Cloudflare Workers
-│       ├── functions/api/        # API 代理
-│       └── api-proxy.js          # 代理脚本
-│
-├── .github/workflows/            # CI/CD
-│   ├── ci.yml                    # 持续集成
-│   ├── deploy-railway.yml        # Railway 部署
-│   └── docker-build.yml          # Docker 构建
-│
-├── Dockerfile                    # Docker 镜像
-├── docker-compose.yml            # Docker Compose
-├── .dockerignore                 # Docker 忽略
-├── .env.example                  # 环境变量示例
-├── .gitignore                    # Git 忽略
-├── .pre-commit-config.yaml       # Pre-commit 配置
-└── README.md                     # 本文件
+文献检索 → 假说生成 → 假说检验 → 发现确认 → 观测调度 → 自我进化
+   ↑                                                              ↓
+   └──────────────────── 持续迭代优化 ────────────────────────────┘
 ```
 
-## 快速开始
+- **假说生成**: 基于文献和观测数据自动生成科学假说
+- **假说验证**: 支持统计检验、交叉验证、置信区间计算
+- **发现确认**: 自动识别新天体、异常现象
+- **观测调度**: 智能优先级排序，时间窗口优化
+
+### 🌌 天文观测功能
+
+- **实时星图**: 集成 NASA SkyView API，支持 DSS/2MASS/SDSS 等多种巡天数据
+- **天体星表**: 内置 110+ 梅西耶/NGC 天体数据，支持按类型筛选和搜索
+- **光变曲线**: 模拟光变曲线数据展示
+- **三阶段检测**: 恒星/星系/类星体分类检测流水线
+- **观测窗口计算**: 基于目标坐标和观测地纬度计算最佳观测时间
+
+### 🔭 望远镜控制
+
+- **设备管理**: 望远镜 (Seestar S50)、相机 (IMX462)、滤镜轮 (ZWO EFW)、圆顶
+- **GOTO 指向**: 输入天体名称自动指向
+- **跟踪控制**: 启动/停止跟踪，Plate Solving
+- **成像控制**: 可配置曝光时间、帧数、目标
+- **气象站**: 云量、湿度、温度、风速、视宁度监测
+
+### 💬 智能对话
+
+- **多供应商支持**: MiniMax、通义千问 (Qwen)、OpenAI 兼容接口
+- **API 格式兼容**: 原生格式 / OpenAI 兼容格式 / Anthropic 格式
+- **连通性测试**: 一键检测 LLM API 可用性和延迟
+- **本地回退**: LLM 不可用时自动切换本地规则回复
+- **会话管理**: 支持 Redis 持久化或内存存储，多轮对话上下文保持
+
+### ⚡ 实时通信
+
+- **WebSocket 推送**: 3 个独立频道（观测站状态 / Agent 状态 / 观测数据）
+- **心跳检测**: 30 秒间隔心跳，60 秒超时自动断开
+- **断线重连**: 自动重连机制，最多 10 次，指数退避
+- **事件订阅**: 支持客户端订阅特定事件类型
+
+### 🛡️ 安全与运维
+
+- **API 认证**: X-API-Key 请求头认证，开发模式自动跳过
+- **速率限制**: 可配置的时间窗口和最大请求数
+- **CORS 控制**: 生产环境白名单域名控制
+- **安全响应头**: X-Content-Type-Options, X-Frame-Options, HSTS 等
+- **健康检查**: `/api/health` 端点，支持 DEBUG/生产双模式
+- **错误分类**: 临时错误自动重试，永久错误快速失败
+
+---
+
+## 🏗 系统架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Web 前端 (index.html)                     │
+│  观测总控台 │ 实时星图 │ 数据面板 │ 研究闭环 │ 告警中心        │
+│  望远镜控制 │ 智能对话 │ 系统日志 │ 说明书                    │
+└──────────┬──────────────────────────────────┬───────────────┘
+           │         HTTP/REST + WebSocket     │
+           ▼                                   ▼
+┌──────────────────────────────────────────────────────────────┐
+│                   Quart API Server (server.py)                │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────┐  │
+│  │ CORS     │ │ Rate     │ │ API Key  │ │ WebSocket     │  │
+│  │ Middleware│ │ Limiter  │ │ Auth     │ │ Manager       │  │
+│  └──────────┘ └──────────┘ └──────────┘ └───────────────┘  │
+└──────────┬───────────────────────────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────────────────────────┐
+│                   HermesAGI Runtime (main.py)                 │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌───────────┐ │
+│  │ Cognitive  │ │ Planning   │ │ Execution  │ │ Evolution │ │
+│  │ Engine     │ │ Engine     │ │ Engine     │ │ System    │ │
+│  └────────────┘ └────────────┘ └────────────┘ └───────────┘ │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐               │
+│  │ Retry      │ │ Health     │ │ Error      │               │
+│  │ Engine     │ │ Monitor    │ │ Classifier │               │
+│  └────────────┘ └────────────┘ └────────────┘               │
+└──────────┬───────────────────────────────────────────────────┘
+           │
+           ▼
+┌──────────────────────────────────────────────────────────────┐
+│                      外部服务集成                              │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────┐  │
+│  │ MiniMax  │ │ Qwen/    │ │ NASA     │ │ ChromaDB      │  │
+│  │ LLM API  │ │ OpenAI   │ │ SkyView  │ │ Vector Store  │  │
+│  └──────────┘ └──────────┘ └──────────┘ └───────────────┘  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐                    │
+│  │ Redis    │ │ Neo4j    │ │ Sentence │                    │
+│  │ Session  │ │ Graph DB │ │Transform │                    │
+│  └──────────┘ └──────────┘ └──────────┘                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🚀 快速开始
 
 ### 环境要求
 
-- Python 3.10+
-- pip
-- (可选) Docker / Ollama
+| 依赖 | 版本 | 说明 |
+|------|------|------|
+| Python | 3.11+ | 运行时环境 |
+| pip | 23.0+ | 包管理器 |
+| Docker | 24.0+ | (可选) 容器化部署 |
+| Redis | 7.0+ | (可选) 会话持久化 |
 
-### 安装
+### 本地开发
 
 ```bash
-# 1. 克隆项目
+# 1. 克隆仓库
 git clone https://github.com/LL-LK/tianwen-agi.git
 cd tianwen-agi
 
 # 2. 创建虚拟环境
 python -m venv .venv
-.venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/Mac
+# Windows
+.venv\Scripts\activate
+# Linux/macOS
+source .venv/bin/activate
 
 # 3. 安装依赖
 pip install -r requirements.txt
 
 # 4. 配置环境变量
 cp .env.example .env
-# 编辑 .env 填入 API Key 等配置
+# 编辑 .env 文件，填入你的 API Key
 
-# 5. 初始化星表
-python scripts/init_star_catalog.py
-
-# 6. 启动服务
+# 5. 启动服务
 python src/server.py
+# 或使用 hypercorn (生产模式)
+hypercorn src.server:app --bind 0.0.0.0:5000 --workers 2
 
-# 7. 打开浏览器
+# 6. 打开浏览器
 # http://localhost:5000
 ```
 
 ### Docker 部署
 
 ```bash
+# 构建镜像
+docker build -t tianwen-agi .
+
+# 运行容器
+docker run -d \
+  --name tianwen-agi \
+  -p 5000:5000 \
+  -e MINIMAX_API_KEY=your_key \
+  -e MINIMAX_GROUP_ID=your_group_id \
+  tianwen-agi
+
+# 使用 Docker Compose (含 ChromaDB)
 docker-compose up -d
+
+# 可选: 启动前端 Nginx
+docker-compose --profile optional up -d
 ```
 
-## Web 前端功能
+### Railway 一键部署
 
-| 功能模块 | 说明 |
-|----------|------|
-| **实时仪表盘** | 系统状态、Agent 活跃度、资源使用 |
-| **观测控制** | 制定观测计划、调度望远镜、查看实时图像 |
-| **3D 星图** | WebGL 交互式星图，支持目标搜索和轨道可视化 |
-| **假说管理** | 查看/创建/验证科学假说，贝叶斯后验概率 |
-| **文献研究** | 论文检索、摘要提取、引用分析 |
-| **发现日志** | 新发现追踪、科学意义评估、报告导出 |
-| **系统设置** | API Key 配置、模型选择、观测站参数 |
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/your-template-id)
 
-## API 接口文档
+1. 点击上方按钮或 Fork 本仓库
+2. 在 Railway 中导入项目
+3. 设置环境变量 (MINIMAX_API_KEY 等)
+4. 自动部署完成
 
-### 健康检查
+---
 
-| 方法 | 路径 | 说明 |
+## 🖥 Web 界面
+
+天问-AGI 提供 9 个功能面板，通过顶部标签页切换：
+
+| 面板 | 快捷键 | 功能描述 |
+|------|--------|----------|
+| 📡 **观测总控台** | `1` | 观测站实时状态、当前目标、设备状态、观测队列管理 |
+| 🌌 **实时星图** | `2` | Aladin Lite 集成，NASA SkyView 真实天文图像 |
+| 📊 **数据面板** | `3` | 光变曲线图表、最新图像、三阶段天体检测结果 |
+| 🔬 **研究闭环** | `4` | 当前研究周期状态、假说置信度、闭环历史记录 |
+| 🔔 **告警中心** | `5` | 系统告警列表，支持按类型筛选和已读标记 |
+| 🔭 **望远镜控制** | `6` | GOTO 指向、跟踪控制、成像参数、星表浏览、观测窗口计算 |
+| 💬 **智能对话** | `7` | LLM 驱动的 AI 助手，支持多轮对话 |
+| 📋 **系统日志** | `8` | 实时日志流，按级别筛选 |
+| 📖 **说明书** | `9` | 系统功能说明和使用指南 |
+
+**全局快捷键**: `R` 刷新数据 · `T` 连通性检测 · `1-9` 切换面板
+
+---
+
+## 📡 API 文档
+
+### 基础信息
+
+```
+Base URL: http://localhost:5000/api
+Content-Type: application/json
+Authentication: X-API-Key header (生产环境必需)
+```
+
+### 观测站 API
+
+| 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/api/health` | 系统健康检查 |
+| `GET` | `/api/observatory/status` | 获取观测站完整状态 |
+| `GET` | `/api/observatory/queue` | 获取观测队列 |
+| `POST` | `/api/observatory/queue` | 添加观测目标 |
+| `DELETE` | `/api/observatory/queue/<id>` | 移除队列项 |
+| `POST` | `/api/observatory/control` | 控制观测站 (start/stop/pause/resume) |
 
-### 系统状态
+**添加观测目标示例**:
+```json
+{
+  "target": "M31",
+  "priority": "P1",
+  "type": "galaxy",
+  "window": "2026-05-04 22:00-04:00",
+  "duration": "30min"
+}
+```
 
-| 方法 | 路径 | 说明 |
+### 设备 API
+
+| 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/api/status` | 获取系统完整状态 |
-| GET | `/api/status/agents` | 获取所有 Agent 状态 |
-| GET | `/api/status/resources` | 获取系统资源使用 |
+| `GET` | `/api/devices/status` | 获取所有设备状态 |
 
-### 观测管理
+### 数据 API
 
-| 方法 | 路径 | 说明 |
+| 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/api/observation/plan` | 获取观测计划 |
-| POST | `/api/observation/plan` | 创建观测计划 |
-| GET | `/api/observation/current` | 获取当前观测 |
-| POST | `/api/observation/start` | 开始观测 |
-| POST | `/api/observation/stop` | 停止观测 |
-| GET | `/api/observation/history` | 观测历史 |
-| GET | `/api/observation/image/<id>` | 获取观测图像 |
+| `GET` | `/api/data/detections/latest` | 三阶段检测结果 |
+| `GET` | `/api/data/images/latest` | 最新图像信息 |
+| `GET` | `/api/data/lightcurve?target=M31` | 光变曲线数据 |
 
-### 望远镜控制
+### 研究 API
 
-| 方法 | 路径 | 说明 |
+| 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/api/telescope/status` | 望远镜状态 |
-| POST | `/api/telescope/goto` | 指向目标 |
-| POST | `/api/telescope/park` | 归位 |
-| GET | `/api/telescope/capabilities` | 设备能力 |
+| `GET` | `/api/research/status` | 研究闭环状态 |
+| `GET` | `/api/research/cycles?page=1&per_page=20` | 历史研究周期 |
+| `POST` | `/api/hypothesis/test` | 假说验证 |
 
-### 数据挖掘
+**假说验证请求示例**:
+```json
+{
+  "hypothesis": {
+    "id": "hypo_abc123",
+    "statement": "M31星系核心存在中等质量黑洞",
+    "premises": ["恒星运动异常", "X射线辐射增强"],
+    "predictions": ["核心恒星速度弥散 > 200 km/s"],
+    "verification_method": "光谱观测",
+    "confidence": 0.7
+  },
+  "observation_data": [
+    {"wavelength": "H-alpha", "velocity_km_s": 215, "error": 15}
+  ],
+  "literature_evidence": [
+    {"source": "ApJ 2024", "finding": "支持核心黑洞假说"}
+  ]
+}
+```
 
-| 方法 | 路径 | 说明 |
+### 对话 API
+
+| 方法 | 端点 | 说明 |
 |------|------|------|
-| POST | `/api/data/mining/start` | 开始数据挖掘 |
-| GET | `/api/data/mining/status` | 挖掘状态 |
-| GET | `/api/data/mining/results` | 挖掘结果 |
-| GET | `/api/data/catalogs` | 可用星表列表 |
-| POST | `/api/data/query` | 查询星表数据 |
+| `POST` | `/api/chat` | LLM 对话 |
+| `POST` | `/api/cognitive` | 认知引擎预览 |
+| `POST` | `/api/llm/test` | LLM 连通性测试 |
+| `GET` | `/api/sessions` | 会话列表 |
+| `GET` | `/api/sessions/<id>` | 会话详情 |
 
-### 文献研究
+**对话请求示例**:
+```json
+{
+  "message": "M31距离地球多远？",
+  "session_id": "optional-session-id",
+  "provider": "minimax",
+  "config": {
+    "api_key": "your-api-key",
+    "group_id": "your-group-id",
+    "endpoint": "https://api.minimax.chat/v1",
+    "model": "MiniMax-M2.7",
+    "api_format": "native"
+  }
+}
+```
 
-| 方法 | 路径 | 说明 |
+### 星图 API
+
+| 方法 | 端点 | 说明 |
 |------|------|------|
-| POST | `/api/literature/search` | 搜索论文 |
-| GET | `/api/literature/paper/<id>` | 获取论文详情 |
-| GET | `/api/literature/recent` | 最新论文 |
-| POST | `/api/literature/analyze` | 分析论文 |
+| `GET` | `/api/skychart/realtime?target=M31&survey=DSS2/color&size=15&pixels=600` | 获取真实星图 |
 
-### 假说管理
+### 系统 API
 
-| 方法 | 路径 | 说明 |
+| 方法 | 端点 | 说明 |
 |------|------|------|
-| GET | `/api/hypothesis/list` | 假说列表 |
-| POST | `/api/hypothesis/generate` | 生成假说 |
-| GET | `/api/hypothesis/<id>` | 假说详情 |
-| POST | `/api/hypothesis/<id>/test` | 验证假说 |
-| PUT | `/api/hypothesis/<id>/status` | 更新假说状态 |
-
-### 发现追踪
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/discovery/list` | 发现列表 |
-| GET | `/api/discovery/<id>` | 发现详情 |
-| POST | `/api/discovery/evaluate` | 评估发现 |
-
-### 记忆系统
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/memory/knowledge` | 知识图谱 |
-| POST | `/api/memory/search` | 语义搜索 |
-| GET | `/api/memory/evolution` | 进化日志 |
-| GET | `/api/memory/patterns` | 学习模式 |
-
-### 会话管理
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/sessions` | 会话列表 |
-| POST | `/api/sessions` | 创建会话 |
-| GET | `/api/sessions/<id>` | 会话详情 |
-| DELETE | `/api/sessions/<id>` | 删除会话 |
+| `GET` | `/api/health` | 健康检查 |
+| `GET` | `/api/stats/dashboard` | HTML 统计面板 |
+| `GET` | `/api/stats/json` | JSON 统计 |
+| `GET` | `/api/docs` | 完整 API 文档 |
+| `GET` | `/api/alerts?unread=true` | 告警列表 |
+| `PUT` | `/api/alerts/<id>/read` | 标记告警已读 |
+| `GET` | `/api/logs?level=DISCOVERY&limit=50` | 系统日志 |
 
 ### WebSocket 端点
 
-| 路径 | 说明 |
-|------|------|
-| `/ws/observatory` | 观测站实时数据推送 |
-| `/ws/agent_status` | Agent 状态实时更新 |
-| `/ws/observation` | 观测过程实时推送 |
-
-## 核心模块详解
-
-### 1. HermesAGI (main.py)
-
-系统主控制器，负责初始化所有 Agent、管理生命周期、协调工作流。
-
-```python
-from main import HermesAGI
-
-agent = HermesAGI()
-await agent.initialize()
-status = await agent.get_status()
-```
-
-### 2. CognitiveEngine (推理引擎)
-
-封装 LLM 调用，支持多种模型后端（OpenAI / Ollama / 本地模型）。
-
-```python
-from reasoning_engine import ModelConfig
-
-config = ModelConfig(
-    model="gpt-4",
-    temperature=0.7,
-    max_tokens=4096
-)
-```
-
-### 3. DataMiner (数据挖掘)
-
-从 Kepler/TESS/GAIA 等星表挖掘数据，支持 SQL 查询和批量导出。
-
-### 4. LiteratureResearcher (文献研究)
-
-自动检索 arXiv、SAO/NASA ADS、CrossRef，提取摘要和关键发现。
-
-### 5. HypothesisGenerator (假说生成)
-
-基于观测数据和文献证据，使用 LLM 自动生成可验证的科学假说。
-
-### 6. HypothesisTester (假说验证)
-
-贝叶斯推断框架，支持 FDR 控制、交叉验证、效应量计算。
-
-### 7. ObservationExecutor (观测执行)
-
-管理望远镜观测流程：指向 → 对焦 → 曝光 → 图像采集 → 数据处理。
-
-### 8. VectorMemory (向量记忆)
-
-基于 ChromaDB 的语义搜索系统，支持论文嵌入、相似度检索、知识图谱构建。
-
-## 部署指南
-
-### Railway
-
-```bash
-# 自动从 GitHub 部署，设置环境变量：
-# - DEBUG=false
-# - API_KEY=your_secret_key
-# - REDIS_URL=redis://...
-```
-
-### Cloudflare Workers
-
-API 代理和静态资源加速，配置见 `deploy/cloudflare/`。
-
-### Docker
-
-```bash
-docker build -t tianwen-agi .
-docker run -p 5000:5000 \
-  -e API_KEY=your_key \
-  -v $(pwd)/memory:/app/memory \
-  -v $(pwd)/data:/app/data \
-  tianwen-agi
-```
-
-## 开发指南
-
-### 运行测试
-
-```bash
-# 单元测试
-python -m pytest tests/test_runtime_modules.py -v
-
-# 集成测试
-python -m pytest tests/integration_test.py -v
-
-# 全部测试
-python -m pytest tests/ -v
-```
-
-### 代码规范
-
-- Python 3.10+ 类型注解
-- 异步优先 (asyncio/Quart)
-- 统一数据模型 (data_models.py)
-- 结构化日志 (runtime_logger.py)
-
-## 常见问题
-
-**Q: 如何接入真实望远镜？**
-A: 配置 Seestar MCP 客户端 (`seestar_mcp_client.py`)，或通过 ASCOM 驱动连接。
-
-**Q: 支持哪些 LLM？**
-A: OpenAI GPT-4、Ollama 本地模型（Llama3/Qwen2）、Claude API。
-
-**Q: 数据存储在哪里？**
-A: 向量数据在 ChromaDB（`memory/`），星表在 SQLite（`data/star_catalogs.db`），会话可选 Redis。
-
-**Q: 如何离线运行？**
-A: 使用 Ollama 本地模型 + 离线星表数据，完全无需网络。
-
-## 版本历史
-
-| 版本 | 日期 | 更新内容 |
+| 端点 | 说明 | 消息类型 |
 |------|------|----------|
-| v3.8 | 2026-05 | 项目结构重组，文档完善 |
-| v3.7 | 2026-04 | 假说验证 v2.0，贝叶斯推断 |
-| v3.6 | 2026-04 | 多智能体协调器，实时桥接 |
-| v3.5 | 2026-03 | 向量记忆，ChromaDB 集成 |
+| `/ws/observatory` | 观测站实时推送 | status_update, queue_update, new_alert, heartbeat |
+| `/ws/agent_status` | Agent 状态推送 | cognitive, planning, execution, evolution |
+| `/ws/observation` | 观测状态推送 | device_status, queue_status, heartbeat |
 
-## 许可证
+**WebSocket 连接示例 (JavaScript)**:
+```javascript
+const ws = new WebSocket('wss://your-app.railway.app/ws/observatory');
 
+ws.onopen = () => console.log('Connected');
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  switch(data.type) {
+    case 'status_update': updateUI(data.data); break;
+    case 'heartbeat': ws.send(JSON.stringify({type: 'pong'})); break;
+  }
+};
+
+// 心跳保活
+setInterval(() => ws.send('ping'), 30000);
+```
+
+---
+
+## 🤖 LLM 智能对话配置
+
+### 支持的供应商
+
+| 供应商 | 默认模型 | API 格式 | 注册地址 |
+|--------|----------|----------|----------|
+| **MiniMax** | MiniMax-M2.7 | 原生 / OpenAI 兼容 | [platform.minimaxi.com](https://platform.minimaxi.com) |
+| **通义千问** | qwen-plus | OpenAI 兼容 | [dashscope.console.aliyun.com](https://dashscope.console.aliyun.com) |
+| **OpenAI 兼容** | gpt-4o-mini | OpenAI 兼容 | 支持任何 OpenAI 格式供应商 |
+
+### 配置方式
+
+**方式一: 环境变量 (推荐)**
+```bash
+# .env 文件
+MINIMAX_API_KEY=your_api_key_here
+MINIMAX_GROUP_ID=your_group_id_here
+MINIMAX_MODEL=MiniMax-M2.7
+```
+
+**方式二: Web 界面配置**
+1. 点击右上角 🔑 按钮
+2. 选择供应商并填入 API Key
+3. 点击"保存配置"
+4. 点击"LLM测试"验证连通性
+
+### 本地回退机制
+
+当 LLM API 不可用时，系统自动切换到本地规则回复，支持以下话题：
+- 天体信息查询 (M31、M42 等)
+- 望远镜操作帮助
+- 假说生成引导
+- 数据挖掘说明
+- 系统功能介绍
+
+---
+
+## 📁 项目结构
+
+```
+tianwen-agi/
+├── .github/workflows/          # GitHub Actions CI/CD
+│   ├── ci.yml                  # 持续集成 (lint → test → docker-build)
+│   ├── docker-build.yml        # Docker 镜像构建并推送到 GHCR
+│   └── deploy-railway.yml      # Railway 自动部署
+├── src/                        # 后端源码
+│   ├── server.py               # Quart API 服务器 (主入口)
+│   ├── main.py                 # HermesAGI Agent 运行时
+│   ├── reasoning_engine.py     # LLM 推理引擎
+│   ├── runtime_logger.py       # 运行时日志系统
+│   ├── agents/                 # AI Agent 模块
+│   │   ├── coordinator.py      # 协调 Agent
+│   │   ├── discovery.py        # 发现 Agent
+│   │   ├── hypothesis_gen.py   # 假说生成 Agent
+│   │   ├── hypothesis_test.py  # 假说检验 Agent
+│   │   ├── observation.py      # 观测 Agent
+│   │   ├── literature.py       # 文献检索 Agent
+│   │   ├── data_miner.py       # 数据挖掘 Agent
+│   │   ├── browser.py          # 浏览器 Agent
+│   │   ├── self_review.py      # 自我审查 Agent
+│   │   └── tri_agent.py        # 三体 Agent
+│   ├── core/                   # 核心引擎
+│   │   ├── cognitive.py        # 认知引擎 + 规划引擎
+│   │   ├── reasoning.py        # 推理引擎
+│   │   └── dream.py            # 梦想引擎
+│   ├── astronomy/              # 天文计算模块
+│   │   ├── algorithms.py       # 天文算法
+│   │   ├── catalog.py          # 天体星表
+│   │   ├── sky_chart.py        # 星图生成 (NASA SkyView)
+│   │   ├── platesolver.py      # Plate Solving
+│   │   ├── sextractor.py       # Source Extractor
+│   │   ├── fits_processor.py   # FITS 文件处理
+│   │   ├── star_recognizer.py  # 星体识别
+│   │   ├── analyzer.py         # 数据分析
+│   │   └── pipeline.py         # 处理流水线
+│   ├── observation/            # 观测模块
+│   │   ├── scheduler.py        # 观测调度器
+│   │   ├── enhanced_scheduler.py # 增强调度器
+│   │   ├── executor.py         # 观测执行器
+│   │   ├── workflow.py         # 观测工作流
+│   │   ├── realtime.py         # 实时观测
+│   │   └── sky_chart.py        # 星图 API 封装
+│   ├── telescope/              # 望远镜控制
+│   │   ├── seestar_client.py   # Seestar S50 客户端
+│   │   ├── simulator.py        # 望远镜模拟器
+│   │   ├── scheduler.py        # 望远镜调度
+│   │   ├── mqtt_bridge.py      # MQTT 桥接
+│   │   └── linker.py           # 设备连接器
+│   ├── research/               # 研究闭环
+│   │   ├── hypothesis.py       # 假说模型
+│   │   ├── hypothesis_tester.py # 假说检验器
+│   │   ├── discovery.py        # 发现引擎
+│   │   ├── literature.py       # 文献检索
+│   │   ├── linker.py           # 知识链接
+│   │   └── loop.py             # 研究循环
+│   ├── data/                   # 数据处理
+│   │   ├── collector.py        # 数据采集
+│   │   ├── processor.py        # 数据处理
+│   │   ├── classifier.py       # 数据分类
+│   │   ├── miner.py            # 数据挖掘
+│   │   ├── analysis.py         # 数据分析
+│   │   ├── kepler.py           # Kepler 数据
+│   │   └── weather.py          # 气象数据
+│   ├── memory/                 # 记忆系统
+│   │   ├── persistence.py      # 持久化记忆
+│   │   ├── vector.py           # 向量记忆
+│   │   ├── vector_store.py     # 向量存储
+│   │   ├── rag.py              # RAG 检索
+│   │   ├── session.py          # 会话管理
+│   │   └── scenario.py         # 场景记忆
+│   ├── learning/               # 学习系统
+│   │   ├── dream.py            # 梦想学习
+│   │   ├── overfit.py          # 过拟合检测
+│   │   ├── rl_scheduler.py     # 强化学习调度
+│   │   └── skill_integration.py # 技能整合
+│   ├── utils/                  # 工具模块
+│   │   ├── config.py           # 配置管理
+│   │   ├── logger.py           # 日志工具
+│   │   ├── sandbox.py          # 代码沙箱
+│   │   ├── visualization.py    # 可视化工具
+│   │   └── models.py           # 数据模型
+│   └── web/                    # Web 服务
+│       ├── dashboard.py        # 统计面板
+│       ├── bridge.py           # 实时桥接
+│       └── session.py          # Web 会话
+├── web/                        # 前端静态文件
+│   └── index.html              # 单页应用 (SPA)
+├── tests/                      # 测试文件
+├── Dockerfile                  # Docker 镜像构建
+├── docker-compose.yml          # Docker Compose 编排
+├── requirements.txt            # Python 依赖
+├── Procfile                    # Railway 部署配置
+├── .env.example                # 环境变量模板
+├── .gitignore                  # Git 忽略规则
+├── .bandit                     # 安全扫描配置
+├── .pre-commit-config.yaml     # Pre-commit 钩子
+└── README.md                   # 项目文档
+```
+
+---
+
+## 🔄 CI/CD 流程
+
+### GitHub Actions 工作流
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────────┐
+│  ci.yml      │     │docker-build  │     │ deploy-railway   │
+│              │     │  .yml        │     │  .yml            │
+├──────────────┤     ├──────────────┤     ├──────────────────┤
+│ 1. Lint      │     │ 1. Checkout  │     │ 1. Checkout      │
+│   (flake8)   │     │ 2. Docker    │     │ 2. Setup Node.js │
+│ 2. Test      │     │    Buildx    │     │ 3. Railway CLI   │
+│   (pytest)   │     │ 3. GHCR      │     │ 4. Deploy        │
+│ 3. Docker    │     │    Login     │     │ 5. Health Check  │
+│    Build     │     │ 4. Build &   │     │                  │
+│              │     │    Push      │     │                  │
+└──────────────┘     └──────────────┘     └──────────────────┘
+ 触发: push/PR       触发: push/tag        触发: push/tag
+       main,trae          main,trae,v*           main,trae,v*
+```
+
+### Docker 镜像
+
+镜像自动推送到 **GitHub Container Registry (GHCR)**:
+
+```bash
+# 拉取最新镜像
+docker pull ghcr.io/ll-lk/tianwen-agi:latest
+
+# 或指定版本
+docker pull ghcr.io/ll-lk/tianwen-agi:main
+docker pull ghcr.io/ll-lk/tianwen-agi:v2.3.0
+```
+
+---
+
+## 🔒 安全说明
+
+### 已实施的安全措施
+
+- ✅ `.env` 文件已在 `.gitignore` 中排除
+- ✅ API Key 使用 `secrets.compare_digest()` 防时序攻击
+- ✅ 生产环境强制 HTTPS (HSTS)
+- ✅ 安全响应头 (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection)
+- ✅ CORS 白名单控制
+- ✅ 速率限制 (默认 30 次/60 秒)
+- ✅ Docker 非 root 用户运行
+- ✅ 输入 sanitization (字符串截断)
+- ✅ 生产环境隐藏详细错误信息
+- ✅ Bandit 安全扫描配置
+
+### 安全建议
+
+1. **生产环境必须设置强 API_KEY**:
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(32))"
+   ```
+
+2. **设置 DEBUG=false** (生产环境默认)
+
+3. **配置 CORS_ORIGINS** 为你的前端域名
+
+4. **定期轮换 API Key**
+
+5. **不要在代码中硬编码任何密钥**
+
+---
+
+## 🗺 路线图
+
+### v2.4 (计划中)
+
+- [ ] 真实望远镜 (Seestar S50) 完整集成
+- [ ] Neo4j 图数据库知识图谱
+- [ ] 多语言支持 (i18n)
+- [ ] PWA 离线支持增强
+- [ ] 观测数据导出 (CSV/FITS)
+
+### v2.5 (远期)
+
+- [ ] 多观测站协同
+- [ ] 实时天体分类深度学习模型
+- [ ] 自动生成观测报告 (PDF)
+- [ ] 移动端适配
+- [ ] 社区插件系统
+
+---
+
+## 🤝 贡献指南
+
+欢迎贡献！请遵循以下流程：
+
+1. **Fork** 本仓库
+2. 创建特性分支: `git checkout -b feature/amazing-feature`
+3. 提交更改: `git commit -m 'feat: add amazing feature'`
+4. 推送到分支: `git push origin feature/amazing-feature`
+5. 创建 **Pull Request**
+
+### 提交规范
+
+使用 [Conventional Commits](https://www.conventionalcommits.org/) 格式：
+
+| 类型 | 说明 |
+|------|------|
+| `feat:` | 新功能 |
+| `fix:` | Bug 修复 |
+| `docs:` | 文档更新 |
+| `refactor:` | 代码重构 |
+| `perf:` | 性能优化 |
+| `test:` | 测试相关 |
+| `chore:` | 构建/工具变更 |
+
+### 代码质量
+
+```bash
+# 安装 pre-commit 钩子
+pip install pre-commit
+pre-commit install
+
+# 运行检查
+pre-commit run --all-files
+```
+
+---
+
+## 📄 许可证
+
+本项目基于 **MIT License** 开源。
+
+```
 MIT License
+
+Copyright (c) 2025-2026 LL-LK
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction...
+```
+
+---
+
+<p align="center">
+  <sub>Made with ❤️ by <a href="https://github.com/LL-LK">LL-LK</a></sub>
+  <br>
+  <sub>🔭 天问-AGI · 让天文观测智能化</sub>
+</p>
