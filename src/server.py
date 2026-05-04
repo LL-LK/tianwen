@@ -377,7 +377,7 @@ def require_api_key(f):
     return decorated
 
 
-async def call_minimax(message: str, api_key: str = None, group_id: str = None, endpoint: str = None, model: str = None, api_format: str = None) -> dict:
+async def call_minimax(message: str, api_key: str = None, group_id: str = None, endpoint: str = None, model: str = None, api_format: str = None, system_prompt: str = None) -> dict:
     """调用MiniMax API，支持原生格式和OpenAI兼容格式"""
     group_id = group_id or os.environ.get("MINIMAX_GROUP_ID")
     api_key = api_key or os.environ.get("MINIMAX_API_KEY")
@@ -392,12 +392,17 @@ async def call_minimax(message: str, api_key: str = None, group_id: str = None, 
     endpoint = endpoint.rstrip("/")
     client = _get_http_client()
 
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": message})
+
     try:
         if api_format == "openai":
             url = f"{endpoint}/chat/completions"
             payload = {
                 "model": model,
-                "messages": [{"role": "user", "content": message}],
+                "messages": messages,
                 "max_tokens": 2000,
                 "temperature": 0.7,
             }
@@ -409,7 +414,7 @@ async def call_minimax(message: str, api_key: str = None, group_id: str = None, 
             url = f"{endpoint}/text/chatcompletion_v2"
             payload = {
                 "model": model,
-                "messages": [{"role": "user", "content": message}],
+                "messages": messages,
                 "max_tokens": 2000,
                 "temperature": 0.7,
             }
@@ -461,7 +466,7 @@ async def call_minimax(message: str, api_key: str = None, group_id: str = None, 
         return {"error": f"MiniMax调用异常: {type(e).__name__}: {str(e)}", "content": None}
 
 
-async def call_openai_compatible(message: str, api_key: str, endpoint: str, model: str, api_format: str = None) -> dict:
+async def call_openai_compatible(message: str, api_key: str, endpoint: str, model: str, api_format: str = None, system_prompt: str = None) -> dict:
     """调用OpenAI兼容格式的API (Qwen, OpenAI, 本地部署等)，支持Anthropic格式"""
     if not api_key or not endpoint or not model:
         logger.error(f"[LLM] 配置缺失: api_key={'***' if api_key else 'None'}, endpoint={endpoint}, model={model}")
@@ -471,12 +476,17 @@ async def call_openai_compatible(message: str, api_key: str, endpoint: str, mode
     endpoint = endpoint.rstrip("/")
     client = _get_http_client()
 
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": message})
+
     try:
         if api_format == "anthropic":
             url = f"{endpoint}/v1/messages"
             payload = {
                 "model": model,
-                "messages": [{"role": "user", "content": message}],
+                "messages": messages,
                 "max_tokens": 2000,
                 "temperature": 0.7,
             }
@@ -489,7 +499,7 @@ async def call_openai_compatible(message: str, api_key: str, endpoint: str, mode
             url = f"{endpoint}/chat/completions"
             payload = {
                 "model": model,
-                "messages": [{"role": "user", "content": message}],
+                "messages": messages,
                 "max_tokens": 2000,
                 "temperature": 0.7,
             }
@@ -602,6 +612,8 @@ async def chat():
     session_id = data.get("session_id")
     provider = data.get("provider", "minimax")
     provider_config = data.get("config", {})
+    system_prompt = data.get("system_prompt", "")
+    context = data.get("context", "")
 
     if not message:
         return jsonify({"error": "消息不能为空"}), 400
@@ -640,6 +652,7 @@ async def chat():
                 endpoint=provider_config.get("endpoint"),
                 model=provider_config.get("model"),
                 api_format=provider_config.get("api_format"),
+                system_prompt=system_prompt,
             )
             provider_name = provider_config.get("model", "MiniMax")
         elif provider in ("qwen", "openai"):
@@ -649,14 +662,21 @@ async def chat():
                 endpoint=provider_config.get("endpoint"),
                 model=provider_config.get("model"),
                 api_format=provider_config.get("api_format"),
+                system_prompt=system_prompt,
             )
             provider_name = provider_config.get("model", provider)
         else:
-            llm_result = await call_minimax(message)
+            llm_result = await call_minimax(message, system_prompt=system_prompt)
             provider_name = "MiniMax (env)"
 
         if llm_result.get("error"):
-            response_text = _generate_local_response(message)
+            local_result = _generate_local_response(message, system_prompt, context)
+            if local_result:
+                response_text = local_result["response"]
+                note = local_result.get("note", "本地规则回复")
+            else:
+                response_text = f"我收到了你的消息：'{message[:50]}'。作为本地AI助手，我的功能有限。建议配置 LLM API（如MiniMax）以获得更智能的对话体验。你可以查看 /api/docs 了解系统所有功能。"
+                note = "本地规则回复（无匹配规则）"
             response_data = {
                 "session_id": session_id,
                 "cognitive": {"intent": "chat", "entities": [], "skills": [], "complexity": "low"},
@@ -664,7 +684,7 @@ async def chat():
                 "output": response_text,
                 "metrics": {"tokens_used": 0, "latency_ms": 0},
                 "status": "local_response",
-                "note": f"LLM API ({provider_name}) 未配置或不可用，使用本地规则回复",
+                "note": f"LLM API ({provider_name}) 未配置或不可用，使用本地规则回复: {note}",
             }
         else:
             response_text = llm_result["content"]
@@ -766,29 +786,112 @@ async def test_llm_connectivity():
     return jsonify(result)
 
 
-def _generate_local_response(message: str) -> str:
-    """本地规则回复生成器"""
+def _generate_local_response(message: str, system_prompt: str = None, context: str = None) -> dict:
+    """本地规则回复生成器 - 覆盖全系统天文知识和功能"""
     msg_lower = message.lower()
-    
-    if any(word in msg_lower for word in ["你好", "hello", "hi", "介绍"]):
-        return "你好！我是天问-AGI全自动天文观测站AI助手。我可以帮助你：\n1. 查询天体信息（如M31、NGC224等）\n2. 控制望远镜进行观测\n3. 生成和验证科学假说\n4. 挖掘天文数据\n5. 获取实时星图\n\n请告诉我你需要什么帮助？"
-    
-    if any(word in msg_lower for word in ["m31", "仙女座", "andromeda"]):
-        return "M31（仙女座星系）是距离银河系最近的大型星系，距离约250万光年。它是本星系群中最大的星系之一，包含约1万亿颗恒星。你可以使用 /api/skychart?target=M31 获取它的星图。"
-    
-    if any(word in msg_lower for word in ["望远镜", "telescope"]):
-        return "系统支持望远镜控制功能。当前使用模拟器进行演示，真实望远镜需要配置Seestar S50连接。你可以通过 /api/telescope/status 查看望远镜状态。"
-    
-    if any(word in msg_lower for word in ["假说", "hypothesis"]):
-        return "系统支持科学假说生成和验证。你可以使用 /api/hypothesis/generate 生成假说，使用 /api/hypothesis/test 进行验证。验证需要提供真实观测数据和文献证据。"
-    
-    if any(word in msg_lower for word in ["数据", "data", "挖掘", "miner"]):
-        return "系统内置数据挖掘功能，可以从天文数据中发现模式、提取特征、检测异常。使用 /api/data/miner?target=目标名称 进行查询。"
-    
-    if any(word in msg_lower for word in ["帮助", "help", "怎么用", "功能"]):
-        return "天问-AGI主要功能：\n- 星图查询：GET /api/skychart?target=M31\n- 望远镜控制：GET /api/telescope/status\n- 假说生成：POST /api/hypothesis/generate\n- 假说验证：POST /api/hypothesis/test\n- 数据挖掘：GET /api/data/miner?target=目标\n- 观测数据：GET /api/observation/data\n- 完整文档：GET /api/docs"
-    
-    return f"我收到了你的消息：'{message[:50]}'。作为本地AI助手，我的功能有限。建议配置 LLM API（如MiniMax）以获得更智能的对话体验。你可以查看 /api/docs 了解系统所有功能。"
+    response = None
+    note = None
+
+    if any(word in msg_lower for word in ["你好", "hello", "hi", "介绍", "你是谁", "你能做什么"]):
+        response = "你好！我是**天问-AGI**全自动天文观测站的AI助手。\n\n我可以帮助你：\n1. 查询天体信息（如M31、NGC224、M42等）\n2. 控制望远镜进行观测\n3. 生成和验证科学假说\n4. 挖掘天文数据\n5. 获取实时星图（NASA SkyView + Aladin Lite）\n\n请告诉我你需要什么帮助？"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m31", "仙女座", "andromeda"]):
+        response = "**M31（仙女座星系）** 是距离银河系最近的大型旋涡星系，距离约**250万光年**。\n\n- 类型: SA(s)b 旋涡星系\n- 视星等: 3.44\n- 角大小: 190' × 60'\n- 坐标: RA 00h42m44.3s, Dec +41°16'09\"\n- 质量: ~1.5×10¹² M☉\n- 恒星数: ~1万亿颗\n\n它是本星系群中最大的星系，预计在约45亿年后将与银河系碰撞合并。你可以使用实时星图面板搜索M31查看NASA SkyView图像。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m42", "猎户座大星云", "orion nebula"]):
+        response = "**M42（猎户座大星云）** 是位于猎户座的一个弥漫星云，距离约**1344光年**。\n\n- 类型: 发射/反射星云\n- 视星等: 4.0\n- 角大小: 65' × 60'\n- 坐标: RA 05h35m17.3s, Dec -05°23'28\"\n- 特征: 包含猎户座四边形星团（Trapezium Cluster）\n\n它是距离地球最近的大质量恒星形成区之一，是天文爱好者最常观测的深空天体。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m45", "昴星团", "pleiades", "七姐妹"]):
+        response = "**M45（昴星团/七姐妹星团）** 是位于金牛座的疏散星团，距离约**444光年**。\n\n- 类型: 疏散星团\n- 视星等: 1.6\n- 角大小: 110'\n- 坐标: RA 03h47m24s, Dec +24°07'00\"\n- 年龄: ~1亿年\n- 成员星: 约1000颗\n\n昴星团是肉眼可见的最著名星团之一，在中国古代被称为\"七姐妹\"。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m1", "蟹状星云", "crab nebula"]):
+        response = "**M1（蟹状星云）** 是位于金牛座的超新星遗迹，距离约**6500光年**。\n\n- 类型: 超新星遗迹\n- 视星等: 8.4\n- 角大小: 6' × 4'\n- 坐标: RA 05h34m31.9s, Dec +22°00'52\"\n- 来源: 公元1054年超新星爆发（SN 1054）\n- 特征: 中心有一颗脉冲星（蟹状星云脉冲星，33ms周期）\n\n中国宋代天文学家详细记录了这次超新星爆发。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m51", "涡状星系", "whirlpool"]):
+        response = "**M51（涡状星系）** 是位于猎犬座的相互作用星系对，距离约**2300万光年**。\n\n- 类型: SA(s)bc 旋涡星系\n- 视星等: 8.4\n- 角大小: 11.2' × 6.9'\n- 坐标: RA 13h29m52.7s, Dec +47°11'43\"\n- 特征: 与伴星系NGC 5195正在相互作用\n\nM51是最著名的\"grand design\"旋涡星系之一，旋臂结构非常清晰。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m81", "波德星系", "bode"]):
+        response = "**M81（波德星系）** 是位于大熊座的旋涡星系，距离约**1200万光年**。\n\n- 类型: SA(s)ab 旋涡星系\n- 视星等: 6.9\n- 角大小: 26.9' × 14.1'\n- 坐标: RA 09h55m33.2s, Dec +69°03'55\"\n- 特征: 与M82（雪茄星系）形成相互作用对\n\nM81是M81星系群中最大的星系。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m101", "风车星系", "pinwheel"]):
+        response = "**M101（风车星系）** 是位于大熊座的正面旋涡星系，距离约**2100万光年**。\n\n- 类型: SAB(rs)cd 旋涡星系\n- 视星等: 7.9\n- 角大小: 28.8' × 26.9'\n- 坐标: RA 14h03m12.6s, Dec +54°20'57\"\n- 特征: 直径约17万光年，比银河系大约70%\n\nM101是最大的正面朝向我们的旋涡星系之一。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m104", "草帽星系", "sombrero"]):
+        response = "**M104（草帽星系）** 是位于室女座的旋涡星系，距离约**2800万光年**。\n\n- 类型: SA(s)a 旋涡星系\n- 视星等: 8.0\n- 角大小: 8.7' × 3.5'\n- 坐标: RA 12h39m59.4s, Dec -11°37'23\"\n- 特征: 显著的尘埃带和巨大的核球，形似墨西哥草帽\n\nM104因其独特的侧向外观而成为最上镜的星系之一。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m57", "环状星云", "ring nebula"]):
+        response = "**M57（环状星云）** 是位于天琴座的行星状星云，距离约**2300光年**。\n\n- 类型: 行星状星云\n- 视星等: 8.8\n- 角大小: 1.4' × 1.1'\n- 坐标: RA 18h53m35.1s, Dec +33°01'45\"\n- 特征: 中心是一颗白矮星（15.8等）\n\nM57是最著名的行星状星云之一，是类太阳恒星死亡后的遗迹。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m27", "哑铃星云", "dumbbell"]):
+        response = "**M27（哑铃星云）** 是位于狐狸座的行星状星云，距离约**1200光年**。\n\n- 类型: 行星状星云\n- 视星等: 7.5\n- 角大小: 8.0' × 5.7'\n- 坐标: RA 19h59m36.3s, Dec +22°43'16\"\n- 特征: 第一个被发现的行星状星云（1764年，梅西耶）\n\nM27是北天最亮的行星状星云之一。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["星图", "skychart", "sky chart", "星空图"]):
+        response = "**实时星图功能** 使用双重数据源：\n\n1. **NASA SkyView API** - 获取真实天文图像数据\n   - 支持巡天: DSS2（光学）、2MASS（红外）、SDSS、IRAS\n   - 可自定义视场大小和分辨率\n   \n2. **Aladin Lite** - 交互式星图可视化\n   - 可缩放、平移、点击天体查看信息\n   - 支持Simbad天体数据库查询\n\n请在「实时星图」面板中输入目标名称（如M31、M42）并选择巡天类型来使用。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["望远镜", "telescope", "goto", "指向"]):
+        response = "**望远镜控制系统** 支持多种连接方式：\n\n- **ASCOM** (Windows): 标准天文设备驱动协议\n- **INDI** (跨平台): 开源天文设备控制协议\n- **Seestar MCP**: 智能望远镜移动控制协议\n- **串口直连**: RS-232/USB串口连接\n- **局域网**: TCP/IP网络连接\n\n功能包括: GOTO指向、恒星/月亮/太阳速移、跟踪、曝光拍摄、Plate Solving解析。\n\n请在「望远镜控制」面板中操作。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["研究", "假说", "hypothesis", "闭环", "research"]):
+        response = "**研究闭环** 是天问-AGI的核心自主科学发现流程：\n\n1. **文献检索** → 获取最新天文论文\n2. **假说生成** → 基于数据和文献生成科学假说\n3. **假说检验** → 通过观测验证假说\n4. **发现确认** → 确认新发现\n5. **观测调度** → 自动安排后续观测\n6. **自我进化** → 优化观测策略\n\n请在「研究闭环」面板中查看当前状态。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["数据挖掘", "data miner", "检测", "detection"]):
+        response = "**数据挖掘模块** 提供以下功能：\n\n- 天体检测: 在图像中自动检测天体\n- 天体分类: 将检测到的天体分类（恒星/星系/小行星等）\n- 光变曲线: 分析天体亮度随时间的变化\n- 异常检测: 发现异常天文事件\n\n请在「数据可视化」面板中查看最新检测结果。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["api", "端点", "endpoint", "接口"]):
+        response = "**天问-AGI API 端点列表**：\n\n- `/api/health` - 健康检查\n- `/api/observatory/status` - 观测站状态\n- `/api/chat` - 智能对话\n- `/api/skychart/realtime` - 实时星图\n- `/api/telescope/status` - 望远镜状态\n- `/api/research/status` - 研究状态\n- `/api/data/detections/latest` - 最新检测\n- `/api/alerts` - 告警列表\n- `/api/logs` - 系统日志\n\n完整API文档: `/api/docs`"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["梅西耶", "messier", "星表", "catalog"]):
+        response = "**内置星表** 包含110个梅西耶天体和多个著名NGC天体的完整数据：\n\n- 每个天体包含: 名称、坐标(RA/Dec)、类型、星等、角大小\n- 类型包括: 星系(galaxy)、星云(nebula)、星团(cluster)、行星状星云(planetary_nebula)、超新星遗迹(snr)\n\n你可以通过 `/api/telescope/catalog` API获取完整星表数据。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["太阳系", "行星", "planet", "solar system"]):
+        response = "**太阳系** 包含8大行星：\n\n1. 水星 - 最近太阳，无大气层\n2. 金星 - 最亮行星，逆向自转\n3. 地球 - 唯一已知存在生命\n4. 火星 - 红色星球，有季节变化\n5. 木星 - 最大行星，大红斑\n6. 土星 - 壮观环系统\n7. 天王星 - 侧躺自转\n8. 海王星 - 最强风暴\n\n此外还有矮行星（冥王星等）、小行星带、柯伊伯带和奥尔特云。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["黑洞", "black hole", "事件视界"]):
+        response = "**黑洞** 是时空曲率极大、连光都无法逃逸的天体。\n\n- 恒星质量黑洞: 3-100 M☉，由大质量恒星坍缩形成\n- 中等质量黑洞: 100-10⁵ M☉\n- 超大质量黑洞: 10⁶-10¹⁰ M☉，位于星系中心\n\n银河系中心的**人马座A***是一个约400万太阳质量的超大质量黑洞。2019年，事件视界望远镜(EHT)首次拍摄到M87星系中心黑洞的阴影。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["暗物质", "dark matter", "暗能量", "dark energy"]):
+        response = "**暗物质和暗能量** 是现代宇宙学两大未解之谜：\n\n**暗物质** (~27%宇宙):\n- 不发光、不吸收光，仅通过引力作用可探测\n- 证据: 星系旋转曲线、引力透镜、宇宙微波背景\n- 候选粒子: WIMP、轴子等\n\n**暗能量** (~68%宇宙):\n- 驱动宇宙加速膨胀\n- 证据: Ia型超新星观测、重子声学振荡\n- 可能解释: 宇宙学常数(Λ)、精质(quintessence)\n\n普通物质仅占宇宙的约5%。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["大爆炸", "big bang", "宇宙起源", "cmb"]):
+        response = "**大爆炸理论** 是描述宇宙起源和演化的主流宇宙学模型。\n\n- 约138亿年前，宇宙从一个极热极密的状态开始膨胀\n- 关键证据:\n  1. 宇宙微波背景辐射(CMB) - 大爆炸的余晖\n  2. 哈勃定律 - 星系退行速度与距离成正比\n  3. 原初元素丰度 - 氢(~75%)和氦(~25%)\n\n宇宙经历了暴涨、核合成、复合、黑暗时代、再电离等阶段，最终形成了我们今天看到的宇宙结构。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["恒星演化", "stellar evolution", "主序星"]):
+        response = "**恒星演化** 取决于恒星的质量：\n\n**低质量恒星** (<0.5 M☉):\n主序星 → 红矮星 → 白矮星\n\n**类太阳恒星** (0.5-8 M☉):\n主序星 → 红巨星 → 行星状星云 → 白矮星\n\n**大质量恒星** (>8 M☉):\n主序星 → 红超巨星 → 超新星爆发 → 中子星/黑洞\n\n恒星在主序阶段通过氢聚变为氦维持稳定，主序寿命与质量成反比。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["系外行星", "exoplanet", "宜居"]):
+        response = "**系外行星** 是太阳系外围绕其他恒星运行的行星。\n\n- 已确认: 5000+颗\n- 主要探测方法:\n  1. 凌星法 (Transit) - 开普勒/TESS任务\n  2. 径向速度法 (Radial Velocity)\n  3. 直接成像 (Direct Imaging)\n  4. 微引力透镜 (Microlensing)\n\n**宜居带** 是行星表面可能存在液态水的轨道范围。TRAPPIST-1系统有7颗类地行星，其中3颗位于宜居带。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["帮助", "help", "怎么用", "功能"]):
+        response = "天问-AGI主要功能：\n- 星图查询：GET /api/skychart?target=M31\n- 望远镜控制：GET /api/telescope/status\n- 假说生成：POST /api/hypothesis/generate\n- 假说验证：POST /api/hypothesis/test\n- 数据挖掘：GET /api/data/miner?target=目标\n- 观测数据：GET /api/observation/data\n- 完整文档：GET /api/docs"
+        note = "本地规则回复"
+
+    if response is None:
+        return None
+
+    return {"response": response, "note": note}
 
 @app.route("/api/cognitive", methods=["POST"])
 async def cognitive_preview():
