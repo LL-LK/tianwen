@@ -342,7 +342,7 @@ class StageIIClassifier:
 
         return crop
 
-    def _preprocess(self, crop: np.ndarray) -> "torch.Tensor":
+    def _preprocess(self, crop: np.ndarray) -> "np.ndarray":
         """
         图像预处理
 

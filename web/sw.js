@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tianwen-agi-v2';
+const CACHE_NAME = 'tianwen-agi-v1';
 const ASSETS = [
   '/',
   '/index.html',

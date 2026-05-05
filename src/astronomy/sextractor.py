@@ -261,40 +261,9 @@ class SExtractorWrapper:
         return sources
     
     def _mock_detect(self, image_path: str) -> Optional[List[Dict[str, Any]]]:
-        """当SExtractor不可用时的模拟检测"""
-        if not HAS_ASTROPY:
-            print("astropy未安装，无法模拟源检测")
-            return None
-            
-        try:
-            with fits.open(image_path) as hdul:
-                data = hdul[0].data
-                
-            # 简单模拟：返回一些随机源
-            np.random.seed(42)
-            n_sources = np.random.randint(10, 50)
-            sources = []
-            
-            for i in range(n_sources):
-                y, x = np.random.randint(10, data.shape[0]-10), np.random.randint(10, data.shape[1]-10)
-                flux = float(data[y-5:y+5, x-5:x+5].sum())
-                
-                sources.append({
-                    "NUMBER": i + 1,
-                    "X_IMAGE": float(x),
-                    "Y_IMAGE": float(y),
-                    "FLUX_APER": flux,
-                    "FLUX_AUTO": flux * 1.2,
-                    "FWHM_IMAGE": np.random.uniform(2, 8),
-                    "CLASS_STAR": np.random.uniform(0, 1),
-                    "FLAGS": 0,
-                    "mode": "mock"
-                })
-                
-            return sources
-        except Exception as e:
-            print(f"模拟检测失败: {e}")
-            return None
+        """当SExtractor不可用时的回退处理"""
+        print(f"SExtractor不可用，无法对 {image_path} 进行源检测。请安装 SExtractor: apt install source-extractor")
+        return None
     
     def detect_from_array(
         self,

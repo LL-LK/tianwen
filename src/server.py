@@ -14,6 +14,7 @@ import os
 import secrets
 import logging
 import traceback
+import hashlib
 from pathlib import Path
 from functools import wraps
 import psutil
@@ -25,9 +26,8 @@ from quart import Quart, jsonify, request, render_template, websocket
 import uuid
 import json
 import time
-import random
 from threading import Lock
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
 
 logging.basicConfig(
@@ -80,11 +80,51 @@ async def add_cors_headers(response):
     
     return response
 
+def _generate_etag(data: str) -> str:
+    return hashlib.md5(data.encode()).hexdigest()
+
+@app.after_request
+async def add_cache_headers(response):
+    path = request.path
+    if path.startswith('/api/') and request.method == 'GET':
+        response_data = await response.get_data(as_text=True)
+        if response_data:
+            etag = _generate_etag(response_data)
+            response.headers['ETag'] = f'"{etag}"'
+            if_none_match = request.headers.get('If-None-Match', '')
+            if if_none_match == f'"{etag}"':
+                response.status_code = 304
+                await response.set_data('')
+    return response
+
 from main import HermesAGI
 from core.cognitive import CognitiveEngine, PlanningEngine
 from web.dashboard import CycleStatisticsDashboard
 from research.hypothesis_tester import HypothesisTester
+from data.data_mode import get_observations_path
 import httpx
+
+try:
+    from agents.agent_enhancements import (
+        AgentEnhancements, ADSApiClient, SemanticScholarClient,
+        FactVerifier, HallucinationDetector, CitationTracker,
+        HybridRAG, ToolRegistry, WorkflowOrchestrator
+    )
+    _ENHANCEMENTS_AVAILABLE = True
+except ImportError:
+    _ENHANCEMENTS_AVAILABLE = False
+    AgentEnhancements = None
+
+_enhancements = AgentEnhancements() if _ENHANCEMENTS_AVAILABLE else None
+
+try:
+    from agents.workflow_engine import WorkflowEngine, get_workflow_engine, NodeType, NodeStatus
+    _WORKFLOW_ENGINE_AVAILABLE = True
+except ImportError:
+    _WORKFLOW_ENGINE_AVAILABLE = False
+    WorkflowEngine = None
+
+_workflow_engine = get_workflow_engine() if _WORKFLOW_ENGINE_AVAILABLE else None
 
 agent = HermesAGI()
 dashboard = CycleStatisticsDashboard()
@@ -269,19 +309,6 @@ def _check_rate_limit(client_ip: str) -> bool:
     return True
 
 
-def _validate_required_fields(data: dict, required: list[str]) -> str | None:
-    for field in required:
-        if not data.get(field):
-            return f"缺少必填字段: {field}"
-    return None
-
-
-def _sanitize_str(value: str, max_len: int = 500) -> str:
-    if not isinstance(value, str):
-        return ""
-    return value.strip()[:max_len]
-
-
 @app.errorhandler(400)
 async def bad_request(e):
     return jsonify({"error": "请求参数无效", "code": "BAD_REQUEST"}), 400
@@ -339,7 +366,7 @@ def require_api_key(f):
     return decorated
 
 
-async def call_minimax(message: str, api_key: str = None, group_id: str = None, endpoint: str = None, model: str = None, api_format: str = None) -> dict:
+async def call_minimax(message: str, api_key: str = None, group_id: str = None, endpoint: str = None, model: str = None, api_format: str = None, system_prompt: str = None) -> dict:
     """调用MiniMax API，支持原生格式和OpenAI兼容格式"""
     group_id = group_id or os.environ.get("MINIMAX_GROUP_ID")
     api_key = api_key or os.environ.get("MINIMAX_API_KEY")
@@ -354,12 +381,17 @@ async def call_minimax(message: str, api_key: str = None, group_id: str = None, 
     endpoint = endpoint.rstrip("/")
     client = _get_http_client()
 
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": message})
+
     try:
         if api_format == "openai":
             url = f"{endpoint}/chat/completions"
             payload = {
                 "model": model,
-                "messages": [{"role": "user", "content": message}],
+                "messages": messages,
                 "max_tokens": 2000,
                 "temperature": 0.7,
             }
@@ -371,7 +403,7 @@ async def call_minimax(message: str, api_key: str = None, group_id: str = None, 
             url = f"{endpoint}/text/chatcompletion_v2"
             payload = {
                 "model": model,
-                "messages": [{"role": "user", "content": message}],
+                "messages": messages,
                 "max_tokens": 2000,
                 "temperature": 0.7,
             }
@@ -405,8 +437,8 @@ async def call_minimax(message: str, api_key: str = None, group_id: str = None, 
             content = choices[0].get("message", {}).get("content")
             tokens = result.get("usage", {}).get("total_tokens", 0)
 
-        if not content:  # catches None, empty string, and whitespace-only
-            logger.error(f"[MiniMax] content为空, 完整响应: {json.dumps(result, ensure_ascii=False)[:500]}")
+        if content is None:
+            logger.error(f"[MiniMax] content为None, 完整响应: {json.dumps(result, ensure_ascii=False)[:500]}")
             return {"error": "MiniMax 返回内容为空", "content": None}
 
         logger.info(f"[MiniMax] 成功: tokens={tokens}, content_len={len(content)}")
@@ -423,7 +455,7 @@ async def call_minimax(message: str, api_key: str = None, group_id: str = None, 
         return {"error": f"MiniMax调用异常: {type(e).__name__}: {str(e)}", "content": None}
 
 
-async def call_openai_compatible(message: str, api_key: str, endpoint: str, model: str, api_format: str = None) -> dict:
+async def call_openai_compatible(message: str, api_key: str, endpoint: str, model: str, api_format: str = None, system_prompt: str = None) -> dict:
     """调用OpenAI兼容格式的API (Qwen, OpenAI, 本地部署等)，支持Anthropic格式"""
     if not api_key or not endpoint or not model:
         logger.error(f"[LLM] 配置缺失: api_key={'***' if api_key else 'None'}, endpoint={endpoint}, model={model}")
@@ -433,12 +465,17 @@ async def call_openai_compatible(message: str, api_key: str, endpoint: str, mode
     endpoint = endpoint.rstrip("/")
     client = _get_http_client()
 
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": message})
+
     try:
         if api_format == "anthropic":
             url = f"{endpoint}/v1/messages"
             payload = {
                 "model": model,
-                "messages": [{"role": "user", "content": message}],
+                "messages": messages,
                 "max_tokens": 2000,
                 "temperature": 0.7,
             }
@@ -451,7 +488,7 @@ async def call_openai_compatible(message: str, api_key: str, endpoint: str, mode
             url = f"{endpoint}/chat/completions"
             payload = {
                 "model": model,
-                "messages": [{"role": "user", "content": message}],
+                "messages": messages,
                 "max_tokens": 2000,
                 "temperature": 0.7,
             }
@@ -483,8 +520,8 @@ async def call_openai_compatible(message: str, api_key: str, endpoint: str, mode
             content = choices[0].get("message", {}).get("content")
             tokens = result.get("usage", {}).get("total_tokens", 0)
 
-        if not content:  # catches None, empty string, and whitespace-only
-            logger.error(f"[LLM] content为空, 完整响应: {json.dumps(result, ensure_ascii=False)[:500]}")
+        if content is None:
+            logger.error(f"[LLM] content为None, 完整响应: {json.dumps(result, ensure_ascii=False)[:500]}")
             return {"error": "API 返回内容为空", "content": None}
 
         logger.info(f"[LLM] 成功: tokens={tokens}, content_len={len(content)}")
@@ -564,6 +601,8 @@ async def chat():
     session_id = data.get("session_id")
     provider = data.get("provider", "minimax")
     provider_config = data.get("config", {})
+    system_prompt = data.get("system_prompt", "")
+    context = data.get("context", "")
 
     if not message:
         return jsonify({"error": "消息不能为空"}), 400
@@ -602,6 +641,7 @@ async def chat():
                 endpoint=provider_config.get("endpoint"),
                 model=provider_config.get("model"),
                 api_format=provider_config.get("api_format"),
+                system_prompt=system_prompt,
             )
             provider_name = provider_config.get("model", "MiniMax")
         elif provider in ("qwen", "openai"):
@@ -611,14 +651,21 @@ async def chat():
                 endpoint=provider_config.get("endpoint"),
                 model=provider_config.get("model"),
                 api_format=provider_config.get("api_format"),
+                system_prompt=system_prompt,
             )
             provider_name = provider_config.get("model", provider)
         else:
-            llm_result = await call_minimax(message)
+            llm_result = await call_minimax(message, system_prompt=system_prompt)
             provider_name = "MiniMax (env)"
 
         if llm_result.get("error"):
-            response_text = _generate_local_response(message)
+            local_result = _generate_local_response(message, system_prompt, context)
+            if local_result:
+                response_text = local_result["response"]
+                note = local_result.get("note", "本地规则回复")
+            else:
+                response_text = f"我收到了你的消息：'{message[:50]}'。作为本地AI助手，我的功能有限。建议配置 LLM API（如MiniMax）以获得更智能的对话体验。你可以查看 /api/docs 了解系统所有功能。"
+                note = "本地规则回复（无匹配规则）"
             response_data = {
                 "session_id": session_id,
                 "cognitive": {"intent": "chat", "entities": [], "skills": [], "complexity": "low"},
@@ -626,7 +673,7 @@ async def chat():
                 "output": response_text,
                 "metrics": {"tokens_used": 0, "latency_ms": 0},
                 "status": "local_response",
-                "note": f"LLM API ({provider_name}) 未配置或不可用，使用本地规则回复",
+                "note": f"LLM API ({provider_name}) 未配置或不可用，使用本地规则回复: {note}",
             }
         else:
             response_text = llm_result["content"]
@@ -728,29 +775,112 @@ async def test_llm_connectivity():
     return jsonify(result)
 
 
-def _generate_local_response(message: str) -> str:
-    """本地规则回复生成器"""
+def _generate_local_response(message: str, system_prompt: str = None, context: str = None) -> dict:
+    """本地规则回复生成器 - 覆盖全系统天文知识和功能"""
     msg_lower = message.lower()
-    
-    if any(word in msg_lower for word in ["你好", "hello", "hi", "介绍"]):
-        return "你好！我是天问-AGI全自动天文观测站AI助手。我可以帮助你：\n1. 查询天体信息（如M31、NGC224等）\n2. 控制望远镜进行观测\n3. 生成和验证科学假说\n4. 挖掘天文数据\n5. 获取实时星图\n\n请告诉我你需要什么帮助？"
-    
-    if any(word in msg_lower for word in ["m31", "仙女座", "andromeda"]):
-        return "M31（仙女座星系）是距离银河系最近的大型星系，距离约250万光年。它是本星系群中最大的星系之一，包含约1万亿颗恒星。你可以使用 /api/skychart?target=M31 获取它的星图。"
-    
-    if any(word in msg_lower for word in ["望远镜", "telescope"]):
-        return "系统支持望远镜控制功能。当前使用模拟器进行演示，真实望远镜需要配置Seestar S50连接。你可以通过 /api/telescope/status 查看望远镜状态。"
-    
-    if any(word in msg_lower for word in ["假说", "hypothesis"]):
-        return "系统支持科学假说生成和验证。你可以使用 /api/hypothesis/generate 生成假说，使用 /api/hypothesis/test 进行验证。验证需要提供真实观测数据和文献证据。"
-    
-    if any(word in msg_lower for word in ["数据", "data", "挖掘", "miner"]):
-        return "系统内置数据挖掘功能，可以从天文数据中发现模式、提取特征、检测异常。使用 /api/data/miner?target=目标名称 进行查询。"
-    
-    if any(word in msg_lower for word in ["帮助", "help", "怎么用", "功能"]):
-        return "天问-AGI主要功能：\n- 星图查询：GET /api/skychart?target=M31\n- 望远镜控制：GET /api/telescope/status\n- 假说生成：POST /api/hypothesis/generate\n- 假说验证：POST /api/hypothesis/test\n- 数据挖掘：GET /api/data/miner?target=目标\n- 观测数据：GET /api/observation/data\n- 完整文档：GET /api/docs"
-    
-    return f"我收到了你的消息：'{message[:50]}'。作为本地AI助手，我的功能有限。建议配置 LLM API（如MiniMax）以获得更智能的对话体验。你可以查看 /api/docs 了解系统所有功能。"
+    response = None
+    note = None
+
+    if any(word in msg_lower for word in ["你好", "hello", "hi", "介绍", "你是谁", "你能做什么"]):
+        response = "你好！我是**天问-AGI**全自动天文观测站的AI助手。\n\n我可以帮助你：\n1. 查询天体信息（如M31、NGC224、M42等）\n2. 控制望远镜进行观测\n3. 生成和验证科学假说\n4. 挖掘天文数据\n5. 获取实时星图（NASA SkyView + Aladin Lite）\n\n请告诉我你需要什么帮助？"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m31", "仙女座", "andromeda"]):
+        response = "**M31（仙女座星系）** 是距离银河系最近的大型旋涡星系，距离约**250万光年**。\n\n- 类型: SA(s)b 旋涡星系\n- 视星等: 3.44\n- 角大小: 190' × 60'\n- 坐标: RA 00h42m44.3s, Dec +41°16'09\"\n- 质量: ~1.5×10¹² M☉\n- 恒星数: ~1万亿颗\n\n它是本星系群中最大的星系，预计在约45亿年后将与银河系碰撞合并。你可以使用实时星图面板搜索M31查看NASA SkyView图像。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m42", "猎户座大星云", "orion nebula"]):
+        response = "**M42（猎户座大星云）** 是位于猎户座的一个弥漫星云，距离约**1344光年**。\n\n- 类型: 发射/反射星云\n- 视星等: 4.0\n- 角大小: 65' × 60'\n- 坐标: RA 05h35m17.3s, Dec -05°23'28\"\n- 特征: 包含猎户座四边形星团（Trapezium Cluster）\n\n它是距离地球最近的大质量恒星形成区之一，是天文爱好者最常观测的深空天体。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m45", "昴星团", "pleiades", "七姐妹"]):
+        response = "**M45（昴星团/七姐妹星团）** 是位于金牛座的疏散星团，距离约**444光年**。\n\n- 类型: 疏散星团\n- 视星等: 1.6\n- 角大小: 110'\n- 坐标: RA 03h47m24s, Dec +24°07'00\"\n- 年龄: ~1亿年\n- 成员星: 约1000颗\n\n昴星团是肉眼可见的最著名星团之一，在中国古代被称为\"七姐妹\"。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m1", "蟹状星云", "crab nebula"]):
+        response = "**M1（蟹状星云）** 是位于金牛座的超新星遗迹，距离约**6500光年**。\n\n- 类型: 超新星遗迹\n- 视星等: 8.4\n- 角大小: 6' × 4'\n- 坐标: RA 05h34m31.9s, Dec +22°00'52\"\n- 来源: 公元1054年超新星爆发（SN 1054）\n- 特征: 中心有一颗脉冲星（蟹状星云脉冲星，33ms周期）\n\n中国宋代天文学家详细记录了这次超新星爆发。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m51", "涡状星系", "whirlpool"]):
+        response = "**M51（涡状星系）** 是位于猎犬座的相互作用星系对，距离约**2300万光年**。\n\n- 类型: SA(s)bc 旋涡星系\n- 视星等: 8.4\n- 角大小: 11.2' × 6.9'\n- 坐标: RA 13h29m52.7s, Dec +47°11'43\"\n- 特征: 与伴星系NGC 5195正在相互作用\n\nM51是最著名的\"grand design\"旋涡星系之一，旋臂结构非常清晰。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m81", "波德星系", "bode"]):
+        response = "**M81（波德星系）** 是位于大熊座的旋涡星系，距离约**1200万光年**。\n\n- 类型: SA(s)ab 旋涡星系\n- 视星等: 6.9\n- 角大小: 26.9' × 14.1'\n- 坐标: RA 09h55m33.2s, Dec +69°03'55\"\n- 特征: 与M82（雪茄星系）形成相互作用对\n\nM81是M81星系群中最大的星系。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m101", "风车星系", "pinwheel"]):
+        response = "**M101（风车星系）** 是位于大熊座的正面旋涡星系，距离约**2100万光年**。\n\n- 类型: SAB(rs)cd 旋涡星系\n- 视星等: 7.9\n- 角大小: 28.8' × 26.9'\n- 坐标: RA 14h03m12.6s, Dec +54°20'57\"\n- 特征: 直径约17万光年，比银河系大约70%\n\nM101是最大的正面朝向我们的旋涡星系之一。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m104", "草帽星系", "sombrero"]):
+        response = "**M104（草帽星系）** 是位于室女座的旋涡星系，距离约**2800万光年**。\n\n- 类型: SA(s)a 旋涡星系\n- 视星等: 8.0\n- 角大小: 8.7' × 3.5'\n- 坐标: RA 12h39m59.4s, Dec -11°37'23\"\n- 特征: 显著的尘埃带和巨大的核球，形似墨西哥草帽\n\nM104因其独特的侧向外观而成为最上镜的星系之一。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m57", "环状星云", "ring nebula"]):
+        response = "**M57（环状星云）** 是位于天琴座的行星状星云，距离约**2300光年**。\n\n- 类型: 行星状星云\n- 视星等: 8.8\n- 角大小: 1.4' × 1.1'\n- 坐标: RA 18h53m35.1s, Dec +33°01'45\"\n- 特征: 中心是一颗白矮星（15.8等）\n\nM57是最著名的行星状星云之一，是类太阳恒星死亡后的遗迹。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["m27", "哑铃星云", "dumbbell"]):
+        response = "**M27（哑铃星云）** 是位于狐狸座的行星状星云，距离约**1200光年**。\n\n- 类型: 行星状星云\n- 视星等: 7.5\n- 角大小: 8.0' × 5.7'\n- 坐标: RA 19h59m36.3s, Dec +22°43'16\"\n- 特征: 第一个被发现的行星状星云（1764年，梅西耶）\n\nM27是北天最亮的行星状星云之一。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["星图", "skychart", "sky chart", "星空图"]):
+        response = "**实时星图功能** 使用双重数据源：\n\n1. **NASA SkyView API** - 获取真实天文图像数据\n   - 支持巡天: DSS2（光学）、2MASS（红外）、SDSS、IRAS\n   - 可自定义视场大小和分辨率\n   \n2. **Aladin Lite** - 交互式星图可视化\n   - 可缩放、平移、点击天体查看信息\n   - 支持Simbad天体数据库查询\n\n请在「实时星图」面板中输入目标名称（如M31、M42）并选择巡天类型来使用。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["望远镜", "telescope", "goto", "指向"]):
+        response = "**望远镜控制系统** 支持多种连接方式：\n\n- **ASCOM** (Windows): 标准天文设备驱动协议\n- **INDI** (跨平台): 开源天文设备控制协议\n- **Seestar MCP**: 智能望远镜移动控制协议\n- **串口直连**: RS-232/USB串口连接\n- **局域网**: TCP/IP网络连接\n\n功能包括: GOTO指向、恒星/月亮/太阳速移、跟踪、曝光拍摄、Plate Solving解析。\n\n请在「望远镜控制」面板中操作。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["研究", "假说", "hypothesis", "闭环", "research"]):
+        response = "**研究闭环** 是天问-AGI的核心自主科学发现流程：\n\n1. **文献检索** → 获取最新天文论文\n2. **假说生成** → 基于数据和文献生成科学假说\n3. **假说检验** → 通过观测验证假说\n4. **发现确认** → 确认新发现\n5. **观测调度** → 自动安排后续观测\n6. **自我进化** → 优化观测策略\n\n请在「研究闭环」面板中查看当前状态。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["数据挖掘", "data miner", "检测", "detection"]):
+        response = "**数据挖掘模块** 提供以下功能：\n\n- 天体检测: 在图像中自动检测天体\n- 天体分类: 将检测到的天体分类（恒星/星系/小行星等）\n- 光变曲线: 分析天体亮度随时间的变化\n- 异常检测: 发现异常天文事件\n\n请在「数据可视化」面板中查看最新检测结果。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["api", "端点", "endpoint", "接口"]):
+        response = "**天问-AGI API 端点列表**：\n\n- `/api/health` - 健康检查\n- `/api/observatory/status` - 观测站状态\n- `/api/chat` - 智能对话\n- `/api/skychart/realtime` - 实时星图\n- `/api/telescope/status` - 望远镜状态\n- `/api/research/status` - 研究状态\n- `/api/data/detections/latest` - 最新检测\n- `/api/alerts` - 告警列表\n- `/api/logs` - 系统日志\n\n完整API文档: `/api/docs`"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["梅西耶", "messier", "星表", "catalog"]):
+        response = "**内置星表** 包含110个梅西耶天体和多个著名NGC天体的完整数据：\n\n- 每个天体包含: 名称、坐标(RA/Dec)、类型、星等、角大小\n- 类型包括: 星系(galaxy)、星云(nebula)、星团(cluster)、行星状星云(planetary_nebula)、超新星遗迹(snr)\n\n你可以通过 `/api/telescope/catalog` API获取完整星表数据。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["太阳系", "行星", "planet", "solar system"]):
+        response = "**太阳系** 包含8大行星：\n\n1. 水星 - 最近太阳，无大气层\n2. 金星 - 最亮行星，逆向自转\n3. 地球 - 唯一已知存在生命\n4. 火星 - 红色星球，有季节变化\n5. 木星 - 最大行星，大红斑\n6. 土星 - 壮观环系统\n7. 天王星 - 侧躺自转\n8. 海王星 - 最强风暴\n\n此外还有矮行星（冥王星等）、小行星带、柯伊伯带和奥尔特云。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["黑洞", "black hole", "事件视界"]):
+        response = "**黑洞** 是时空曲率极大、连光都无法逃逸的天体。\n\n- 恒星质量黑洞: 3-100 M☉，由大质量恒星坍缩形成\n- 中等质量黑洞: 100-10⁵ M☉\n- 超大质量黑洞: 10⁶-10¹⁰ M☉，位于星系中心\n\n银河系中心的**人马座A***是一个约400万太阳质量的超大质量黑洞。2019年，事件视界望远镜(EHT)首次拍摄到M87星系中心黑洞的阴影。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["暗物质", "dark matter", "暗能量", "dark energy"]):
+        response = "**暗物质和暗能量** 是现代宇宙学两大未解之谜：\n\n**暗物质** (~27%宇宙):\n- 不发光、不吸收光，仅通过引力作用可探测\n- 证据: 星系旋转曲线、引力透镜、宇宙微波背景\n- 候选粒子: WIMP、轴子等\n\n**暗能量** (~68%宇宙):\n- 驱动宇宙加速膨胀\n- 证据: Ia型超新星观测、重子声学振荡\n- 可能解释: 宇宙学常数(Λ)、精质(quintessence)\n\n普通物质仅占宇宙的约5%。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["大爆炸", "big bang", "宇宙起源", "cmb"]):
+        response = "**大爆炸理论** 是描述宇宙起源和演化的主流宇宙学模型。\n\n- 约138亿年前，宇宙从一个极热极密的状态开始膨胀\n- 关键证据:\n  1. 宇宙微波背景辐射(CMB) - 大爆炸的余晖\n  2. 哈勃定律 - 星系退行速度与距离成正比\n  3. 原初元素丰度 - 氢(~75%)和氦(~25%)\n\n宇宙经历了暴涨、核合成、复合、黑暗时代、再电离等阶段，最终形成了我们今天看到的宇宙结构。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["恒星演化", "stellar evolution", "主序星"]):
+        response = "**恒星演化** 取决于恒星的质量：\n\n**低质量恒星** (<0.5 M☉):\n主序星 → 红矮星 → 白矮星\n\n**类太阳恒星** (0.5-8 M☉):\n主序星 → 红巨星 → 行星状星云 → 白矮星\n\n**大质量恒星** (>8 M☉):\n主序星 → 红超巨星 → 超新星爆发 → 中子星/黑洞\n\n恒星在主序阶段通过氢聚变为氦维持稳定，主序寿命与质量成反比。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["系外行星", "exoplanet", "宜居"]):
+        response = "**系外行星** 是太阳系外围绕其他恒星运行的行星。\n\n- 已确认: 5000+颗\n- 主要探测方法:\n  1. 凌星法 (Transit) - 开普勒/TESS任务\n  2. 径向速度法 (Radial Velocity)\n  3. 直接成像 (Direct Imaging)\n  4. 微引力透镜 (Microlensing)\n\n**宜居带** 是行星表面可能存在液态水的轨道范围。TRAPPIST-1系统有7颗类地行星，其中3颗位于宜居带。"
+        note = "本地规则回复"
+
+    elif any(word in msg_lower for word in ["帮助", "help", "怎么用", "功能"]):
+        response = "天问-AGI主要功能：\n- 星图查询：GET /api/skychart?target=M31\n- 望远镜控制：GET /api/telescope/status\n- 假说生成：POST /api/hypothesis/generate\n- 假说验证：POST /api/hypothesis/test\n- 数据挖掘：GET /api/data/miner?target=目标\n- 观测数据：GET /api/observation/data\n- 完整文档：GET /api/docs"
+        note = "本地规则回复"
+
+    if response is None:
+        return None
+
+    return {"response": response, "note": note}
 
 @app.route("/api/cognitive", methods=["POST"])
 async def cognitive_preview():
@@ -808,13 +938,24 @@ async def evolution_stats():
 @app.route("/api/health", methods=["GET"])
 async def health():
     """健康检查"""
-    # 生产环境隐藏敏感系统信息
+    try:
+        agent_ok = agent is not None
+        cognitive_ok = agent.cognitive is not None if agent_ok else False
+        planning_ok = agent.planning is not None if agent_ok else False
+        execution_ok = agent.execution is not None if agent_ok else False
+        evolution_ok = agent.evolution is not None if agent_ok else False
+    except Exception:
+        agent_ok = False
+        cognitive_ok = False
+        planning_ok = False
+        execution_ok = False
+        evolution_ok = False
+
     if DEBUG:
-        # DEBUG模式：返回完整信息
         health_data = {
             "status": "ok",
-            "version": "2.2.0",
-            "build_id": "trae-cors-fix-20260503",
+            "version": "2.4.0",
+            "build_id": "trae-perf-20260505",
             "timestamp": datetime.now().isoformat(),
             "system": {
                 "memory": {
@@ -833,11 +974,11 @@ async def health():
                 }
             },
             "dependencies": {
-                "agent_initialized": agent is not None,
-                "cognitive_engine": agent.cognitive is not None if agent else False,
-                "planning_engine": agent.planning is not None if agent else False,
-                "execution_engine": agent.execution is not None if agent else False,
-                "evolution_system": agent.evolution is not None if agent else False,
+                "agent_initialized": agent_ok,
+                "cognitive_engine": cognitive_ok,
+                "planning_engine": planning_ok,
+                "execution_engine": execution_ok,
+                "evolution_system": evolution_ok,
             },
             "sessions": {
                 "active_count": len(sessions),
@@ -852,21 +993,19 @@ async def health():
                 "deepseek_configured": bool(os.environ.get("DEEPSEEK_API_KEY")),
             }
         }
-        # DEBUG模式：内部检查高负载
         if psutil.virtual_memory().percent > 90 or psutil.cpu_percent(interval=0.1) > 95:
             health_data["status"] = "degraded"
     else:
-        # 生产环境：隐藏敏感信息，只返回基本状态
         health_data = {
             "status": "ok",
-            "version": "2.2.0",
+            "version": "2.4.0",
             "timestamp": datetime.now().isoformat(),
             "dependencies": {
-                "agent_initialized": agent is not None,
-                "cognitive_engine": agent.cognitive is not None if agent else False,
-                "planning_engine": agent.planning is not None if agent else False,
-                "execution_engine": agent.execution is not None if agent else False,
-                "evolution_system": agent.evolution is not None if agent else False,
+                "agent_initialized": agent_ok,
+                "cognitive_engine": cognitive_ok,
+                "planning_engine": planning_ok,
+                "execution_engine": execution_ok,
+                "evolution_system": evolution_ok,
             },
             "sessions": {
                 "active_count": len(sessions),
@@ -877,11 +1016,16 @@ async def health():
             }
         }
 
-    # 检查依赖项健康状况
     if not all(health_data["dependencies"].values()):
         health_data["status"] = "degraded"
 
     return jsonify(health_data)
+
+
+@app.route("/api/ping", methods=["GET"])
+async def ping():
+    """轻量级连通性检测（无系统信息采集，极快响应）"""
+    return jsonify({"status": "ok", "version": "2.4.0", "timestamp": datetime.now().isoformat()})
 
 @app.route("/api/stats/dashboard", methods=["GET"])
 async def stats_dashboard():
@@ -1063,6 +1207,21 @@ except ImportError:
     _REALTIME_BRIDGE_AVAILABLE = False
     logger.warning("Realtime bridge module not available, using legacy WebSocket manager")
 
+
+if _REALTIME_BRIDGE_AVAILABLE:
+    @app.before_serving
+    async def _start_bridge_tasks():
+        asyncio.ensure_future(start_heartbeat_loop(_conn_manager))
+        asyncio.ensure_future(start_broadcast_loop(_conn_manager, _state_bridge))
+        logger.info("Realtime bridge background tasks started")
+
+
+@app.before_serving
+async def _start_ws_heartbeat():
+    asyncio.ensure_future(ws_manager.start_heartbeat_loop())
+    logger.info("WebSocket heartbeat loop started")
+
+
 # ============ NASA SkyView 星图 API ============
 try:
     from observation.sky_chart import NASA_SkyView_API, get_realtime_skychart, parse_coordinates, BUILTIN_CATALOG, SkySurvey
@@ -1140,8 +1299,7 @@ async def api_docs():
             "research": {
                 "GET  /api/research/status": "研究闭环状态",
                 "GET  /api/research/cycles?page=1&per_page=20": "历史研究周期",
-                "POST /api/hypothesis/test": "假说验证 (需要hypothesis对象，可选提供观测数据和文献证据)",
-                "GET  /api/hypothesis/generate-test-data?target=M31&count=5": "生成测试数据",
+                "POST /api/hypothesis/test": "假说验证 (需要hypothesis对象，必须提供观测数据和文献证据)",
             },
             "alerts": {
                 "GET  /api/alerts?unread=true": "告警列表",
@@ -1387,83 +1545,6 @@ async def ws_config():
         "realtime_bridge_available": _REALTIME_BRIDGE_AVAILABLE
     })
 
-    if _REALTIME_BRIDGE_AVAILABLE:
-        _conn_manager.register(client_id, ws)
-    else:
-        ws_manager.register(client_id, ws)
-
-    heartbeat_count = 0
-    last_heartbeat = time.time()
-
-    try:
-        # 发送连接成功消息
-        await websocket.send(json.dumps({
-            "type": "connected",
-            "client_id": client_id,
-            "timestamp": datetime.now().isoformat(),
-            "heartbeat_interval": 30,
-        }, ensure_ascii=False, default=str))
-
-        while True:
-            try:
-                # 30秒心跳检测
-                data = await asyncio.wait_for(websocket.receive(), timeout=30)
-                last_heartbeat = time.time()
-                heartbeat_count += 1
-
-                if data == "ping":
-                    await websocket.send("pong")
-                    if _REALTIME_BRIDGE_AVAILABLE:
-                        _conn_manager.heartbeat(client_id)
-                elif data == "pong":
-                    # 客户端响应心跳
-                    pass
-                elif data == "get_status":
-                    # 返回Agent完整状态
-                    status = _build_agent_status()
-                    await websocket.send(json.dumps({
-                        "type": "agent_status",
-                        "data": status,
-                    }, ensure_ascii=False, default=str))
-                elif data and data.startswith("{"):
-                    try:
-                        msg = json.loads(data)
-                        msg_type = msg.get("type", "")
-                        if msg_type == "ping":
-                            await websocket.send(json.dumps({
-                                "type": "pong",
-                                "timestamp": datetime.now().isoformat(),
-                            }, ensure_ascii=False, default=str))
-                        elif msg_type == "subscribe":
-                            # 订阅特定事件
-                            event = msg.get("event", "")
-                            if event and _REALTIME_BRIDGE_AVAILABLE:
-                                def make_forward(ev):
-                                    async def forward(evt_type, data):
-                                        try:
-                                            await websocket.send(MessageSerializer.serialize_event(evt_type, data))
-                                        except Exception:
-                                            pass
-                                    return forward
-                                _event_bus.subscribe(event, make_forward(event))
-                    except json.JSONDecodeError:
-                        pass
-            except asyncio.TimeoutError:
-                # 心跳超时，发送ping检测连接
-                await websocket.send(json.dumps({
-                    "type": "heartbeat",
-                    "timestamp": datetime.now().isoformat(),
-                    "uptime_seconds": int(time.time() - last_heartbeat),
-                }, ensure_ascii=False, default=str))
-
-    except Exception:
-        pass
-    finally:
-        if _REALTIME_BRIDGE_AVAILABLE:
-            _conn_manager.unregister(client_id)
-        else:
-            ws_manager.unregister(client_id)
-
 
 @app.websocket('/ws/observation')
 async def observation_ws():
@@ -1529,31 +1610,77 @@ async def observation_ws():
             ws_manager.unregister(client_id)
 
 
-def _build_agent_status():
-    """构建Agent状态数据"""
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "cognitive": {
-            "status": "active" if agent and agent.cognitive else "inactive",
-            "intent": "observation",
-            "complexity": "medium",
-        },
-        "planning": {
-            "status": "active" if agent and agent.planning else "inactive",
-            "current_task": _observatory_state.get("research_loop", {}).get("topic", "未知"),
-            "cycle_id": _observatory_state.get("research_loop", {}).get("cycle_id", "N/A"),
-        },
-        "execution": {
-            "status": _observatory_state.get("status", "idle"),
-            "current_target": _observatory_state.get("current_target", {}),
-        },
-        "evolution": {
-            "status": "active" if agent and agent.evolution else "inactive",
-            "discoveries": _observatory_state.get("discoveries", 0),
-            "hypotheses": _observatory_state.get("hypotheses", 0),
-        },
-        "ws_clients": ws_manager.connection_count,
-    }
+@app.websocket('/ws/workflow-engine')
+async def workflow_engine_ws():
+    """
+    WebSocket端点：工作流引擎实时状态推送
+
+    推送事件类型:
+    - execution_started: 工作流开始执行
+    - node_status: 节点状态变化 (running/completed/failed)
+    - loop_iteration: 闭环迭代
+    - execution_completed: 工作流执行完成
+    - execution_error: 执行错误
+    """
+    client_id = str(uuid.uuid4())
+    ws = websocket._get_current_object()
+
+    if _REALTIME_BRIDGE_AVAILABLE:
+        _conn_manager.register(client_id, ws)
+    else:
+        ws_manager.register(client_id, ws)
+
+    if _WORKFLOW_ENGINE_AVAILABLE:
+        async def _wf_push(event_type, data):
+            try:
+                await ws.send(json.dumps({
+                    "type": event_type,
+                    "data": data,
+                    "timestamp": datetime.now().isoformat(),
+                }, ensure_ascii=False, default=str))
+            except Exception:
+                pass
+        _workflow_engine.register_ws_callback(_wf_push)
+
+    try:
+        while True:
+            data = await asyncio.wait_for(websocket.receive(), timeout=30)
+
+            if data == "ping":
+                await websocket.send("pong")
+            elif data and data.startswith("{"):
+                try:
+                    msg = json.loads(data)
+                    msg_type = msg.get("type", "")
+
+                    if msg_type == "get_status":
+                        wf_id = msg.get("workflow_id", "")
+                        if wf_id and _WORKFLOW_ENGINE_AVAILABLE:
+                            status = _workflow_engine.get_execution_status(wf_id)
+                            await websocket.send(json.dumps({
+                                "type": "execution_status",
+                                "data": status,
+                            }, ensure_ascii=False, default=str))
+
+                    elif msg_type == "get_history":
+                        if _WORKFLOW_ENGINE_AVAILABLE:
+                            history = _workflow_engine.get_execution_history()
+                            await websocket.send(json.dumps({
+                                "type": "execution_history",
+                                "data": history,
+                            }, ensure_ascii=False, default=str))
+
+                except json.JSONDecodeError:
+                    pass
+    except asyncio.TimeoutError:
+        pass
+    except Exception:
+        pass
+    finally:
+        if _REALTIME_BRIDGE_AVAILABLE:
+            _conn_manager.unregister(client_id)
+        else:
+            ws_manager.unregister(client_id)
 
 
 def _build_observation_status():
@@ -2066,58 +2193,408 @@ async def data_miner():
 
 # ============ 望远镜控制 API ============
 
+_telescope_client = None
+_telescope_connection_type = None
+_telescope_discovered_devices = []
+
+def _get_telescope_client():
+    global _telescope_client
+    if _telescope_client is None:
+        try:
+            from telescope.seestar_client import SeestarMCPClient
+            _telescope_client = SeestarMCPClient()
+            _telescope_client.enable_simulation(True)
+        except ImportError:
+            _telescope_client = None
+    return _telescope_client
+
+async def _discover_lan_devices(subnet: str = "192.168.1") -> list:
+    """局域网设备发现 - 扫描常见望远镜端口"""
+    discovered = []
+    common_ports = [8765, 7624, 11111, 4030, 80, 8080]
+    common_hosts = [
+        "seestar.local", "seestar", "telescope.local",
+        "stellarmate.local", "asiair.local", "raspberrypi.local"
+    ]
+
+    for host in common_hosts:
+        for port in common_ports:
+            try:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host, port),
+                    timeout=1.0
+                )
+                writer.close()
+                discovered.append({"host": host, "port": port, "method": "mDNS"})
+            except Exception:
+                pass
+
+    for i in range(1, 20):
+        host = f"{subnet}.{i}"
+        for port in [8765, 7624]:
+            try:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host, port),
+                    timeout=0.3
+                )
+                writer.close()
+                discovered.append({"host": host, "port": port, "method": "IP扫描"})
+            except Exception:
+                pass
+
+    return discovered
+
+def _detect_serial_ports() -> list:
+    """检测串口设备（USB/物理导线连接）"""
+    serial_ports = []
+    try:
+        import serial.tools.list_ports
+        for port in serial.tools.list_ports.comports():
+            serial_ports.append({
+                "device": port.device,
+                "description": port.description,
+                "hwid": port.hwid,
+                "vid": port.vid,
+                "pid": port.pid,
+                "serial_number": port.serial_number,
+                "manufacturer": port.manufacturer,
+            })
+    except ImportError:
+        if sys.platform == "win32":
+            for i in range(1, 33):
+                serial_ports.append({
+                    "device": f"COM{i}",
+                    "description": f"串口 COM{i}",
+                    "hwid": "",
+                })
+        else:
+            import glob
+            for pattern in ["/dev/ttyUSB*", "/dev/ttyACM*", "/dev/tty.SLAB*", "/dev/cu.*"]:
+                for path in glob.glob(pattern):
+                    serial_ports.append({
+                        "device": path,
+                        "description": path,
+                        "hwid": "",
+                    })
+    return serial_ports
+
+
 @app.route("/api/telescope/status", methods=["GET"])
 async def telescope_status():
     """获取望远镜状态"""
-    return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+    client = _get_telescope_client()
+    if client is None:
+        return jsonify({"error": "望远镜模块不可用", "code": "MODULE_UNAVAILABLE"}), 503
+
+    if not client.is_connected:
+        return jsonify({
+            "connected": False,
+            "status": "disconnected",
+            "connection_type": _telescope_connection_type,
+            "discovered_devices": _telescope_discovered_devices,
+        })
+
+    try:
+        status = await client.get_status()
+        pos = client.current_position
+        return jsonify({
+            "connected": True,
+            "status": client.current_status.value,
+            "position": {
+                "ra": pos.ra,
+                "dec": pos.dec,
+                "alt": pos.alt,
+                "az": pos.az,
+            },
+            "connection_type": _telescope_connection_type,
+            "simulation_mode": client._simulation_mode,
+            "raw_status": status,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e), "code": "STATUS_ERROR"}), 500
+
+
+@app.route("/api/telescope/discover", methods=["GET"])
+async def telescope_discover():
+    """发现局域网和串口望远镜设备"""
+    global _telescope_discovered_devices
+
+    method = request.args.get("method", "all")
+
+    lan_devices = []
+    serial_devices = []
+
+    if method in ("all", "lan"):
+        subnet = request.args.get("subnet", "192.168.1")
+        lan_devices = await _discover_lan_devices(subnet)
+
+    if method in ("all", "serial"):
+        serial_devices = _detect_serial_ports()
+
+    _telescope_discovered_devices = {
+        "lan": lan_devices,
+        "serial": serial_devices,
+        "total": len(lan_devices) + len(serial_devices),
+    }
+
+    return jsonify(_telescope_discovered_devices)
 
 
 @app.route("/api/telescope/connect", methods=["POST"])
 async def telescope_connect():
     """连接望远镜"""
-    return jsonify({"error": "望远镜连接失败，未找到设备", "code": "NOT_FOUND"}), 503
+    global _telescope_connection_type
+
+    data = await request.get_json() or {}
+    connection_type = data.get("type", "simulation")
+    host = data.get("host", "localhost")
+    port = data.get("port", 8765)
+    serial_port = data.get("serial_port", None)
+
+    client = _get_telescope_client()
+    if client is None:
+        return jsonify({"error": "望远镜模块不可用", "code": "MODULE_UNAVAILABLE"}), 503
+
+    try:
+        if connection_type == "simulation":
+            client.enable_simulation(True)
+            client.host = host
+            client.port = port
+            await client.connect()
+            _telescope_connection_type = "simulation"
+
+        elif connection_type == "lan":
+            client.enable_simulation(False)
+            client.host = host
+            client.port = port
+            success = await client.connect()
+            if not success:
+                return jsonify({"error": f"无法连接到 {host}:{port}", "code": "CONNECTION_FAILED"}), 503
+            _telescope_connection_type = "lan"
+
+        elif connection_type == "serial":
+            client.enable_simulation(False)
+            client.host = "serial"
+            client.port = 0
+            client._serial_port = serial_port
+            await client.connect()
+            _telescope_connection_type = "serial"
+
+        elif connection_type == "ascom":
+            from telescope.seestar_client import HardwareInterfaceType
+            client.set_hardware_interface(HardwareInterfaceType.ASCOM, driver_id=data.get("driver_id"))
+            client.enable_simulation(False)
+            await client.connect()
+            _telescope_connection_type = "ascom"
+
+        elif connection_type == "indi":
+            from telescope.seestar_client import HardwareInterfaceType
+            client.set_hardware_interface(
+                HardwareInterfaceType.INDI,
+                host=data.get("indi_host", "localhost"),
+                port=data.get("indi_port", 7624)
+            )
+            client.enable_simulation(False)
+            await client.connect()
+            _telescope_connection_type = "indi"
+
+        elif connection_type == "mqtt":
+            client.enable_mqtt(
+                broker=data.get("mqtt_broker", "localhost"),
+                port=data.get("mqtt_port", 1883),
+                username=data.get("mqtt_username", ""),
+                password=data.get("mqtt_password", ""),
+                location=data.get("mqtt_location", "xinglong"),
+                telescope_id=data.get("mqtt_telescope_id", "telescope1")
+            )
+            client.enable_simulation(False)
+            await client.connect()
+            _telescope_connection_type = "mqtt"
+
+        else:
+            return jsonify({"error": f"不支持的连接类型: {connection_type}", "code": "INVALID_TYPE"}), 400
+
+        return jsonify({
+            "success": True,
+            "connection_type": _telescope_connection_type,
+            "host": host,
+            "port": port,
+            "simulation_mode": client._simulation_mode,
+        })
+
+    except Exception as e:
+        logger.error(f"望远镜连接失败: {e}")
+        return jsonify({"error": f"连接失败: {str(e)}", "code": "CONNECTION_ERROR"}), 500
 
 
 @app.route("/api/telescope/disconnect", methods=["POST"])
 async def telescope_disconnect():
     """断开望远镜连接"""
-    return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+    global _telescope_connection_type
+
+    client = _get_telescope_client()
+    if client is None or not client.is_connected:
+        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+
+    try:
+        await client.safe_shutdown()
+        client.disable_mqtt()
+        _telescope_connection_type = None
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e), "code": "DISCONNECT_ERROR"}), 500
 
 
 @app.route("/api/telescope/goto", methods=["POST"])
 async def telescope_goto():
     """
     GOTO指向目标
-    
+
     Body: {"target": "M31"} 或 {"target": "10.6847,41.2687"}
     """
-    return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+    client = _get_telescope_client()
+    if client is None or not client.is_connected:
+        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+
+    data = await request.get_json()
+    if not data or "target" not in data:
+        return jsonify({"error": "缺少 target 参数", "code": "MISSING_TARGET"}), 400
+
+    target_str = data["target"].strip()
+
+    try:
+        from telescope.seestar_client import ObservationTarget
+
+        if "," in target_str:
+            parts = target_str.split(",")
+            ra = float(parts[0].strip())
+            dec = float(parts[1].strip())
+            target_name = data.get("name", f"RA{ra}_DEC{dec}")
+        else:
+            coords = parse_coordinates(target_str) if _SKYCHART_AVAILABLE else None
+            if coords:
+                ra, dec = coords
+                target_name = target_str
+            else:
+                return jsonify({"error": f"无法解析目标: {target_str}", "code": "TARGET_NOT_FOUND"}), 404
+
+        target = ObservationTarget(
+            name=target_name,
+            ra=ra,
+            dec=dec,
+            priority=data.get("priority", 0.8),
+            exposure_time=data.get("exposure_time", 60),
+            filter=data.get("filter", "L"),
+        )
+
+        success = await client.goto_target(target)
+        if success:
+            return jsonify({
+                "success": True,
+                "target": target_name,
+                "ra": ra,
+                "dec": dec,
+                "status": client.current_status.value,
+            })
+        else:
+            return jsonify({"error": "GOTO失败，安全检查未通过或设备错误", "code": "GOTO_FAILED"}), 500
+
+    except Exception as e:
+        logger.error(f"望远镜GOTO失败: {e}")
+        return jsonify({"error": str(e), "code": "GOTO_ERROR"}), 500
 
 
 @app.route("/api/telescope/plate_solve", methods=["POST"])
 async def telescope_plate_solve():
     """执行Plate Solving校准"""
-    return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+    client = _get_telescope_client()
+    if client is None or not client.is_connected:
+        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+
+    try:
+        return jsonify({
+            "success": True,
+            "message": "Plate Solving功能需要ASTAP/Astrometry.net支持",
+            "solved": False,
+            "ra": client.current_position.ra,
+            "dec": client.current_position.dec,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e), "code": "PLATE_SOLVE_ERROR"}), 500
 
 
 @app.route("/api/telescope/tracking", methods=["POST"])
 async def telescope_tracking():
     """
     望远镜跟踪控制
-    
+
     Body: {"action": "start"} 或 {"action": "stop"}
     """
-    return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+    client = _get_telescope_client()
+    if client is None or not client.is_connected:
+        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+
+    data = await request.get_json()
+    if not data or "action" not in data:
+        return jsonify({"error": "缺少 action 参数", "code": "MISSING_ACTION"}), 400
+
+    action = data["action"]
+
+    try:
+        if action == "start":
+            client.current_status = client.telescope_status_enum().TRACKING if hasattr(client, 'telescope_status_enum') else type(client.current_status).TRACKING
+        elif action == "stop":
+            await client.abort()
+        else:
+            return jsonify({"error": f"无效操作: {action}", "code": "INVALID_ACTION"}), 400
+
+        return jsonify({"success": True, "action": action, "status": client.current_status.value})
+    except Exception as e:
+        return jsonify({"error": str(e), "code": "TRACKING_ERROR"}), 500
 
 
 @app.route("/api/telescope/expose", methods=["POST"])
 async def telescope_expose():
     """
     执行曝光成像
-    
+
     Body: {"exposure": 30, "count": 3, "target": "M31"}
     """
-    return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+    client = _get_telescope_client()
+    if client is None or not client.is_connected:
+        return jsonify({"error": "望远镜未连接", "code": "NOT_CONNECTED"}), 503
+
+    data = await request.get_json()
+    if not data:
+        return jsonify({"error": "请求体不能为空", "code": "EMPTY_BODY"}), 400
+
+    exposure = float(data.get("exposure", 30))
+    count = int(data.get("count", 1))
+    target_name = data.get("target", "unknown")
+    filter_name = data.get("filter", "L")
+
+    try:
+        success = await client.start_imaging(
+            exposure_time=exposure,
+            filter_name=filter_name,
+            count=count,
+        )
+
+        if success:
+            return jsonify({
+                "success": True,
+                "target": target_name,
+                "exposure_sec": exposure,
+                "frame_count": count,
+                "filter": filter_name,
+                "file_path": f"images/{target_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.fits",
+            })
+        else:
+            return jsonify({"error": "曝光失败", "code": "EXPOSE_FAILED"}), 500
+
+    except Exception as e:
+        logger.error(f"望远镜曝光失败: {e}")
+        return jsonify({"error": str(e), "code": "EXPOSE_ERROR"}), 500
 
 
 @app.route("/api/telescope/window", methods=["GET"])
@@ -2186,6 +2663,507 @@ async def stats_summary():
     })
 
 
+# ============================================================================
+# 智能体增强 API 端点 (v2.0)
+# ============================================================================
+
+@app.route("/api/enhancements/capabilities", methods=["GET"])
+async def get_enhancement_capabilities():
+    """获取智能体增强能力摘要"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用", "available": False})
+    return jsonify({
+        "available": True,
+        "capabilities": _enhancements.get_capability_summary()
+    })
+
+
+@app.route("/api/literature/search", methods=["GET"])
+@require_api_key
+async def enhanced_literature_search():
+    """增强文献搜索 - 多数据源聚合 (arXiv + ADS + Semantic Scholar)"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    query = request.args.get("q", "")
+    sources_str = request.args.get("sources", "")
+    sources = [s.strip() for s in sources_str.split(",") if s.strip()] if sources_str else None
+
+    if not query:
+        return jsonify({"error": "缺少查询参数 q"}), 400
+
+    try:
+        result = await _enhancements.enhanced_literature_search(query, sources)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/literature/citation-network", methods=["GET"])
+@require_api_key
+async def get_citation_network():
+    """获取论文引用网络"""
+    bibcode = request.args.get("bibcode", "")
+    paper_id = request.args.get("paper_id", "")
+    depth = int(request.args.get("depth", "1"))
+
+    if not bibcode and not paper_id:
+        return jsonify({"error": "需要 bibcode 或 paper_id 参数"}), 400
+
+    try:
+        if bibcode and _enhancements.ads_client.is_configured:
+            result = await _enhancements.ads_client.get_citation_network(bibcode, depth)
+        elif paper_id:
+            result = await _enhancements.s2_client.get_citation_graph(paper_id, depth)
+        else:
+            result = {"error": "ADS API 未配置，且未提供 paper_id"}
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/literature/ads-search", methods=["GET"])
+@require_api_key
+async def ads_search():
+    """ADS 文献搜索"""
+    if not _ENHANCEMENTS_AVAILABLE or not _enhancements.ads_client.is_configured:
+        return jsonify({"error": "ADS API 未配置，请设置 ADS_API_TOKEN 环境变量"}), 503
+
+    query = request.args.get("q", "")
+    max_results = int(request.args.get("n", "20"))
+    sort = request.args.get("sort", "date")
+
+    if not query:
+        return jsonify({"error": "缺少查询参数 q"}), 400
+
+    try:
+        results = await _enhancements.ads_client.search(query, max_results, sort)
+        return jsonify({"query": query, "total": len(results), "results": results})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/fact/verify", methods=["POST"])
+@require_api_key
+async def verify_facts():
+    """事实校验 - 验证LLM输出中的天文事实"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    data = await request.get_json()
+    text = data.get("text", "")
+
+    if not text:
+        return jsonify({"error": "缺少 text 参数"}), 400
+
+    try:
+        report = _enhancements.fact_verifier.verify_response(text)
+        return jsonify({
+            "overall_confidence": report.overall_confidence,
+            "hallucination_risk": report.hallucination_risk,
+            "verified_count": report.verified_count,
+            "unverified_count": report.unverified_count,
+            "contradicted_count": report.contradicted_count,
+            "suggestions": report.suggestions,
+            "claims": [
+                {
+                    "claim": c.claim,
+                    "category": c.category,
+                    "verified": c.verified,
+                    "confidence": c.confidence,
+                    "contradictions": c.contradictions
+                }
+                for c in report.claims
+            ]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/hallucination/detect", methods=["POST"])
+@require_api_key
+async def detect_hallucination():
+    """幻觉检测 - 多维度检测LLM输出"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    data = await request.get_json()
+    text = data.get("text", "")
+    context = data.get("context", "")
+    expected_topics = data.get("expected_topics", None)
+
+    if not text:
+        return jsonify({"error": "缺少 text 参数"}), 400
+
+    try:
+        result = _enhancements.hallucination_detector.detect(text, context, expected_topics)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/rag/hybrid-search", methods=["GET"])
+@require_api_key
+async def hybrid_rag_search():
+    """混合RAG检索 - 关键词+向量+重排序"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    query = request.args.get("q", "")
+    top_k = int(request.args.get("k", "5"))
+
+    if not query:
+        return jsonify({"error": "缺少查询参数 q"}), 400
+
+    try:
+        results = await _enhancements.hybrid_rag.hybrid_search(query, top_k)
+        reranked = _enhancements.hybrid_rag.rerank(query, results, top_k)
+        return jsonify({"query": query, "total": len(reranked), "results": reranked})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/mcp/tools", methods=["GET"])
+async def list_mcp_tools():
+    """列出所有MCP工具"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    category = request.args.get("category", "")
+    keyword = request.args.get("keyword", "")
+
+    tools = _enhancements.tool_registry.discover(
+        category=category or None,
+        keyword=keyword or None
+    )
+    return jsonify({"tools": tools, "total": len(tools)})
+
+
+@app.route("/api/mcp/tools/stats", methods=["GET"])
+async def get_mcp_tool_stats():
+    """获取MCP工具统计"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+    return jsonify(_enhancements.tool_registry.get_stats())
+
+
+@app.route("/api/mcp/call", methods=["POST"])
+@require_api_key
+async def call_mcp_tool():
+    """调用MCP工具"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    data = await request.get_json()
+    tool_name = data.get("tool", "")
+    params = data.get("params", {})
+
+    if not tool_name:
+        return jsonify({"error": "缺少 tool 参数"}), 400
+
+    try:
+        result = await _enhancements.tool_registry.call(tool_name, **params)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/mcp/chain", methods=["POST"])
+@require_api_key
+async def execute_mcp_chain():
+    """执行MCP工具调用链"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    data = await request.get_json()
+    chain = data.get("chain", [])
+
+    if not chain:
+        return jsonify({"error": "缺少 chain 参数"}), 400
+
+    try:
+        results = await _enhancements.tool_registry.call_chain(chain)
+        return jsonify({"chain_results": results, "total_steps": len(results)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflows", methods=["GET"])
+async def list_workflows():
+    """列出所有工作流"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+    return jsonify({"workflows": _enhancements.workflow_orchestrator.get_all_workflows()})
+
+
+@app.route("/api/workflows", methods=["POST"])
+@require_api_key
+async def create_workflow():
+    """创建工作流"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    data = await request.get_json()
+    name = data.get("name", "Untitled Workflow")
+    steps = data.get("steps", [])
+
+    if not steps:
+        return jsonify({"error": "缺少 steps 参数"}), 400
+
+    try:
+        state = _enhancements.workflow_orchestrator.create_workflow(name, steps)
+        return jsonify({
+            "workflow_id": state.workflow_id,
+            "name": state.name,
+            "steps": len(state.steps),
+            "status": state.status.value,
+            "created_at": state.created_at
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflows/<workflow_id>/execute", methods=["POST"])
+@require_api_key
+async def execute_workflow(workflow_id):
+    """执行工作流"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    try:
+        result = await _enhancements.workflow_orchestrator.execute_workflow(workflow_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflows/<workflow_id>", methods=["GET"])
+async def get_workflow(workflow_id):
+    """获取工作流详情"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    state = _enhancements.workflow_orchestrator.active_workflows.get(workflow_id)
+    if not state:
+        state = _enhancements.workflow_orchestrator.load_state(workflow_id)
+    if not state:
+        return jsonify({"error": "工作流不存在"}), 404
+
+    return jsonify({
+        "workflow_id": state.workflow_id,
+        "name": state.name,
+        "status": state.status.value,
+        "created_at": state.created_at,
+        "updated_at": state.updated_at,
+        "steps": [
+            {
+                "id": s.id, "name": s.name, "action": s.action,
+                "status": s.status.value, "error": s.error,
+                "retry_count": s.retry_count
+            }
+            for s in state.steps
+        ]
+    })
+
+
+@app.route("/api/chat/safe", methods=["POST"])
+@require_api_key
+async def safe_chat():
+    """安全对话 - 带幻觉检测和事实校验的对话"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    data = await request.get_json()
+    message = data.get("message", "")
+    context = data.get("context", "")
+    expected_topics = data.get("expected_topics", None)
+
+    if not message:
+        return jsonify({"error": "消息不能为空"}), 400
+
+    try:
+        safe_result = await _enhancements.safe_chat_response(
+            message, context, expected_topics
+        )
+        return jsonify(safe_result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================================================
+# 可视化闭环工作流引擎 API (v2.0)
+# ============================================================================
+
+@app.route("/api/workflow-engine/node-types", methods=["GET"])
+async def get_node_types():
+    """获取所有可用节点类型"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+    return jsonify({"node_types": _workflow_engine.get_node_types()})
+
+
+@app.route("/api/workflow-engine/templates", methods=["GET"])
+async def get_workflow_templates():
+    """获取预置工作流模板"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+    return jsonify({"templates": _workflow_engine.get_templates()})
+
+
+@app.route("/api/workflow-engine/templates/<template_name>/instantiate", methods=["POST"])
+@require_api_key
+async def instantiate_template(template_name):
+    """从模板实例化工作流"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    data = await request.get_json() or {}
+    custom_name = data.get("name", None)
+
+    try:
+        result = _workflow_engine.instantiate_template(template_name, custom_name)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflow-engine/definitions", methods=["GET"])
+async def list_workflow_definitions():
+    """列出所有工作流定义"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+    return jsonify({"workflows": _workflow_engine.list_workflows()})
+
+
+@app.route("/api/workflow-engine/definitions", methods=["POST"])
+@require_api_key
+async def save_workflow_definition():
+    """创建/更新工作流定义（无代码配置）"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    data = await request.get_json()
+    if not data:
+        return jsonify({"error": "缺少工作流定义数据"}), 400
+
+    try:
+        result = _workflow_engine.create_workflow(data)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflow-engine/definitions/<wf_id>", methods=["GET"])
+async def get_workflow_definition(wf_id):
+    """获取工作流定义详情"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    wf = _workflow_engine.get_workflow(wf_id)
+    if not wf:
+        return jsonify({"error": "工作流不存在"}), 404
+    return jsonify(wf)
+
+
+@app.route("/api/workflow-engine/definitions/<wf_id>", methods=["DELETE"])
+@require_api_key
+async def delete_workflow_definition(wf_id):
+    """删除工作流定义"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    ok = _workflow_engine.delete_workflow(wf_id)
+    return jsonify({"deleted": ok})
+
+
+@app.route("/api/workflow-engine/execute/<wf_id>", methods=["POST"])
+@require_api_key
+async def execute_workflow_engine(wf_id):
+    """执行工作流"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    data = await request.get_json() or {}
+    initial_vars = data.get("variables", {})
+
+    try:
+        result = await _workflow_engine.execute_workflow(wf_id, initial_vars)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflow-engine/status/<wf_id>", methods=["GET"])
+async def get_workflow_execution_status(wf_id):
+    """获取工作流执行状态（实时）"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    status = _workflow_engine.get_execution_status(wf_id)
+    if not status:
+        return jsonify({"error": "工作流不存在"}), 404
+    return jsonify(status)
+
+
+@app.route("/api/workflow-engine/history", methods=["GET"])
+async def get_execution_history():
+    """获取执行历史"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    limit = int(request.args.get("limit", "20"))
+    return jsonify({"history": _workflow_engine.get_execution_history(limit)})
+
+
+@app.route("/api/workflow-engine/statistics", methods=["GET"])
+async def get_workflow_statistics():
+    """获取工作流引擎统计信息"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+    return jsonify(_workflow_engine.get_statistics())
+
+
+@app.route("/api/workflow-engine/export/<wf_id>", methods=["GET"])
+async def export_workflow(wf_id):
+    """导出工作流为JSON"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    data = _workflow_engine.export_workflow(wf_id)
+    if not data:
+        return jsonify({"error": "工作流不存在"}), 404
+    return jsonify(data)
+
+
+@app.route("/api/workflow-engine/import", methods=["POST"])
+@require_api_key
+async def import_workflow():
+    """导入工作流"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    data = await request.get_json()
+    if not data:
+        return jsonify({"error": "缺少工作流数据"}), 400
+
+    try:
+        result = _workflow_engine.import_workflow(data)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflow-engine/cancel/<wf_id>", methods=["POST"])
+@require_api_key
+async def cancel_workflow_execution(wf_id):
+    """取消正在执行的工作流"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    ok = _workflow_engine.cancel_execution(wf_id)
+    return jsonify({"cancelled": ok})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
 
@@ -2204,18 +3182,5 @@ if __name__ == "__main__":
     logger.info(f"Agent Status WS: ws://localhost:{port}/ws/agent_status")
     logger.info(f"Observation WS: ws://localhost:{port}/ws/observation")
     logger.info("=" * 50)
-
-    if _REALTIME_BRIDGE_AVAILABLE:
-        @app.before_serving
-        async def start_bridge_tasks():
-            asyncio.ensure_future(start_heartbeat_loop(_conn_manager))
-            asyncio.ensure_future(start_broadcast_loop(_conn_manager, _state_bridge))
-            logger.info("Realtime bridge background tasks started")
-
-    # 启动WebSocket心跳循环
-    @app.before_serving
-    async def start_ws_heartbeat():
-        asyncio.ensure_future(ws_manager.start_heartbeat_loop())
-        logger.info("WebSocket heartbeat loop started")
 
     app.run(host="0.0.0.0", port=port, debug=DEBUG)

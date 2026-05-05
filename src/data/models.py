@@ -299,7 +299,7 @@ class Experience:
             last_access_dt = datetime.fromisoformat(self.last_accessed)
             days_ago = (datetime.now() - last_access_dt).days
             recency_factor = np.exp(-days_ago / 90)
-        except:
+        except (ValueError, TypeError):
             recency_factor = 0.5
 
         final_score = base_score + access_bonus

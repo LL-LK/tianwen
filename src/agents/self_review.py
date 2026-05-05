@@ -64,14 +64,14 @@ class SelfReviewSystem:
             try:
                 with open(self.task_history_file, 'r', encoding='utf-8') as f:
                     self.task_history = json.load(f)
-            except:
+            except (json.JSONDecodeError, FileNotFoundError, OSError):
                 self.task_history = []
 
         if self.reviews_file.exists():
             try:
                 with open(self.reviews_file, 'r', encoding='utf-8') as f:
                     self.reviews = json.load(f)
-            except:
+            except (json.JSONDecodeError, FileNotFoundError, OSError):
                 self.reviews = []
 
     def _save_data(self):
@@ -96,7 +96,7 @@ class SelfReviewSystem:
                 task_time = datetime.fromisoformat(task.get('timestamp', ''))
                 if start_date <= task_time <= end_date:
                     filtered.append(task)
-            except:
+            except (ValueError, KeyError):
                 continue
         return filtered
 

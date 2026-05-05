@@ -93,7 +93,7 @@ class ObservationResult:
 
 def _import_dependencies():
     """延迟导入依赖模块"""
-    global SkyChartAPI, TelescopeSimulator, calculate_observation_window
+    global SkyChartAPI
     
     try:
         from realtime_sky_chart import NASA_SkyView_API, parse_coordinates, BUILTIN_CATALOG

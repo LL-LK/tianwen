@@ -11,6 +11,7 @@ Hermes-AGI Code Sandbox
 
 import asyncio
 import subprocess
+import sys
 import tempfile
 import os
 import json
@@ -259,7 +260,7 @@ else:
                         try:
                             process.kill()
                             await process.wait()
-                        except:
+                        except ProcessLookupError:
                             pass
                         return ExecutionResult(
                             success=False,
@@ -292,12 +293,12 @@ else:
                 finally:
                     try:
                         os.unlink(code_file_path)
-                    except:
+                    except OSError:
                         pass
             finally:
                 try:
                     os.unlink(input_file_path)
-                except:
+                except OSError:
                     pass
 
         except SecurityError as e:
@@ -381,7 +382,7 @@ if (typeof result !== 'undefined') {{
                     if result.returncode == 0:
                         node_path = path
                         break
-                except:
+                except (FileNotFoundError, subprocess.SubprocessError):
                     continue
 
             if not node_path:
@@ -426,7 +427,7 @@ if (typeof result !== 'undefined') {{
                         try:
                             process.kill()
                             await process.wait()
-                        except:
+                        except ProcessLookupError:
                             pass
                         return ExecutionResult(
                             success=False,
@@ -451,12 +452,12 @@ if (typeof result !== 'undefined') {{
                 finally:
                     try:
                         os.unlink(code_file_path)
-                    except:
+                    except OSError:
                         pass
             finally:
                 try:
                     os.unlink(input_file_path)
-                except:
+                except OSError:
                     pass
 
         except SecurityError as e:

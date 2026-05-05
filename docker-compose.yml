@@ -11,18 +11,23 @@ services:
       - QWEN_ENDPOINT=${QWEN_ENDPOINT:-https://dashscope.aliyuncs.com/api/v1}
       - CHROMA_HOST=vector-db
       - CHROMA_PORT=8000
+      - DEBUG=${DEBUG:-false}
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://tianwen-agi.pages.dev}
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
     depends_on:
       vector-db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:5000/api/health'); exit(0 if r.status==200 else 1)"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/ping"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 120s
     volumes:
       - ./src:/app/src
       - ./web:/app/web
+      - ./runtime:/app/runtime
     restart: unless-stopped
 
   vector-db:

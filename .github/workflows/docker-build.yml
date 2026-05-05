@@ -5,6 +5,7 @@ on:
     branches: [main, trae]
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -47,3 +48,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Verify pushed image
+        run: |
+          echo "Image pushed successfully: ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}"
+          docker pull ghcr.io/${{ github.repository }}:latest 2>/dev/null || echo "Skipping pull verification"

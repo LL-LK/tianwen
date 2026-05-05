@@ -72,7 +72,7 @@ except ImportError:
     KeplerExoplanetClient = None
 
 try:
-    from hypothesis_tester import HypothesisTester, generate_mock_observation_data, generate_mock_literature_evidence
+    from hypothesis_tester import HypothesisTester
     HYPOTHESIS_TESTER_AVAILABLE = True
 except ImportError:
     HYPOTHESIS_TESTER_AVAILABLE = False
@@ -106,6 +106,13 @@ try:
 except ImportError:
     OBSERVATORY_LINKER_AVAILABLE = False
     ObservatoryLinker = None
+
+try:
+    from data_miner import DataMiner
+    DATA_MINER_AVAILABLE = True
+except ImportError:
+    DATA_MINER_AVAILABLE = False
+    DataMiner = None
 
 
 @dataclass
@@ -317,15 +324,34 @@ class ResearchLoop:
 
             # ========== 步骤3: 假说验证 ==========
             logger.info(f"\n[Step 3/5] 假说验证")
-            for hypo in result.hypotheses[:3]:  # 限制验证数量
+            for hypo in result.hypotheses[:3]:
                 if self.hypothesis_tester:
-                    # 自动生成观测数据供验证使用
                     hypo_id = hypo.id if hasattr(hypo, 'id') else str(hypo)
                     target_name = hypo_id.replace("hypo_", "").replace("_", " ")
-                    obs_data = generate_mock_observation_data(target_name, count=5)
-                    lit_evidence = generate_mock_literature_evidence(
-                        hypo.statement if hasattr(hypo, 'statement') else ""
-                    )
+
+                    obs_data = []
+                    if self.observation_executor:
+                        try:
+                            obs_data = await self.observation_executor.get_observation_data(target_name)
+                        except Exception as e:
+                            logger.warning(f"获取观测数据失败: {e}")
+
+                    lit_evidence = []
+                    if self.literature_researcher:
+                        try:
+                            lit_result = await self.literature_researcher.research(
+                                hypo.statement if hasattr(hypo, 'statement') else str(hypo),
+                                max_papers=5
+                            )
+                            if lit_result and hasattr(lit_result, 'papers'):
+                                lit_evidence = [
+                                    {"title": p.title, "abstract": getattr(p, 'abstract', ''),
+                                     "year": getattr(p, 'year', 2024), "supports": True}
+                                    for p in lit_result.papers
+                                ]
+                        except Exception as e:
+                            logger.warning(f"获取文献证据失败: {e}")
+
                     report = await self.hypothesis_tester.test_hypothesis(hypo, obs_data, lit_evidence)
                     result.test_reports.append(report)
                     logger.info(f"  → {hypo.id}: {report.overall_result.value}")

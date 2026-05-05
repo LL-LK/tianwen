@@ -238,13 +238,8 @@ class AstrometrySolver:
                     "wcs": wcs
                 }
             except Exception:
-                # 模拟WCS
-                return {
-                    "status": "mock",
-                    "ra": 0.0,
-                    "dec": 0.0,
-                    "note": "astrometry不可用，使用模拟WCS"
-                }
+                print("无法从FITS头读取WCS，且astrometry.net不可用。请安装 astrometry.net 进行板解。")
+                return None
         except Exception as e:
             print(f"FITS读取失败: {e}")
             return None
