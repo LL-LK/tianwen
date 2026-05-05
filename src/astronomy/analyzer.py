@@ -198,8 +198,7 @@ class AstroAnalyzer:
         for i in range(1, n - 1):
             if (values[i] > values[i-1] and values[i] > values[i+1]) or \
                (values[i] < values[i-1] and values[i] < values[i+1]):
-                if i < len(data.timestamps):
-                    changepoints.append(data.timestamps[i])
+                changepoints.append(i)
 
         return TrendAnalysis(
             direction=direction,

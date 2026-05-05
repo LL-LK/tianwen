@@ -938,11 +938,24 @@ async def evolution_stats():
 @app.route("/api/health", methods=["GET"])
 async def health():
     """健康检查"""
+    try:
+        agent_ok = agent is not None
+        cognitive_ok = agent.cognitive is not None if agent_ok else False
+        planning_ok = agent.planning is not None if agent_ok else False
+        execution_ok = agent.execution is not None if agent_ok else False
+        evolution_ok = agent.evolution is not None if agent_ok else False
+    except Exception:
+        agent_ok = False
+        cognitive_ok = False
+        planning_ok = False
+        execution_ok = False
+        evolution_ok = False
+
     if DEBUG:
         health_data = {
             "status": "ok",
-            "version": "2.3.0",
-            "build_id": "trae-perf-20260504",
+            "version": "2.4.0",
+            "build_id": "trae-perf-20260505",
             "timestamp": datetime.now().isoformat(),
             "system": {
                 "memory": {
@@ -961,11 +974,11 @@ async def health():
                 }
             },
             "dependencies": {
-                "agent_initialized": agent is not None,
-                "cognitive_engine": agent.cognitive is not None if agent else False,
-                "planning_engine": agent.planning is not None if agent else False,
-                "execution_engine": agent.execution is not None if agent else False,
-                "evolution_system": agent.evolution is not None if agent else False,
+                "agent_initialized": agent_ok,
+                "cognitive_engine": cognitive_ok,
+                "planning_engine": planning_ok,
+                "execution_engine": execution_ok,
+                "evolution_system": evolution_ok,
             },
             "sessions": {
                 "active_count": len(sessions),
@@ -985,14 +998,14 @@ async def health():
     else:
         health_data = {
             "status": "ok",
-            "version": "2.3.0",
+            "version": "2.4.0",
             "timestamp": datetime.now().isoformat(),
             "dependencies": {
-                "agent_initialized": agent is not None,
-                "cognitive_engine": agent.cognitive is not None if agent else False,
-                "planning_engine": agent.planning is not None if agent else False,
-                "execution_engine": agent.execution is not None if agent else False,
-                "evolution_system": agent.evolution is not None if agent else False,
+                "agent_initialized": agent_ok,
+                "cognitive_engine": cognitive_ok,
+                "planning_engine": planning_ok,
+                "execution_engine": execution_ok,
+                "evolution_system": evolution_ok,
             },
             "sessions": {
                 "active_count": len(sessions),
@@ -1012,7 +1025,7 @@ async def health():
 @app.route("/api/ping", methods=["GET"])
 async def ping():
     """轻量级连通性检测（无系统信息采集，极快响应）"""
-    return jsonify({"status": "ok", "version": "2.3.0", "timestamp": datetime.now().isoformat()})
+    return jsonify({"status": "ok", "version": "2.4.0", "timestamp": datetime.now().isoformat()})
 
 @app.route("/api/stats/dashboard", methods=["GET"])
 async def stats_dashboard():

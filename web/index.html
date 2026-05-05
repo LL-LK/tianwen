@@ -232,6 +232,8 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 
 .offline-banner{display:none;align-items:center;gap:8px;padding:8px 16px;background:rgba(239,68,68,0.15);border-bottom:1px solid rgba(239,68,68,0.3);font-size:12px;color:var(--danger);text-align:center;justify-content:center}
 .offline-banner.show{display:flex}
+.backend-banner{display:none;align-items:center;gap:8px;padding:8px 16px;background:rgba(245,158,11,0.15);border-bottom:1px solid rgba(245,158,11,0.3);font-size:12px;color:var(--warning);text-align:center;justify-content:center}
+.backend-banner.error{display:flex;background:rgba(239,68,68,0.15);border-bottom:1px solid rgba(239,68,68,0.3);color:var(--danger)}
 
 @media(max-width:768px){
   .grid-2,.grid-3,.grid-2-1,.grid-1-2{grid-template-columns:1fr}
@@ -275,6 +277,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 </div>
 
 <div class="offline-banner" id="offlineBanner">📡 网络连接已断开，数据可能不是最新的</div>
+<div class="backend-banner" id="backendBanner" style="display:none"></div>
 
 <div class="tab-nav">
   <button class="tab-btn active" data-tab="command">📡 观测总控台</button>
@@ -944,8 +947,10 @@ var isRefreshing = false;
 var lastRefreshTime = null;
 var dataFetchErrors = {};
 var _apiCache = {};
-var _cacheTTL = 5000;
+var _cacheTTL = 30000;
 var _isOnline = navigator.onLine;
+var _backendHealthy = null;
+var _healthCheckTimer = null;
 
 function $(sel){return document.querySelector(sel)}
 function $$(sel){return document.querySelectorAll(sel)}
@@ -1032,21 +1037,28 @@ async function apiGet(path, timeoutMs){
     return cached.data;
   }
 
-  var controller = new AbortController();
-  var timer = setTimeout(function(){ controller.abort(); }, timeoutMs);
-  try {
-    var r = await fetch(API_BASE + path, { signal: controller.signal });
-    clearTimeout(timer);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    var data = await r.json();
-    _apiCache[cacheKey] = { data: data, time: Date.now() };
-    return data;
-  } catch(e) {
-    clearTimeout(timer);
-    dataFetchErrors[path] = e.message;
-    if (cached) return cached.data;
-    return null;
+  var lastError = null;
+  for (var attempt = 0; attempt < 2; attempt++) {
+    var controller = new AbortController();
+    var timer = setTimeout(function(){ controller.abort(); }, timeoutMs);
+    try {
+      var r = await fetch(API_BASE + path, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      var data = await r.json();
+      _apiCache[cacheKey] = { data: data, time: Date.now() };
+      _backendHealthy = true;
+      return data;
+    } catch(e) {
+      clearTimeout(timer);
+      lastError = e;
+      if (attempt === 0) await new Promise(function(r){ setTimeout(r, 500); });
+    }
   }
+  dataFetchErrors[path] = lastError.message;
+  _backendHealthy = false;
+  if (cached) return cached.data;
+  return null;
 }
 
 async function apiPost(path, body){
@@ -1064,6 +1076,42 @@ async function apiPost(path, body){
 
 async function apiDelete(path){
   try { await fetch(API_BASE + path, {method: 'DELETE'}); } catch(e) {}
+}
+
+async function checkBackendHealth(){
+  try {
+    var controller = new AbortController();
+    var timer = setTimeout(function(){ controller.abort(); }, 5000);
+    var r = await fetch(API_BASE + '/ping', { signal: controller.signal });
+    clearTimeout(timer);
+    if (r.ok) {
+      _backendHealthy = true;
+      updateBackendStatus(true);
+      return true;
+    }
+  } catch(e) {}
+  _backendHealthy = false;
+  updateBackendStatus(false);
+  return false;
+}
+
+function startHealthCheckLoop(){
+  if (_healthCheckTimer) clearInterval(_healthCheckTimer);
+  checkBackendHealth();
+  _healthCheckTimer = setInterval(checkBackendHealth, 30000);
+}
+
+function updateBackendStatus(healthy){
+  var banner = $('#backendBanner');
+  if (!banner) return;
+  if (healthy) {
+    banner.style.display = 'none';
+    banner.className = 'backend-banner';
+  } else {
+    banner.style.display = 'block';
+    banner.className = 'backend-banner error';
+    banner.innerHTML = '⚠️ 后端服务不可达 (' + BACKEND_URL + ') — 数据可能过期，正在自动重试...';
+  }
 }
 
 function updateUI(state){
@@ -2100,6 +2148,7 @@ window.addEventListener('DOMContentLoaded', function(){
   $('#connBackendUrl').textContent = BACKEND_URL;
 
   connectWS();
+  startHealthCheckLoop();
   loadAllData();
   testConnectivity();
 
