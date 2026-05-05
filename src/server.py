@@ -26,9 +26,8 @@ from quart import Quart, jsonify, request, render_template, websocket
 import uuid
 import json
 import time
-import random
 from threading import Lock
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
 
 logging.basicConfig(
@@ -81,26 +80,6 @@ async def add_cors_headers(response):
     
     return response
 
-_response_cache: Dict[str, tuple] = {}
-_CACHE_MAX_SIZE = 50
-
-def _cache_key(path: str, query_string: str = "") -> str:
-    return f"{path}?{query_string}"
-
-def _set_response_cache(key: str, data: str, ttl: int = 5):
-    if len(_response_cache) >= _CACHE_MAX_SIZE:
-        oldest = min(_response_cache.keys(), key=lambda k: _response_cache[k][1])
-        del _response_cache[oldest]
-    _response_cache[key] = (data, time.time() + ttl)
-
-def _get_response_cache(key: str) -> Optional[str]:
-    entry = _response_cache.get(key)
-    if entry and time.time() < entry[1]:
-        return entry[0]
-    if entry:
-        del _response_cache[key]
-    return None
-
 def _generate_etag(data: str) -> str:
     return hashlib.md5(data.encode()).hexdigest()
 
@@ -122,6 +101,7 @@ from main import HermesAGI
 from core.cognitive import CognitiveEngine, PlanningEngine
 from web.dashboard import CycleStatisticsDashboard
 from research.hypothesis_tester import HypothesisTester
+from data.data_mode import get_observations_path
 import httpx
 
 try:
@@ -327,19 +307,6 @@ def _check_rate_limit(client_ip: str) -> bool:
         return False
     _rate_limit_store[client_ip].append(now)
     return True
-
-
-def _validate_required_fields(data: dict, required: list[str]) -> str | None:
-    for field in required:
-        if not data.get(field):
-            return f"缺少必填字段: {field}"
-    return None
-
-
-def _sanitize_str(value: str, max_len: int = 500) -> str:
-    if not isinstance(value, str):
-        return ""
-    return value.strip()[:max_len]
 
 
 @app.errorhandler(400)
@@ -1565,83 +1532,6 @@ async def ws_config():
         "realtime_bridge_available": _REALTIME_BRIDGE_AVAILABLE
     })
 
-    if _REALTIME_BRIDGE_AVAILABLE:
-        _conn_manager.register(client_id, ws)
-    else:
-        ws_manager.register(client_id, ws)
-
-    heartbeat_count = 0
-    last_heartbeat = time.time()
-
-    try:
-        # 发送连接成功消息
-        await websocket.send(json.dumps({
-            "type": "connected",
-            "client_id": client_id,
-            "timestamp": datetime.now().isoformat(),
-            "heartbeat_interval": 30,
-        }, ensure_ascii=False, default=str))
-
-        while True:
-            try:
-                # 30秒心跳检测
-                data = await asyncio.wait_for(websocket.receive(), timeout=30)
-                last_heartbeat = time.time()
-                heartbeat_count += 1
-
-                if data == "ping":
-                    await websocket.send("pong")
-                    if _REALTIME_BRIDGE_AVAILABLE:
-                        _conn_manager.heartbeat(client_id)
-                elif data == "pong":
-                    # 客户端响应心跳
-                    pass
-                elif data == "get_status":
-                    # 返回Agent完整状态
-                    status = _build_agent_status()
-                    await websocket.send(json.dumps({
-                        "type": "agent_status",
-                        "data": status,
-                    }, ensure_ascii=False, default=str))
-                elif data and data.startswith("{"):
-                    try:
-                        msg = json.loads(data)
-                        msg_type = msg.get("type", "")
-                        if msg_type == "ping":
-                            await websocket.send(json.dumps({
-                                "type": "pong",
-                                "timestamp": datetime.now().isoformat(),
-                            }, ensure_ascii=False, default=str))
-                        elif msg_type == "subscribe":
-                            # 订阅特定事件
-                            event = msg.get("event", "")
-                            if event and _REALTIME_BRIDGE_AVAILABLE:
-                                def make_forward(ev):
-                                    async def forward(evt_type, data):
-                                        try:
-                                            await websocket.send(MessageSerializer.serialize_event(evt_type, data))
-                                        except Exception:
-                                            pass
-                                    return forward
-                                _event_bus.subscribe(event, make_forward(event))
-                    except json.JSONDecodeError:
-                        pass
-            except asyncio.TimeoutError:
-                # 心跳超时，发送ping检测连接
-                await websocket.send(json.dumps({
-                    "type": "heartbeat",
-                    "timestamp": datetime.now().isoformat(),
-                    "uptime_seconds": int(time.time() - last_heartbeat),
-                }, ensure_ascii=False, default=str))
-
-    except Exception:
-        pass
-    finally:
-        if _REALTIME_BRIDGE_AVAILABLE:
-            _conn_manager.unregister(client_id)
-        else:
-            ws_manager.unregister(client_id)
-
 
 @app.websocket('/ws/observation')
 async def observation_ws():
@@ -1778,33 +1668,6 @@ async def workflow_engine_ws():
             _conn_manager.unregister(client_id)
         else:
             ws_manager.unregister(client_id)
-
-
-def _build_agent_status():
-    """构建Agent状态数据"""
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "cognitive": {
-            "status": "active" if agent and agent.cognitive else "inactive",
-            "intent": "observation",
-            "complexity": "medium",
-        },
-        "planning": {
-            "status": "active" if agent and agent.planning else "inactive",
-            "current_task": _observatory_state.get("research_loop", {}).get("topic", "未知"),
-            "cycle_id": _observatory_state.get("research_loop", {}).get("cycle_id", "N/A"),
-        },
-        "execution": {
-            "status": _observatory_state.get("status", "idle"),
-            "current_target": _observatory_state.get("current_target", {}),
-        },
-        "evolution": {
-            "status": "active" if agent and agent.evolution else "inactive",
-            "discoveries": _observatory_state.get("discoveries", 0),
-            "hypotheses": _observatory_state.get("hypotheses", 0),
-        },
-        "ws_clients": ws_manager.connection_count,
-    }
 
 
 def _build_observation_status():
