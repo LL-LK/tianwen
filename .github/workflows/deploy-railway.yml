@@ -22,9 +22,9 @@ jobs:
 
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true
           sudo docker image prune -af || true
-          sudo apt-get clean
+          sudo apt-get clean || true
           df -h
 
       - name: Install Railway CLI
@@ -40,12 +40,13 @@ jobs:
       - name: Health check
         run: |
           sleep 30
-          curl -f "https://${{ secrets.RAILWAY_APP_URL }}/api/health" || true
+          curl -f -s -o /dev/null -w "%{http_code}" "https://${{ secrets.RAILWAY_APP_URL }}/api/health" || echo "Health check failed (may need warmup)"
 
       - name: Create deployment summary
         if: always()
         run: |
-          echo "## Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Commit: ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Ref: ${{ github.ref }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- URL: https://${{ secrets.RAILWAY_APP_URL }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "## 🚀 Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Commit**: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Ref**: \`${{ github.ref }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **URL**: https://${{ secrets.RAILWAY_APP_URL }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Health**: https://${{ secrets.RAILWAY_APP_URL }}/api/health" >> "$GITHUB_STEP_SUMMARY"

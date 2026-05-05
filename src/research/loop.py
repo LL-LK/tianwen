@@ -107,6 +107,13 @@ except ImportError:
     OBSERVATORY_LINKER_AVAILABLE = False
     ObservatoryLinker = None
 
+try:
+    from data_miner import DataMiner
+    DATA_MINER_AVAILABLE = True
+except ImportError:
+    DATA_MINER_AVAILABLE = False
+    DataMiner = None
+
 
 @dataclass
 class CycleResult:

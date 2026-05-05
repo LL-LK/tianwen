@@ -11,6 +11,7 @@ Hermes-AGI Code Sandbox
 
 import asyncio
 import subprocess
+import sys
 import tempfile
 import os
 import json

@@ -3102,6 +3102,55 @@ async def get_execution_history():
     return jsonify({"history": _workflow_engine.get_execution_history(limit)})
 
 
+@app.route("/api/workflow-engine/statistics", methods=["GET"])
+async def get_workflow_statistics():
+    """获取工作流引擎统计信息"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+    return jsonify(_workflow_engine.get_statistics())
+
+
+@app.route("/api/workflow-engine/export/<wf_id>", methods=["GET"])
+async def export_workflow(wf_id):
+    """导出工作流为JSON"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    data = _workflow_engine.export_workflow(wf_id)
+    if not data:
+        return jsonify({"error": "工作流不存在"}), 404
+    return jsonify(data)
+
+
+@app.route("/api/workflow-engine/import", methods=["POST"])
+@require_api_key
+async def import_workflow():
+    """导入工作流"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    data = await request.get_json()
+    if not data:
+        return jsonify({"error": "缺少工作流数据"}), 400
+
+    try:
+        result = _workflow_engine.import_workflow(data)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflow-engine/cancel/<wf_id>", methods=["POST"])
+@require_api_key
+async def cancel_workflow_execution(wf_id):
+    """取消正在执行的工作流"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    ok = _workflow_engine.cancel_execution(wf_id)
+    return jsonify({"cancelled": ok})
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
 

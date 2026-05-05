@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.3.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.4.0-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/python-3.11+-green?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/license-MIT-orange?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/platform-Railway%20%7C%20Docker%20%7C%20Cloudflare-9cf?style=flat-square" alt="Platform">
@@ -86,10 +86,23 @@
 
 ### ⚡ 实时通信
 
-- **WebSocket 推送**: 3 个独立频道（观测站状态 / Agent 状态 / 观测数据）
+- **WebSocket 推送**: 4 个独立频道（观测站状态 / Agent 状态 / 观测数据 / 工作流引擎）
 - **心跳检测**: 30 秒间隔心跳，60 秒超时自动断开
 - **断线重连**: 自动重连机制，最多 10 次，指数退避
 - **事件订阅**: 支持客户端订阅特定事件类型
+
+### 🔧 可视化工作流引擎 (v2.4 新增)
+
+- **DAG 工作流**: 可视化拖拽式工作流定义，支持 20 种节点类型
+- **闭环执行**: 文献调研 → 假说生成 → 观测调度 → 数据挖掘 → 指导观测 全闭环
+- **7 个预置模板**: 完整研究闭环、快速观测、文献深度调研、异常天体狩猎、多智能体协作、实时天空监控、数据流水线
+- **实时推送**: WebSocket 实时推送节点状态和执行进度
+- **无代码配置**: 所有节点参数通过 JSON 配置，无需编写代码
+- **条件分支**: 支持基于执行结果的条件路由
+- **并行执行**: 同层节点自动并行执行
+- **错误恢复**: 节点级重试机制，支持断点续传
+- **导入/导出**: 工作流 JSON 格式可移植导入导出
+- **执行统计**: 成功率、平均耗时、节点分布等统计信息
 
 ### 🛡️ 安全与运维
 
@@ -359,6 +372,25 @@ Authentication: X-API-Key header (生产环境必需)
 | `PUT` | `/api/alerts/<id>/read` | 标记告警已读 |
 | `GET` | `/api/logs?level=DISCOVERY&limit=50` | 系统日志 |
 
+### 工作流引擎 API (v2.4)
+
+| 方法 | 端点 | 说明 |
+|------|------|------|
+| `GET` | `/api/workflow-engine/node-types` | 获取所有节点类型 |
+| `GET` | `/api/workflow-engine/templates` | 获取预置模板列表 |
+| `POST` | `/api/workflow-engine/templates/<name>/instantiate` | 从模板实例化工作流 |
+| `GET` | `/api/workflow-engine/definitions` | 列出所有工作流定义 |
+| `POST` | `/api/workflow-engine/definitions` | 创建/更新工作流定义 |
+| `GET` | `/api/workflow-engine/definitions/<id>` | 获取工作流详情 |
+| `DELETE` | `/api/workflow-engine/definitions/<id>` | 删除工作流 |
+| `POST` | `/api/workflow-engine/execute/<id>` | 执行工作流 |
+| `GET` | `/api/workflow-engine/status/<id>` | 获取执行状态 |
+| `GET` | `/api/workflow-engine/history` | 获取执行历史 |
+| `GET` | `/api/workflow-engine/statistics` | 获取引擎统计 |
+| `GET` | `/api/workflow-engine/export/<id>` | 导出工作流 JSON |
+| `POST` | `/api/workflow-engine/import` | 导入工作流 JSON |
+| `POST` | `/api/workflow-engine/cancel/<id>` | 取消执行中的工作流 |
+
 ### WebSocket 端点
 
 | 端点 | 说明 | 消息类型 |
@@ -366,6 +398,7 @@ Authentication: X-API-Key header (生产环境必需)
 | `/ws/observatory` | 观测站实时推送 | status_update, queue_update, new_alert, heartbeat |
 | `/ws/agent_status` | Agent 状态推送 | cognitive, planning, execution, evolution |
 | `/ws/observation` | 观测状态推送 | device_status, queue_status, heartbeat |
+| `/ws/workflow-engine` | 工作流引擎推送 | node_status, execution_progress, loop_event |
 
 **WebSocket 连接示例 (JavaScript)**:
 ```javascript
@@ -446,7 +479,9 @@ tianwen-agi/
 │   │   ├── data_miner.py       # 数据挖掘 Agent
 │   │   ├── browser.py          # 浏览器 Agent
 │   │   ├── self_review.py      # 自我审查 Agent
-│   │   └── tri_agent.py        # 三体 Agent
+│   │   ├── tri_agent.py        # 三体 Agent
+│   │   ├── workflow_engine.py  # 可视化闭环工作流引擎
+│   │   └── agent_enhancements.py # Agent 增强模块
 │   ├── core/                   # 核心引擎
 │   │   ├── cognitive.py        # 认知引擎 + 规划引擎
 │   │   ├── reasoning.py        # 推理引擎
@@ -516,6 +551,7 @@ tianwen-agi/
 ├── tests/                      # 测试文件
 ├── Dockerfile                  # Docker 镜像构建
 ├── docker-compose.yml          # Docker Compose 编排
+├── railway.json                # Railway 部署配置
 ├── requirements.txt            # Python 依赖
 ├── Procfile                    # Railway 部署配置
 ├── .env.example                # 环境变量模板
@@ -597,7 +633,18 @@ docker pull ghcr.io/ll-lk/tianwen-agi:v2.3.0
 
 ## 🗺 路线图
 
-### v2.4 (计划中)
+### v2.4 (已完成 ✅)
+
+- [x] 可视化闭环工作流引擎 (WorkflowEngine)
+- [x] 7 个预置工作流模板
+- [x] 工作流导入/导出 (JSON)
+- [x] 工作流执行统计面板
+- [x] WebSocket 工作流实时推送
+- [x] Dockerfile 优化 (curl 健康检查、runtime 目录)
+- [x] CI/CD 流程完善 (flake8 修复、Railway 部署优化)
+- [x] 前后端 CORS 连通性配置
+
+### v2.5 (计划中)
 
 - [ ] 真实望远镜 (Seestar S50) 完整集成
 - [ ] Neo4j 图数据库知识图谱
@@ -605,7 +652,7 @@ docker pull ghcr.io/ll-lk/tianwen-agi:v2.3.0
 - [ ] PWA 离线支持增强
 - [ ] 观测数据导出 (CSV/FITS)
 
-### v2.5 (远期)
+### v2.6 (远期)
 
 - [ ] 多观测站协同
 - [ ] 实时天体分类深度学习模型

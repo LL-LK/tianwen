@@ -85,7 +85,7 @@ class ResearchState:
     summary: str = ""
     sources_used: List[str] = field(default_factory=list)  # 使用的数据源
     relevant_documents: List[Dict] = field(default_factory=list)  # RAG检索结果
-    hypotheses: List["Hypothesis"] = field(default_factory=list)  # 生成的假说列表
+    hypotheses: List["ResearchHypothesis"] = field(default_factory=list)  # 生成的假说列表
 
 @dataclass
 class LiteratureReview:

@@ -306,6 +306,102 @@ class WorkflowEngine:
                 {"source": "condition", "target": "end", "condition": "anomaly_count == 0"},
             ],
         },
+        "collaborative_research": {
+            "name": "多智能体协作研究",
+            "description": "多Agent并行文献调研 → 交叉验证 → 共识假说 → 联合观测",
+            "nodes": [
+                {"id": "start", "type": "trigger", "label": "开始", "x": 400, "y": 20, "color": "#4caf50", "icon": "▶"},
+                {"id": "agent_a_lit", "type": "literature_search", "label": "Agent-A 文献调研", "x": 100, "y": 120, "color": "#2196f3", "icon": "📚",
+                 "config": {"sources": ["arxiv"], "max_results": 15}},
+                {"id": "agent_b_lit", "type": "literature_search", "label": "Agent-B 文献调研", "x": 400, "y": 120, "color": "#2196f3", "icon": "📚",
+                 "config": {"sources": ["ads"], "max_results": 15}},
+                {"id": "agent_c_lit", "type": "literature_search", "label": "Agent-C 文献调研", "x": 700, "y": 120, "color": "#2196f3", "icon": "📚",
+                 "config": {"sources": ["semantic_scholar"], "max_results": 15}},
+                {"id": "cross_check", "type": "result_analysis", "label": "交叉验证", "x": 400, "y": 220, "color": "#ff9800", "icon": "🔍"},
+                {"id": "consensus", "type": "hypothesis_generate", "label": "共识假说", "x": 400, "y": 320, "color": "#9c27b0", "icon": "🤝",
+                 "config": {"count": 2, "method": "cross_agent_consensus"}},
+                {"id": "joint_obs", "type": "observation_schedule", "label": "联合观测调度", "x": 400, "y": 420, "color": "#00bcd4", "icon": "📅",
+                 "config": {"max_targets": 3}},
+                {"id": "report", "type": "report_generate", "label": "协作报告", "x": 400, "y": 520, "color": "#3f51b5", "icon": "📄"},
+                {"id": "end", "type": "trigger", "label": "结束", "x": 400, "y": 620, "color": "#f44336", "icon": "⏹"},
+            ],
+            "edges": [
+                {"source": "start", "target": "agent_a_lit"},
+                {"source": "start", "target": "agent_b_lit"},
+                {"source": "start", "target": "agent_c_lit"},
+                {"source": "agent_a_lit", "target": "cross_check"},
+                {"source": "agent_b_lit", "target": "cross_check"},
+                {"source": "agent_c_lit", "target": "cross_check"},
+                {"source": "cross_check", "target": "consensus"},
+                {"source": "consensus", "target": "joint_obs"},
+                {"source": "joint_obs", "target": "report"},
+                {"source": "report", "target": "end"},
+            ],
+        },
+        "real_time_monitoring": {
+            "name": "实时天空监控",
+            "description": "持续曝光 → 实时异常检测 → 即时告警 → 自动跟踪 → 数据归档",
+            "nodes": [
+                {"id": "start", "type": "trigger", "label": "启动监控", "x": 400, "y": 20, "color": "#4caf50", "icon": "▶"},
+                {"id": "tel_exp", "type": "telescope_expose", "label": "连续曝光", "x": 400, "y": 120, "color": "#607d8b", "icon": "📷",
+                 "config": {"exposure": 10, "count": 100}},
+                {"id": "feature", "type": "feature_extraction", "label": "实时特征提取", "x": 400, "y": 220, "color": "#00bcd4", "icon": "🔬"},
+                {"id": "anomaly", "type": "anomaly_detection", "label": "异常检测", "x": 400, "y": 320, "color": "#e91e63", "icon": "⚠",
+                 "config": {"threshold": 0.9, "methods": ["isolation_forest", "dbscan"]}},
+                {"id": "condition", "type": "condition", "label": "检测到异常?", "x": 400, "y": 420, "color": "#ff9800", "icon": "❓",
+                 "config": {"condition": "anomaly_count > 0"}},
+                {"id": "alert", "type": "webhook", "label": "即时告警", "x": 150, "y": 520, "color": "#f44336", "icon": "🔔"},
+                {"id": "track", "type": "telescope_goto", "label": "自动跟踪", "x": 400, "y": 520, "color": "#795548", "icon": "🔭",
+                 "config": {"auto_track": True}},
+                {"id": "archive", "type": "data_mining", "label": "数据归档", "x": 650, "y": 520, "color": "#e91e63", "icon": "💾",
+                 "config": {"methods": ["pattern_discovery"]}},
+                {"id": "guide", "type": "guide_observation", "label": "反馈循环", "x": 400, "y": 620, "color": "#ff5722", "icon": "🔄",
+                 "config": {"feedback_loop": True}},
+                {"id": "end", "type": "trigger", "label": "停止监控", "x": 400, "y": 720, "color": "#f44336", "icon": "⏹"},
+            ],
+            "edges": [
+                {"source": "start", "target": "tel_exp"},
+                {"source": "tel_exp", "target": "feature"},
+                {"source": "feature", "target": "anomaly"},
+                {"source": "anomaly", "target": "condition"},
+                {"source": "condition", "target": "alert", "condition": "anomaly_count > 0"},
+                {"source": "condition", "target": "track", "condition": "anomaly_count > 0"},
+                {"source": "condition", "target": "archive", "condition": "anomaly_count == 0"},
+                {"source": "alert", "target": "guide"},
+                {"source": "track", "target": "guide"},
+                {"source": "archive", "target": "guide"},
+                {"source": "guide", "target": "tel_exp", "label": "继续监控", "condition": "loop_count < max_loops"},
+                {"source": "guide", "target": "end", "condition": "loop_count >= max_loops"},
+            ],
+            "loop_enabled": True,
+            "max_loops": 50,
+        },
+        "data_pipeline": {
+            "name": "数据流水线",
+            "description": "原始数据 → 预处理 → 特征提取 → 异常检测 → 模式发现 → 可视化报告",
+            "nodes": [
+                {"id": "start", "type": "trigger", "label": "数据输入", "x": 400, "y": 20, "color": "#4caf50", "icon": "▶"},
+                {"id": "feature", "type": "feature_extraction", "label": "特征提取", "x": 400, "y": 120, "color": "#00bcd4", "icon": "🔬"},
+                {"id": "anomaly", "type": "anomaly_detection", "label": "异常检测", "x": 200, "y": 220, "color": "#e91e63", "icon": "⚠",
+                 "config": {"threshold": 0.8}},
+                {"id": "mining", "type": "data_mining", "label": "模式发现", "x": 600, "y": 220, "color": "#e91e63", "icon": "⛏",
+                 "config": {"methods": ["pattern_discovery", "correlation_analysis"]}},
+                {"id": "merge", "type": "merge", "label": "结果汇合", "x": 400, "y": 320, "color": "#9e9e9e", "icon": "🔀"},
+                {"id": "analysis", "type": "result_analysis", "label": "综合分析", "x": 400, "y": 420, "color": "#ff9800", "icon": "📊"},
+                {"id": "report", "type": "report_generate", "label": "可视化报告", "x": 400, "y": 520, "color": "#3f51b5", "icon": "📄"},
+                {"id": "end", "type": "trigger", "label": "输出", "x": 400, "y": 620, "color": "#f44336", "icon": "⏹"},
+            ],
+            "edges": [
+                {"source": "start", "target": "feature"},
+                {"source": "feature", "target": "anomaly"},
+                {"source": "feature", "target": "mining"},
+                {"source": "anomaly", "target": "merge"},
+                {"source": "mining", "target": "merge"},
+                {"source": "merge", "target": "analysis"},
+                {"source": "analysis", "target": "report"},
+                {"source": "report", "target": "end"},
+            ],
+        },
     }
 
     def __init__(self, state_dir: str = "runtime/data/workflows"):
@@ -1234,6 +1330,75 @@ class WorkflowEngine:
     def get_execution_history(self, limit: int = 20) -> List[Dict]:
         """获取执行历史"""
         return self.completed_executions[-limit:]
+
+    def export_workflow(self, wf_id: str) -> Optional[Dict]:
+        """导出工作流为可移植的JSON格式"""
+        wf = self.definitions.get(wf_id)
+        if not wf:
+            return None
+        export_data = self._definition_to_dict(wf)
+        export_data["export_version"] = "2.0"
+        export_data["exported_at"] = datetime.now().isoformat()
+        export_data["engine"] = "tianwen-agi-workflow-engine"
+        return export_data
+
+    def import_workflow(self, data: Dict) -> Dict:
+        """从JSON导入工作流"""
+        if "export_version" not in data:
+            data["id"] = data.get("id", str(uuid.uuid4())[:12])
+        else:
+            data["id"] = str(uuid.uuid4())[:12]
+
+        return self.create_workflow(data)
+
+    def get_statistics(self) -> Dict:
+        """获取工作流引擎统计信息"""
+        total_definitions = len(self.definitions)
+        total_executions = len(self.completed_executions)
+        active_executions = len(self.active_executions)
+
+        node_type_counts = defaultdict(int)
+        for wf in self.definitions.values():
+            for node in wf.nodes:
+                node_type_counts[node.type.value] += 1
+
+        recent_executions = self.completed_executions[-10:]
+        success_rate = 0
+        if recent_executions:
+            successful = sum(
+                1 for e in recent_executions
+                if e.get("failed", 0) == 0
+            )
+            success_rate = round(successful / len(recent_executions) * 100, 1)
+
+        avg_duration = 0
+        if recent_executions:
+            durations = [e.get("duration_ms", 0) for e in recent_executions]
+            avg_duration = round(sum(durations) / len(durations), 1)
+
+        return {
+            "total_definitions": total_definitions,
+            "total_executions": total_executions,
+            "active_executions": active_executions,
+            "node_type_distribution": dict(node_type_counts),
+            "recent_success_rate": success_rate,
+            "avg_execution_duration_ms": avg_duration,
+            "templates_available": len(self.PRESET_TEMPLATES),
+        }
+
+    def cancel_execution(self, wf_id: str) -> bool:
+        """取消正在执行的工作流"""
+        if wf_id in self.active_executions:
+            ctx = self.active_executions[wf_id]
+            wf = self.definitions.get(wf_id)
+            if wf:
+                for node in wf.nodes:
+                    if node.status == NodeStatus.RUNNING:
+                        node.status = NodeStatus.FAILED
+                        node.error = "Cancelled by user"
+            del self.active_executions[wf_id]
+            return True
+        return False
 
     # ==================== 节点类型信息 ====================
 
