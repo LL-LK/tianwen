@@ -2385,6 +2385,19 @@ async def telescope_connect():
             await client.connect()
             _telescope_connection_type = "indi"
 
+        elif connection_type == "mqtt":
+            client.enable_mqtt(
+                broker=data.get("mqtt_broker", "localhost"),
+                port=data.get("mqtt_port", 1883),
+                username=data.get("mqtt_username", ""),
+                password=data.get("mqtt_password", ""),
+                location=data.get("mqtt_location", "xinglong"),
+                telescope_id=data.get("mqtt_telescope_id", "telescope1")
+            )
+            client.enable_simulation(False)
+            await client.connect()
+            _telescope_connection_type = "mqtt"
+
         else:
             return jsonify({"error": f"不支持的连接类型: {connection_type}", "code": "INVALID_TYPE"}), 400
 
@@ -2412,6 +2425,7 @@ async def telescope_disconnect():
 
     try:
         await client.safe_shutdown()
+        client.disable_mqtt()
         _telescope_connection_type = None
         return jsonify({"success": True})
     except Exception as e:

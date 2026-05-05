@@ -22,12 +22,31 @@ import time
 import hashlib
 import os
 import uuid
+import ast
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple, Set, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import defaultdict, OrderedDict
 from urllib.parse import urlencode, quote
+
+
+_SAFE_AST_NODES = {
+    ast.Expression, ast.Constant, ast.Name, ast.Load,
+    ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+    ast.BoolOp, ast.And, ast.Or, ast.Not,
+    ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.Pow,
+    ast.UnaryOp, ast.UAdd, ast.USub,
+    ast.Num, ast.Str,
+}
+
+
+def _safe_eval(expr: str, variables: dict) -> bool:
+    tree = ast.parse(expr.strip(), mode='eval')
+    for node in ast.walk(tree):
+        if type(node) not in _SAFE_AST_NODES:
+            raise ValueError(f"Unsafe expression: {type(node).__name__}")
+    return bool(eval(compile(tree, '<condition>', 'eval'), {"__builtins__": {}}, variables))
 import urllib.request
 import urllib.error
 
@@ -1177,7 +1196,7 @@ class WorkflowOrchestrator:
         try:
             safe_globals = {"__builtins__": {}}
             safe_locals = context.copy()
-            return bool(eval(condition, safe_globals, safe_locals))
+            return _safe_eval(condition, safe_locals)
         except Exception:
             return True
 

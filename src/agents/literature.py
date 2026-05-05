@@ -346,10 +346,10 @@ class OpenAlexClient:
                 return json.loads(response.read().decode('utf-8'))
 
         except urllib.error.HTTPError as e:
-            print(f"[OpenAlex] HTTP Error: {e.code} - {e.reason}")
+            logger.warning(f"[OpenAlex] HTTP Error: {e.code} - {e.reason}")
             return None
         except Exception as e:
-            print(f"[OpenAlex] Request error: {e}")
+            logger.warning(f"[OpenAlex] Request error: {e}")
             return None
 
     async def search(self, query: str, max_results: int = None) -> List[Paper]:
@@ -384,7 +384,7 @@ class OpenAlexClient:
                 if paper:
                     papers.append(paper)
             except Exception as e:
-                print(f"[OpenAlex] Parse work error: {e}")
+                logger.warning(f"[OpenAlex] Parse work error: {e}")
                 continue
 
         return papers
@@ -504,7 +504,7 @@ class OpenAlexClient:
             )
 
         except Exception as e:
-            print(f"[OpenAlex] Parse error: {e}")
+            logger.warning(f"[OpenAlex] Parse error: {e}")
             return None
 
     def _reconstruct_abstract(self, inverted_index: Dict) -> str:
@@ -603,10 +603,10 @@ class SemanticScholarClient:
                 return json.loads(response.read().decode('utf-8'))
 
         except urllib.error.HTTPError as e:
-            print(f"[SemanticScholar] HTTP Error: {e.code} - {e.reason}")
+            logger.warning(f"[SemanticScholar] HTTP Error: {e.code} - {e.reason}")
             return None
         except Exception as e:
-            print(f"[SemanticScholar] Request error: {e}")
+            logger.warning(f"[SemanticScholar] Request error: {e}")
             return None
 
     async def search(self, query: str, max_results: int = None) -> List[Paper]:
@@ -645,7 +645,7 @@ class SemanticScholarClient:
                 if paper:
                     papers.append(paper)
             except Exception as e:
-                print(f"[SemanticScholar] Parse paper error: {e}")
+                logger.warning(f"[SemanticScholar] Parse paper error: {e}")
                 continue
 
         return papers
@@ -852,7 +852,7 @@ class SemanticScholarClient:
             )
 
         except Exception as e:
-            print(f"[SemanticScholar] Parse error: {e}")
+            logger.warning(f"[SemanticScholar] Parse error: {e}")
             return None
 
 
@@ -914,11 +914,10 @@ class PDFParser:
             with open(local_path, 'wb') as f:
                 f.write(pdf_data)
 
-            print(f"[PDFParser] Downloaded: {local_path}")
+            logger.info(f"[PDFParser] Downloaded: {local_path}")
             return local_path
-
         except Exception as e:
-            print(f"[PDFParser] Download error: {e}")
+            logger.warning(f"[PDFParser] Download error: {e}")
             return None
 
     async def parse_pdf(self, pdf_path: str,
@@ -1197,7 +1196,7 @@ class PaperPDFAnalyzer:
                 analysis = await self.analyze_paper(paper)
                 results.append(analysis)
             except Exception as e:
-                print(f"[PaperPDFAnalyzer] Error analyzing {paper.id}: {e}")
+                logger.warning(f"[PaperPDFAnalyzer] Error analyzing {paper.id}: {e}")
                 results.append({
                     "paper_id": paper.id,
                     "title": paper.title,
@@ -1337,12 +1336,12 @@ class LiteratureResearcher:
                 result = await self._vector_store.initialize()
                 self._vector_store_initialized = result
                 if result:
-                    print(f"[LiteratureResearcher] ChromaDB向量存储初始化成功: {self._vector_persist_dir}")
+                    logger.info("[LiteratureResearcher] ChromaDB向量存储初始化成功: %s", self._vector_persist_dir)
                 else:
-                    print("[LiteratureResearcher] ChromaDB向量存储初始化失败")
+                    logger.warning("[LiteratureResearcher] ChromaDB向量存储初始化失败")
                 return result
             except Exception as e:
-                print(f"[LiteratureResearcher] 向量存储初始化异常: {e}")
+                logger.warning("[LiteratureResearcher] 向量存储初始化异常: %s", e)
                 self._vector_store_initialized = False
                 return False
 
@@ -1402,11 +1401,11 @@ class LiteratureResearcher:
             )
 
             if result:
-                print(f"[LiteratureResearcher] 成功索引 {len(papers)} 篇论文到向量存储")
+                logger.info("[LiteratureResearcher] 成功索引 %d 篇论文到向量存储", len(papers))
             return result
 
         except Exception as e:
-            print(f"[LiteratureResearcher] 索引论文失败: {e}")
+            logger.warning("[LiteratureResearcher] 索引论文失败: %s", e)
             return False
 
     async def search_vector_store(self, query: str, n_results: int = 5) -> List[Dict]:
@@ -1433,7 +1432,7 @@ class LiteratureResearcher:
             )
             return results
         except Exception as e:
-            print(f"[LiteratureResearcher] 向量搜索失败: {e}")
+            logger.warning("[LiteratureResearcher] 向量搜索失败: %s", e)
             return []
 
     async def get_vector_store_stats(self) -> Dict:
@@ -1474,15 +1473,13 @@ class LiteratureResearcher:
         Returns:
             ResearchState: 研究状态
         """
-        print(f"\n🔍 开始RAG增强文献调研: {topic}")
+        logger.info("开始RAG增强文献调研: %s", topic)
 
-        # 1. 先在向量存储中搜索已有文献
         existing_docs = await self.search_vector_store(topic, n_results=10)
-        print(f"   向量存储中找到 {len(existing_docs)} 篇已有文献")
+        logger.info("   向量存储中找到 %d 篇已有文献", len(existing_docs))
 
-        # 2. 多数据源搜索新文献
         papers = await self.search_all(topic, max_results=max_papers)
-        print(f"   API搜索找到 {len(papers)} 篇论文")
+        logger.info("   API搜索找到 %d 篇论文", len(papers))
 
         if not papers and not existing_docs:
             return ResearchState(
@@ -1618,15 +1615,14 @@ class LiteratureResearcher:
             tasks.append(self.search_semantic_scholar(query, max_results))
 
         if not tasks:
-            print("[LiteratureResearcher] No data sources enabled")
+            logger.warning("[LiteratureResearcher] No data sources enabled")
             return []
 
-        # 并行执行所有搜索任务
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for result in results:
             if isinstance(result, Exception):
-                print(f"[LiteratureResearcher] Search error: {result}")
+                logger.warning("[LiteratureResearcher] Search error: %s", result)
                 continue
             if isinstance(result, list):
                 all_papers.extend(result)
@@ -1634,7 +1630,7 @@ class LiteratureResearcher:
         # 去重 (基于论文ID)
         unique_papers = self._deduplicate_papers(all_papers)
 
-        print(f"[LiteratureResearcher] Found {len(all_papers)} papers, {len(unique_papers)} unique")
+        logger.info("[LiteratureResearcher] Found %d papers, %d unique", len(all_papers), len(unique_papers))
         return unique_papers
 
     def _deduplicate_papers(self, papers: List[Paper]) -> List[Paper]:
@@ -1687,8 +1683,8 @@ class LiteratureResearcher:
         Returns:
             ResearchState: 研究现状分析结果 (包含relevant_documents字段)
         """
-        print(f"\n🔍 开始文献调研: {topic}")
-        print(f"   使用数据源: {', '.join(self.sources_used) if self.sources_used else '无'}")
+        logger.info("开始文献调研: %s", topic)
+        logger.info("   使用数据源: %s", ', '.join(self.sources_used) if self.sources_used else '无')
 
         # 0. RAG增强: 在向量存储中搜索已有文献
         existing_docs = []
@@ -1698,14 +1694,14 @@ class LiteratureResearcher:
                 existing_docs = await self.search_vector_store(topic, n_results=10)
                 if existing_docs:
                     rag_used = True
-                    print(f"   [RAG] 向量存储中找到 {len(existing_docs)} 篇已有文献")
+                    logger.info("   [RAG] 向量存储中找到 %d 篇已有文献", len(existing_docs))
             except Exception as e:
-                print(f"   [RAG] 向量搜索失败 (非致命): {e}")
+                logger.warning("   [RAG] 向量搜索失败 (非致命): %s", e)
                 existing_docs = []
 
         # 1. 搜索论文 (多数据源)
         papers = await self.search_all(topic, max_results=max_papers)
-        print(f"   找到 {len(papers)} 篇相关论文 (去重后)")
+        logger.info("   找到 %d 篇相关论文 (去重后)", len(papers))
 
         if not papers and not existing_docs:
             return ResearchState(
@@ -1719,33 +1715,33 @@ class LiteratureResearcher:
             try:
                 await self.index_papers(papers, skip_existing=True)
                 if rag_used:
-                    print(f"   [RAG] 已将 {len(papers)} 篇新论文索引到向量存储")
+                    logger.info("   [RAG] 已将 %d 篇新论文索引到向量存储", len(papers))
             except Exception as e:
-                print(f"   [RAG] 索引论文失败 (非致命): {e}")
+                logger.warning("   [RAG] 索引论文失败 (非致命): %s", e)
 
         # 2. 深度主题提取
         themes = self._extract_themes_advanced(papers)
-        print(f"   识别 {len(themes)} 个关键主题")
+        logger.info("   识别 %d 个关键主题", len(themes))
 
         # 3. 论文聚类
         clusters = self._cluster_papers(papers)
-        print(f"   发现 {len(clusters)} 个研究子领域")
+        logger.info("   发现 %d 个研究子领域", len(clusters))
 
         # 4. 分析研究空白
         gaps = self._analyze_gaps_advanced(papers, themes)
-        print(f"   发现 {len(gaps)} 个研究空白")
+        logger.info("   发现 %d 个研究空白", len(gaps))
 
         # 5. 统计时间线
         timeline = self._analyze_timeline(papers)
-        print(f"   时间跨度: {min(timeline.keys()) if timeline else 'N/A'} - {max(timeline.keys()) if timeline else 'N/A'}")
+        logger.info("   时间跨度: %s - %s", min(timeline.keys()) if timeline else 'N/A', max(timeline.keys()) if timeline else 'N/A')
 
         # 6. 识别高产作者
         top_authors = self._find_top_authors(papers)
-        print(f"   高产作者: {[a[0] for a in top_authors[:3]]}")
+        logger.info("   高产作者: %s", [a[0] for a in top_authors[:3]])
 
         # 7. 判断趋势
         trend = self._analyze_trend(timeline)
-        print(f"   研究趋势: {trend}")
+        logger.info("   研究趋势: %s", trend)
 
         # 8. 生成摘要
         summary = self._generate_summary_advanced(topic, papers, themes, gaps, trend)
@@ -1984,7 +1980,7 @@ class LiteratureResearcher:
                 year = paper.published_date[:4]
                 if year.isdigit():
                     timeline[year] = timeline.get(year, 0) + 1
-            except:
+            except (IndexError, ValueError):
                 continue
 
         return dict(sorted(timeline.items()))

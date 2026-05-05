@@ -251,7 +251,7 @@ class VisualizationBroadcaster:
             try:
                 # listener.send_json(data)  # WebSocket发送
                 pass
-            except:
+            except Exception:
                 pass
 
     def get_current_state(self, task_id: str) -> Optional[Dict]:

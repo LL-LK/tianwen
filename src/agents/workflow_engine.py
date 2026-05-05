@@ -18,6 +18,7 @@ import os
 import uuid
 import hashlib
 import time
+import ast
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Callable, Set, Tuple
 from dataclasses import dataclass, field
@@ -26,6 +27,24 @@ from collections import defaultdict
 import logging
 
 logger = logging.getLogger("workflow_engine")
+
+
+_SAFE_AST_NODES = {
+    ast.Expression, ast.Constant, ast.Name, ast.Load,
+    ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE,
+    ast.BoolOp, ast.And, ast.Or, ast.Not,
+    ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.Pow,
+    ast.UnaryOp, ast.UAdd, ast.USub,
+    ast.Num, ast.Str,
+}
+
+
+def _safe_eval(expr: str, variables: dict) -> bool:
+    tree = ast.parse(expr.strip(), mode='eval')
+    for node in ast.walk(tree):
+        if type(node) not in _SAFE_AST_NODES:
+            raise ValueError(f"Unsafe expression: {type(node).__name__}")
+    return bool(eval(compile(tree, '<condition>', 'eval'), {"__builtins__": {}}, variables))
 
 
 class NodeType(Enum):
@@ -1045,7 +1064,7 @@ class WorkflowEngine:
                 "passed_count": ctx.variables.get("passed_count", 0),
                 "target_count": ctx.variables.get("target_count", 0),
             }
-            result = bool(eval(condition, {"__builtins__": {}}, safe_vars))
+            result = _safe_eval(condition, safe_vars)
         except Exception:
             result = True
 

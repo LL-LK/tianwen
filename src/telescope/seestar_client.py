@@ -20,6 +20,9 @@ import asyncio
 import json
 import subprocess
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -109,7 +112,7 @@ class INDIInterface(BaseHardwareInterface):
             self.is_connected = True
             return True
         except Exception as e:
-            print(f"INDI连接失败: {e}")
+            logger.error("INDI连接失败: %s", e)
             self.is_connected = False
             return False
 
@@ -208,7 +211,7 @@ class ASCOMInterface(BaseHardwareInterface):
             # 这里使用模拟实现
             import platform
             if platform.system() != "Windows":
-                print("ASCOM仅支持Windows平台")
+                logger.warning("ASCOM仅支持Windows平台")
                 return False
 
             # 实际应该使用: import win32com.client
@@ -216,7 +219,7 @@ class ASCOMInterface(BaseHardwareInterface):
             self.is_connected = True
             return True
         except Exception as e:
-            print(f"ASCOM连接失败: {e}")
+            logger.error("ASCOM连接失败: %s", e)
             return False
 
     async def disconnect(self):
@@ -224,7 +227,7 @@ class ASCOMInterface(BaseHardwareInterface):
         if self.driver:
             try:
                 self.driver.Connected = False
-            except:
+            except Exception:
                 pass
         self.is_connected = False
 
@@ -249,7 +252,7 @@ class ASCOMInterface(BaseHardwareInterface):
             self.driver.SlewToCoordinatesAsync(ra, dec)
             return True
         except Exception as e:
-            print(f"ASCOM GOTO失败: {e}")
+            logger.error("ASCOM GOTO失败: %s", e)
             return False
 
     async def abort(self) -> bool:
@@ -260,7 +263,7 @@ class ASCOMInterface(BaseHardwareInterface):
             self.driver.AbortSlew()
             return True
         except Exception as e:
-            print(f"ASCOM Abort失败: {e}")
+            logger.error("ASCOM Abort失败: %s", e)
             return False
 
     async def get_position(self) -> Dict[str, float]:
@@ -370,12 +373,12 @@ class SafetyProtocolManager:
     def activate_emergency_stop(self, reason: str = ""):
         """激活紧急停止"""
         self.emergency_stop_active = True
-        print(f"[安全协议] 紧急停止已激活: {reason}")
+        logger.warning("[安全协议] 紧急停止已激活: %s", reason)
 
     def deactivate_emergency_stop(self):
         """解除紧急停止"""
         self.emergency_stop_active = False
-        print("[安全协议] 紧急停止已解除")
+        logger.info("[安全协议] 紧急停止已解除")
 
 
 # ============================================================================
@@ -468,6 +471,10 @@ class SeestarMCPClient:
         # 硬件接口抽象
         self.hardware_interface: Optional[BaseHardwareInterface] = None
         self.hardware_config = HardwareInterfaceConfig()
+
+        # MQTT 网桥（用于真实望远镜通信）
+        self._mqtt_bridge = None
+        self._mqtt_mode = False
 
     def _find_seestar_mcp(self) -> Optional[str]:
         """
@@ -562,6 +569,47 @@ class SeestarMCPClient:
         """
         self._simulation_mode = enabled
 
+    def enable_mqtt(
+        self,
+        broker: str = "localhost",
+        port: int = 1883,
+        username: str = "",
+        password: str = "",
+        location: str = "xinglong",
+        telescope_id: str = "telescope1"
+    ):
+        """
+        启用 MQTT 通信模式（用于真实望远镜控制）
+
+        Args:
+            broker: MQTT 代理地址
+            port: MQTT 代理端口
+            username: MQTT 用户名
+            password: MQTT 密码
+            location: 观测站点名称
+            telescope_id: 望远镜编号
+        """
+        from telescope.mqtt_bridge import TelescopeBridge
+        self._mqtt_bridge = TelescopeBridge(mode="mqtt")
+        self._mqtt_bridge.connect(broker, port, username, password)
+        self._mqtt_mode = True
+        self._mqtt_location = location
+        self._mqtt_telescope_id = telescope_id
+        logger.info("MQTT mode enabled: %s/%s @ %s:%d", location, telescope_id, broker, port)
+
+    def disable_mqtt(self):
+        """禁用 MQTT 模式"""
+        if self._mqtt_bridge:
+            self._mqtt_bridge.disconnect()
+        self._mqtt_bridge = None
+        self._mqtt_mode = False
+        logger.info("MQTT mode disabled")
+
+    @property
+    def is_mqtt_mode(self) -> bool:
+        """是否处于 MQTT 通信模式"""
+        return self._mqtt_mode and self._mqtt_bridge is not None
+
     async def connect(self) -> bool:
         """
         连接到seestar-mcp服务器
@@ -580,7 +628,7 @@ class SeestarMCPClient:
             self.is_connected = True
             return True
         except Exception as e:
-            print(f"连接失败: {e}")
+            logger.error("连接失败: %s", e)
             self.is_connected = False
             return False
 
@@ -818,8 +866,21 @@ class SeestarMCPClient:
 
         safety_result = await self.safety_manager.check_operation("goto", context)
         if not safety_result["passed"]:
-            print(f"安全检查未通过: {safety_result['reasons']}")
+            logger.warning("安全检查未通过: %s", safety_result['reasons'])
             return False
+
+        # MQTT 模式：通过 MQTT 网桥发送指向指令
+        if self._mqtt_mode and self._mqtt_bridge:
+            mid = self._mqtt_bridge.send_slew_command(
+                self._mqtt_location,
+                self._mqtt_telescope_id,
+                target.ra,
+                target.dec
+            )
+            if mid >= 0:
+                self.current_status = TelescopeStatus.SLEWING
+                return True
+            logger.warning("MQTT slew command failed, falling back")
 
         # 如果有硬件接口且不是模拟模式，使用硬件接口
         if self.hardware_interface and not self._simulation_mode:
@@ -829,7 +890,7 @@ class SeestarMCPClient:
                     self.current_status = TelescopeStatus.SLEWING
                 return success
             except Exception as e:
-                print(f"硬件接口GOTO失败，回退到MCP: {e}")
+                logger.warning("硬件接口GOTO失败，回退到MCP: %s", e)
 
         result = await self.call_mcp_tool(
             "seestar.goto",
@@ -1089,7 +1150,7 @@ class SeestarMCPClient:
         successful = 0
 
         for i, target in enumerate(sorted_targets):
-            print(f"观测进度: {i+1}/{total} - {target.name}")
+            logger.info("观测进度: %d/%d - %s", i+1, total, target.name)
 
             # 安全检查
             safety_result = await self.safety_check(target)

@@ -103,7 +103,7 @@ class OutputValidator:
                 if field not in spec_data:
                     return False, f"缺少必需字段: {field}"
             return True, "API规范有效"
-        except:
+        except (json.JSONDecodeError, ValueError):
             return False, "无法解析API规范"
 
     @staticmethod
