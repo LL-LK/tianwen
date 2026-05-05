@@ -87,14 +87,14 @@ def _generate_etag(data: str) -> str:
 async def add_cache_headers(response):
     path = request.path
     if path.startswith('/api/') and request.method == 'GET':
-        response_data = response.get_data(as_text=True)
+        response_data = await response.get_data(as_text=True)
         if response_data:
             etag = _generate_etag(response_data)
             response.headers['ETag'] = f'"{etag}"'
             if_none_match = request.headers.get('If-None-Match', '')
             if if_none_match == f'"{etag}"':
                 response.status_code = 304
-                response.set_data('')
+                await response.set_data('')
     return response
 
 from main import HermesAGI
