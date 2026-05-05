@@ -777,30 +777,147 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 
 <div class="tab-panel" id="panel-manual">
   <div class="card">
-    <div class="card-header"><span class="card-title"><span class="icon">📖</span>使用说明书</span></div>
-    <div style="color:var(--text-secondary);line-height:1.8">
-      <h3 style="color:var(--text-primary);margin-bottom:12px"> 天问-AGI 全自动天文观测站</h3>
-      <p>天问-AGI 是一个全自动天文观测系统，支持无人值守自主发现与观测。以下为系统功能说明：</p>
-      <h4 style="color:var(--accent);margin:16px 0 8px">1. 观测总控台</h4>
-      <p>显示观测站实时状态，包括当前观测目标、设备状态、观测队列等。连接真实望远镜后，此处将显示实时数据。</p>
-      <h4 style="color:var(--accent);margin:16px 0 8px">2. 实时星图</h4>
-      <p>通过 NASA SkyView API 获取真实天文图像。支持 DSS、2MASS、SDSS 等多种巡天数据。输入天体名称（如 M31、M42）即可查看。</p>
-      <h4 style="color:var(--accent);margin:16px 0 8px">3. 数据面板</h4>
-      <p>展示观测数据统计，包括检测结果、光变曲线、研究周期历史等。</p>
-      <h4 style="color:var(--accent);margin:16px 0 8px">4. 研究闭环</h4>
-      <p>自动研究循环：文献检索 → 假说生成 → 假说检验 → 发现确认 → 观测调度 → 自我进化。</p>
-      <h4 style="color:var(--accent);margin:16px 0 8px">5. 告警中心</h4>
-      <p>显示系统告警信息，包括新天体发现、天气变化、设备异常等。</p>
-      <h4 style="color:var(--accent);margin:16px 0 8px">6. 望远镜控制</h4>
-      <p>控制望远镜进行 GOTO 指向、跟踪、曝光等操作。需要连接真实望远镜设备后方可使用。</p>
-      <h4 style="color:var(--accent);margin:16px 0 8px">7. 智能对话</h4>
-      <p>与 AI 助手对话，查询天体信息、获取操作帮助。需配置 API Key 以启用 MiniMax LLM 功能。</p>
-      <h4 style="color:var(--accent);margin:16px 0 8px">8. 系统日志</h4>
-      <p>查看系统运行日志，按级别筛选（发现、检测、望远镜、相机、系统）。</p>
-      <h4 style="color:var(--warning);margin:16px 0 8px">️ 关于数据真实性</h4>
-      <p>当前系统未连接真实望远镜，观测总控台显示的是空状态。连接真实设备后，所有数据将来自实际观测。</p>
-      <p>实时星图数据来自 NASA SkyView API，是真实的天文图像。</p>
-      <p>天体坐标数据来自内置星表，基于真实天文数据。</p>
+    <div class="card-header"><span class="card-title"><span class="icon">📖</span>天问-AGI 完整使用说明书 v2.0</span></div>
+    <div style="color:var(--text-secondary);line-height:1.9;max-height:calc(100vh - 200px);overflow-y:auto;padding-right:8px">
+
+      <h3 style="color:var(--text-primary);margin-bottom:8px;font-size:18px">天问-AGI 全自动天文观测与研究系统</h3>
+      <p style="margin-bottom:16px">天问-AGI 是一个集观测、研究、数据挖掘于一体的全自动天文系统，支持无人值守自主发现与闭环研究。</p>
+
+      <div style="background:var(--bg-primary);border-radius:8px;padding:12px 16px;margin-bottom:20px;border-left:3px solid var(--accent)">
+        <strong style="color:var(--accent)">⚡ 快速导航</strong>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin-top:8px;font-size:13px">
+          <a href="#" onclick="switchTab('skychart')" style="color:var(--accent)">🌌 实时星图</a>
+          <a href="#" onclick="switchTab('telescope')" style="color:var(--accent)">🔭 望远镜控制</a>
+          <a href="#" onclick="switchTab('research')" style="color:var(--accent)">🔬 研究闭环</a>
+          <a href="#" onclick="switchTab('workflow')" style="color:var(--accent)">⚡ 可视化工作流</a>
+          <a href="#" onclick="switchTab('literature')" style="color:var(--accent)">📚 文献搜索</a>
+          <a href="#" onclick="switchTab('factcheck')" style="color:var(--accent)">✅ 事实校验</a>
+          <a href="#" onclick="switchTab('chat')" style="color:var(--accent)">💬 智能对话</a>
+          <a href="#" onclick="switchTab('data')" style="color:var(--accent)">📊 数据面板</a>
+        </div>
+      </div>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">1. 🌌 实时星图</h4>
+      <p><strong>数据来源：</strong>NASA SkyView API（真实天文图像）+ Aladin Lite（交互式星图可视化）</p>
+      <p><strong>支持巡天：</strong>DSS（数字化巡天）、2MASS（红外）、SDSS（光学）、GALEX（紫外）、WISE（中红外）</p>
+      <p><strong>操作：</strong>输入天体名称（如 M31、M42、NGC224）→ 点击搜索 → 左侧显示 NASA 原始图像，右侧 Aladin Lite 交互星图</p>
+      <p><strong>Aladin 功能：</strong>滚轮缩放、拖拽平移、点击天体查看详情、切换巡天图层</p>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">2. 📊 数据面板</h4>
+      <p><strong>功能：</strong>展示观测数据统计、光变曲线、检测结果、研究周期历史</p>
+      <p><strong>数据挖掘：</strong>输入目标名称 → 自动执行特征提取、异常检测、模式发现</p>
+      <p><strong>光变曲线：</strong>显示目标亮度随时间变化，支持多波段叠加对比</p>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">3. 🔬 研究闭环</h4>
+      <p><strong>完整流程：</strong>文献检索 → 假说生成 → 假说检验 → 发现确认 → 观测调度 → 自我进化</p>
+      <p><strong>假说生成：</strong>基于文献综述自动生成可检验的科学假说</p>
+      <p><strong>假说检验：</strong>对比真实观测数据与文献证据，使用贝叶斯推断、FDR控制、交叉验证等统计方法</p>
+      <p><strong>发现追踪：</strong>记录所有假说验证历史，追踪发现状态</p>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">4. ⚡ 可视化工作流编辑器（无代码）</h4>
+      <p><strong>核心能力：</strong>拖拽式可视化工作流设计，无需编写代码即可创建完整研究流程</p>
+      <p><strong>17种节点类型：</strong>触发器、文献搜索、假说生成、假说检验、观测调度、望远镜指向、曝光采集、数据挖掘、异常检测、特征提取、指导观测、结果分析、报告生成、条件判断、数据汇合、人工审批、Webhook</p>
+      <p><strong>4个预置模板：</strong></p>
+      <ul style="margin:4px 0 8px 20px">
+        <li><strong>完整研究闭环：</strong>文献调研 → 假说生成 → 假说检验 → 观测调度 → 望远镜指向+曝光 → 数据挖掘 → 指导观测 → 闭环反馈</li>
+        <li><strong>快速观测流程：</strong>观测调度 → 望远镜指向 → 曝光采集 → 数据挖掘 → 报告生成</li>
+        <li><strong>文献深度调研：</strong>文献搜索 → 假说生成 → 假说检验 → 报告生成</li>
+        <li><strong>异常天体狩猎：</strong>观测调度 → 曝光采集 → 异常检测 → 特征提取 → 指导观测 → 闭环</li>
+      </ul>
+      <p><strong>操作：</strong>左侧拖拽节点到画布 → 连接节点创建流程 → 右侧配置参数 → 点击执行 → 实时查看节点状态（灰/蓝/绿/红）</p>
+      <p><strong>闭环机制：</strong>数据挖掘发现异常 → 自动调整观测优先级 → 指导下一轮观测 → 形成"观测→挖掘→指导→观测"闭环</p>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">5. 📚 文献搜索</h4>
+      <p><strong>数据来源：</strong>arXiv API、ADS（Astrophysics Data System）、Semantic Scholar（真实学术数据库）</p>
+      <p><strong>操作：</strong>输入关键词 → 选择数据源 → 点击搜索 → 查看论文标题、摘要、引用数</p>
+      <p><strong>高级功能：</strong>支持多源联合搜索、引用网络分析、研究趋势可视化</p>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">6. ✅ 事实校验</h4>
+      <p><strong>功能：</strong>对LLM输出或天文文本进行事实核查，消除模型幻觉</p>
+      <p><strong>校验维度：</strong>数值准确性、物理一致性、文献支持度、逻辑自洽性</p>
+      <p><strong>操作：</strong>粘贴待校验文本 → 可选填上下文/预期主题 → 点击校验 → 查看置信度评分和来源引用</p>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">7. 💬 智能对话</h4>
+      <p><strong>支持模型：</strong>MiniMax、Qwen（通义千问）、OpenAI（GPT-4o/GPT-4o-mini）、以及任何兼容 OpenAI API 的模型</p>
+      <p><strong>配置步骤：</strong></p>
+      <ol style="margin:4px 0 8px 20px">
+        <li>点击右上角 ⚙️ 设置按钮</li>
+        <li>选择模型供应商（MiniMax / Qwen / OpenAI / 自定义）</li>
+        <li>填入 API Key 和 Group ID（MiniMax）/ Endpoint</li>
+        <li>点击"测试连接"验证配置</li>
+        <li>在对话面板输入消息开始对话</li>
+      </ol>
+      <p><strong>系统提示词：</strong>自动注入观测站状态、当前目标、设备信息等上下文</p>
+      <p><strong>Markdown渲染：</strong>支持富文本回复，包括表格、代码块、公式</p>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">8. 🔭 望远镜控制与设备连接</h4>
+      <p><strong>支持协议：</strong>ASCOM（Windows）、INDI（Linux/macOS）、Seestar MCP（局域网）</p>
+      <p><strong>连接方式：</strong></p>
+      <ul style="margin:4px 0 8px 20px">
+        <li><strong>模拟模式：</strong>无需真实设备，用于功能测试和开发</li>
+        <li><strong>局域网 (LAN)：</strong>通过 WiFi 连接 Seestar S50 等智能望远镜（默认端口 8765）</li>
+        <li><strong>串口 (Serial)：</strong>通过 USB/串口线连接传统望远镜（ASCOM/INDI）</li>
+      </ul>
+      <p><strong>连接步骤：</strong></p>
+      <ol style="margin:4px 0 8px 20px">
+        <li>确保望远镜与电脑在同一局域网（LAN模式）或通过USB连接（Serial模式）</li>
+        <li>点击"扫描设备"自动发现局域网/串口设备</li>
+        <li>选择连接类型，填入主机地址和端口</li>
+        <li>点击"连接"按钮</li>
+        <li>连接成功后，可使用 GOTO 指向、跟踪、曝光等功能</li>
+      </ol>
+      <p><strong>安全协议：</strong>太阳高度角检查、赤纬范围限制、地平高度限制、天气监控</p>
+      <p><strong>设备发现：</strong>自动扫描常见望远镜端口（8765/7624/11111/4030）和 mDNS 主机名（seestar.local 等）</p>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">9. 🔔 告警中心</h4>
+      <p><strong>告警类型：</strong>新天体发现、天气变化、设备异常、观测完成、数据异常</p>
+      <p><strong>操作：</strong>按类型筛选、标记已读、查看详情</p>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">10. 📋 系统日志</h4>
+      <p><strong>日志级别：</strong>DISCOVERY（发现）、DETECTION（检测）、TELESCOPE（望远镜）、CAMERA（相机）、SYSTEM（系统）</p>
+      <p><strong>操作：</strong>按级别筛选、实时滚动、导出日志</p>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">11. 🔗 WebSocket 实时通信</h4>
+      <p><strong>端点：</strong></p>
+      <ul style="margin:4px 0 8px 20px">
+        <li><code>/ws/observatory</code> - 观测站状态实时推送</li>
+        <li><code>/ws/agent_status</code> - Agent 认知/规划/执行状态</li>
+        <li><code>/ws/observation</code> - 设备状态与队列更新</li>
+        <li><code>/ws/workflow-engine</code> - 工作流引擎实时状态</li>
+      </ul>
+      <p><strong>特性：</strong>心跳检测（30s）、自动断线重连（指数退避）、状态指示灯</p>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">12. ⌨️ 快捷键</h4>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin:8px 0">
+        <tr style="background:var(--bg-primary)"><td style="padding:6px 12px;border:1px solid var(--border)"><kbd>1</kbd>-<kbd>9</kbd></td><td style="padding:6px 12px;border:1px solid var(--border)">切换面板</td></tr>
+        <tr><td style="padding:6px 12px;border:1px solid var(--border)"><kbd>R</kbd></td><td style="padding:6px 12px;border:1px solid var(--border)">刷新所有数据</td></tr>
+        <tr style="background:var(--bg-primary)"><td style="padding:6px 12px;border:1px solid var(--border)"><kbd>T</kbd></td><td style="padding:6px 12px;border:1px solid var(--border)">连通性检测</td></tr>
+        <tr><td style="padding:6px 12px;border:1px solid var(--border)"><kbd>L</kbd></td><td style="padding:6px 12px;border:1px solid var(--border)">LLM 连接测试</td></tr>
+      </table>
+
+      <h4 style="color:var(--warning);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">⚠️ 关于数据真实性</h4>
+      <div style="background:rgba(255,152,0,0.1);border-radius:8px;padding:12px 16px;margin-bottom:8px">
+        <p>✅ <strong>真实数据源：</strong></p>
+        <ul style="margin:4px 0 8px 20px">
+          <li>星图图像：NASA SkyView API（DSS/2MASS/SDSS/GALEX/WISE 巡天数据）</li>
+          <li>交互星图：Aladin Lite（CDS Strasbourg 天文数据中心）</li>
+          <li>文献搜索：arXiv API / ADS / Semantic Scholar</li>
+          <li>天体坐标：内置星表（基于 SIMBAD/NED 真实数据）</li>
+          <li>LLM 对话：MiniMax / Qwen / OpenAI 真实 API</li>
+        </ul>
+        <p>⚠️ <strong>需要真实设备：</strong></p>
+        <ul style="margin:4px 0 0 20px">
+          <li>望远镜控制：需连接 Seestar S50 或 ASCOM/INDI 兼容设备</li>
+          <li>观测数据：未连接望远镜时，观测总控台显示空状态</li>
+          <li>光变曲线：需实际观测积累数据</li>
+        </ul>
+        <p>🔧 <strong>模拟模式：</strong>望远镜模块提供模拟模式用于功能测试，前端明确标注"[模拟]"状态。所有模拟数据均有明确标识，不会与真实数据混淆。</p>
+      </div>
+
+      <h4 style="color:var(--accent);margin:20px 0 10px;font-size:15px;border-bottom:1px solid var(--border);padding-bottom:6px">📡 API 端点参考</h4>
+      <p>完整 API 文档请访问：<code>GET /api/docs</code></p>
+      <p>主要端点分类：观测站(observatory)、设备(devices)、数据(data)、研究(research)、告警(alerts)、日志(logs)、系统(system)、对话(chat)、工作流(workflow-engine)</p>
+
     </div>
   </div>
 </div>
@@ -1276,6 +1393,11 @@ function setRefreshing(state){
   else { icon.className = ''; }
 }
 
+function switchTab(tabName) {
+  var btn = document.querySelector('.tab-btn[data-tab="' + tabName + '"]');
+  if (btn) { btn.click(); }
+}
+
 async function loadAllData(){
   if (isRefreshing) return;
   setRefreshing(true);
@@ -1509,7 +1631,6 @@ $$('.tab-btn').forEach(function(btn){
     if (btn.dataset.tab === 'alerts') loadAlerts();
     if (btn.dataset.tab === 'logs') loadLogs();
     if (btn.dataset.tab === 'telescope') { telRefresh(); }
-    if (btn.dataset.tab === 'manual') loadDemoData();
   });
 
   btn.addEventListener('mouseenter', function(){

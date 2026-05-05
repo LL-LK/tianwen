@@ -377,12 +377,16 @@ class ApiTools:
     @staticmethod
     async def http_post(url: str, data: Dict = None, **kwargs) -> Dict:
         """HTTP POST请求"""
-        return {
-            "success": True,
-            "url": url,
-            "method": "POST",
-            "result": "Simulated POST response"
-        }
+        import urllib.request
+        import json as _json
+        try:
+            req_data = _json.dumps(data or {}).encode('utf-8')
+            req = urllib.request.Request(url, data=req_data, headers={'Content-Type': 'application/json'}, method='POST')
+            with urllib.request.urlopen(req, timeout=10) as response:
+                content = response.read().decode('utf-8')
+            return {"success": True, "url": url, "content": content[:1000], "status": response.status}
+        except Exception as e:
+            return {"success": False, "url": url, "error": str(e)}
 
     @staticmethod
     def get_tools() -> List[Tool]:

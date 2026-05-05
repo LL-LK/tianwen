@@ -175,69 +175,64 @@ class ObservationExecutor:
     """
 
     def __init__(self, connection_string: str = "tcp://localhost:5555"):
-        """
-        初始化观测执行器
-
-        Args:
-            connection_string: 望远镜控制服务器连接字符串
-        """
         self.connection_string = connection_string
         self.current_state: Optional[TelescopeState] = None
         self.observation_queue: List[ObservationInstruction] = []
         self.is_connected = False
-        self.mock_mode = True  # 默认使用模拟模式
+        self.mock_mode = True
+        self._allow_mock_fallback = True
 
-        # 数据处理回调函数
         self._data_callback: Optional[Callable[[ObservationData], None]] = None
 
-        # 模拟参数
-        self._mock_slew_speed = 10.0  # 度/秒
+        self._mock_slew_speed = 10.0
         self._mock_exposure_progress = 0.0
 
         logger.info(f"ObservationExecutor initialized with connection: {connection_string}")
 
+    def set_real_mode(self, real_mode: bool, allow_mock_fallback: bool = False):
+        self.mock_mode = not real_mode
+        self._allow_mock_fallback = allow_mock_fallback
+        logger.info(f"ObservationExecutor mode: {'real' if real_mode else 'mock'}, fallback: {allow_mock_fallback}")
+
     async def connect(self) -> bool:
-        """
-        连接到望远镜控制服务器
-
-        Returns:
-            bool: 连接是否成功
-
-        Note:
-            当无法连接到真实望远镜时，自动切换到模拟模式
-        """
         logger.info(f"Attempting to connect to telescope control server: {self.connection_string}")
 
-        try:
-            # 尝试建立网络连接（模拟）
-            # 在实际实现中，这里会使用 asyncio.create_connection() 等
-            await asyncio.sleep(0.1)  # 模拟网络延迟
+        if not self.mock_mode:
+            try:
+                import urllib.request
+                url = self.connection_string.replace("tcp://", "http://")
+                req = urllib.request.Request(f"{url}/status", method='GET')
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    if response.status == 200:
+                        self.is_connected = True
+                        self.current_state = TelescopeState(
+                            status=TelescopeStatus.IDLE,
+                            current_ra=0.0,
+                            current_dec=0.0,
+                            tracking_target=None,
+                            last_update=datetime.now()
+                        )
+                        logger.info("Successfully connected to real telescope control server")
+                        return True
+            except Exception as e:
+                logger.warning(f"Failed to connect to real telescope: {e}")
+                if not self._allow_mock_fallback:
+                    self.is_connected = False
+                    return False
+                logger.info("Falling back to mock mode")
 
-            # 模拟连接成功
-            self.is_connected = True
-            self.current_state = TelescopeState(
-                status=TelescopeStatus.IDLE,
-                current_ra=0.0,
-                current_dec=0.0,
-                tracking_target=None,
-                last_update=datetime.now()
-            )
-
-            logger.info("Successfully connected to telescope control server (mock mode)")
-            return True
-
-        except Exception as e:
-            logger.warning(f"Failed to connect to real telescope, entering mock mode: {e}")
-            self.mock_mode = True
-            self.is_connected = True
-            self.current_state = TelescopeState(
-                status=TelescopeStatus.IDLE,
-                current_ra=0.0,
-                current_dec=0.0,
-                tracking_target=None,
-                last_update=datetime.now()
-            )
-            return True
+        self.mock_mode = True
+        await asyncio.sleep(0.1)
+        self.is_connected = True
+        self.current_state = TelescopeState(
+            status=TelescopeStatus.IDLE,
+            current_ra=0.0,
+            current_dec=0.0,
+            tracking_target=None,
+            last_update=datetime.now()
+        )
+        logger.info("Connected in mock mode")
+        return True
 
     async def disconnect(self):
         """断开与望远镜控制服务器的连接"""
@@ -301,55 +296,82 @@ class ObservationExecutor:
             return False
 
     async def _execute_slew(self, instruction: ObservationInstruction):
-        """执行转向指令"""
         if instruction.target_ra is None or instruction.target_dec is None:
             raise ValueError("Slew instruction missing target coordinates")
 
         logger.info(f"Slewing to RA: {instruction.target_ra}, Dec: {instruction.target_dec}")
 
-        # 更新状态为转向中
         self.current_state.status = TelescopeStatus.SLEWING
         self.current_state.last_update = datetime.now()
 
-        # 计算转向所需时间（模拟）
-        ra_diff = abs(instruction.target_ra - self.current_state.current_ra)
-        dec_diff = abs(instruction.target_dec - self.current_state.current_dec)
-        total_diff = (ra_diff**2 + dec_diff**2)**0.5
-        slew_time = total_diff / self._mock_slew_speed
+        if not self.mock_mode:
+            try:
+                import urllib.request
+                import json as _json
+                url = self.connection_string.replace("tcp://", "http://")
+                req_data = _json.dumps({
+                    "target_ra": instruction.target_ra,
+                    "target_dec": instruction.target_dec
+                }).encode('utf-8')
+                req = urllib.request.Request(
+                    f"{url}/slew", data=req_data,
+                    headers={'Content-Type': 'application/json'}, method='POST'
+                )
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    result = _json.loads(response.read().decode('utf-8'))
+                    self.current_state.current_ra = result.get("current_ra", instruction.target_ra)
+                    self.current_state.current_dec = result.get("current_dec", instruction.target_dec)
+            except Exception as e:
+                logger.error(f"Real slew failed: {e}")
+        else:
+            ra_diff = abs(instruction.target_ra - self.current_state.current_ra)
+            dec_diff = abs(instruction.target_dec - self.current_state.current_dec)
+            total_diff = (ra_diff**2 + dec_diff**2)**0.5
+            slew_time = total_diff / self._mock_slew_speed
+            await asyncio.sleep(min(slew_time, 0.5))
+            self.current_state.current_ra = instruction.target_ra
+            self.current_state.current_dec = instruction.target_dec
 
-        # 模拟转向过程
-        await asyncio.sleep(min(slew_time, 0.5))  # 限制最大等待时间
-
-        # 更新位置
-        self.current_state.current_ra = instruction.target_ra
-        self.current_state.current_dec = instruction.target_dec
         self.current_state.status = TelescopeStatus.IDLE
         self.current_state.last_update = datetime.now()
 
         logger.info("Slew completed successfully")
 
     async def _execute_exposure(self, instruction: ObservationInstruction):
-        """执行曝光指令"""
         exposure_time = instruction.exposure_time or 10.0
         filter_name = instruction.filter_name or "clear"
 
         logger.info(f"Starting exposure: {exposure_time}s with filter: {filter_name}")
 
-        # 更新状态为曝光中
         self.current_state.status = TelescopeStatus.EXPOSING
         self.current_state.last_update = datetime.now()
 
-        # 模拟曝光过程
-        await asyncio.sleep(min(exposure_time, 0.2))  # 限制最大等待时间
+        if not self.mock_mode:
+            try:
+                import urllib.request
+                import json as _json
+                url = self.connection_string.replace("tcp://", "http://")
+                req_data = _json.dumps({
+                    "exposure_time": exposure_time,
+                    "filter": filter_name
+                }).encode('utf-8')
+                req = urllib.request.Request(
+                    f"{url}/exposure", data=req_data,
+                    headers={'Content-Type': 'application/json'}, method='POST'
+                )
+                with urllib.request.urlopen(req, timeout=exposure_time + 10) as response:
+                    result = _json.loads(response.read().decode('utf-8'))
+                    image_data = result.get("image_data", [])
+            except Exception as e:
+                logger.error(f"Real exposure failed: {e}")
+                image_data = []
+        else:
+            await asyncio.sleep(min(exposure_time, 0.2))
+            image_data = self._generate_mock_image()
 
-        # 曝光完成，生成模拟数据
-        image_data = self._generate_mock_image()
-
-        # 更新状态
         self.current_state.status = TelescopeStatus.IDLE
         self.current_state.last_update = datetime.now()
 
-        # 构造观测数据
         observation_data = ObservationData(
             timestamp=datetime.now(),
             image_data=image_data,
@@ -363,7 +385,6 @@ class ObservationExecutor:
             quality_metrics=self._calculate_quality_metrics(image_data)
         )
 
-        # 调用数据回调
         if self._data_callback:
             await self._process_data_callback(observation_data)
 
@@ -459,8 +480,9 @@ class ObservationExecutor:
         return image
 
     def _calculate_quality_metrics(self, image: List[List[int]]) -> Dict[str, float]:
-        """计算图像质量指标"""
         flat = [pixel for row in image for pixel in row]
+        if not flat:
+            return {'mean_value': 0, 'std_value': 0, 'max_value': 0, 'min_value': 0, 'snr': 0, 'star_count': 0}
         mean_val = sum(flat) / len(flat)
         std_val = (sum((x - mean_val) ** 2 for x in flat) / len(flat)) ** 0.5
         max_val = max(flat)
@@ -472,7 +494,7 @@ class ObservationExecutor:
             'max_value': float(max_val),
             'min_value': float(min_val),
             'snr': mean_val / (std_val + 1e-6),
-            'star_count': random.randint(5, 20)
+            'star_count': 0
         }
         return metrics
 

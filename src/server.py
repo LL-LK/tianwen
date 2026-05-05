@@ -1304,8 +1304,7 @@ async def api_docs():
             "research": {
                 "GET  /api/research/status": "研究闭环状态",
                 "GET  /api/research/cycles?page=1&per_page=20": "历史研究周期",
-                "POST /api/hypothesis/test": "假说验证 (需要hypothesis对象，可选提供观测数据和文献证据)",
-                "GET  /api/hypothesis/generate-test-data?target=M31&count=5": "生成测试数据",
+                "POST /api/hypothesis/test": "假说验证 (需要hypothesis对象，必须提供观测数据和文献证据)",
             },
             "alerts": {
                 "GET  /api/alerts?unread=true": "告警列表",

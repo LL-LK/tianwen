@@ -276,14 +276,10 @@ class SkillExecutor:
         try:
             execution.status = SkillStatus.EXECUTING
 
-            # 模拟技能执行 - 实际应该调用AI处理技能文档
-            import asyncio
-            await asyncio.sleep(0.1)  # 模拟处理时间
-
-            # 生成模拟输出
-            output = self._generate_mock_output(skill_name, input_data)
-            execution.output_data = output
-            execution.status = SkillStatus.READY
+            execution.status = SkillStatus.ERROR
+            execution.error = f"技能 {skill_name} 需要配置LLM API才能执行真实处理，当前无可用AI后端"
+            self.execution_history.append(execution)
+            return execution
 
         except Exception as e:
             execution.status = SkillStatus.ERROR
@@ -291,46 +287,6 @@ class SkillExecutor:
 
         self.execution_history.append(execution)
         return execution
-
-    def _generate_mock_output(self, skill_name: str, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """生成模拟输出"""
-        outputs = {
-            "Product": {
-                "prd": f"PRD文档已生成\n需求: {input_data.get('user_request', 'N/A')}",
-                "scope": ["功能模块1", "功能模块2"],
-            },
-            "Architecture": {
-                "architecture_diagram": "系统采用微服务架构",
-                "tech_stack": ["Python", "FastAPI", "PostgreSQL", "Redis"],
-                "components": ["用户服务", "订单服务", "支付服务"],
-            },
-            "Database": {
-                "er_diagram": "用户表、订单表、商品表",
-                "ddl": "CREATE TABLE users (...);",
-                "tables": ["users", "orders", "products"],
-            },
-            "API-Design": {
-                "openapi_spec": "OpenAPI 3.0规范",
-                "endpoints": ["/api/users", "/api/orders"],
-            },
-            "Backend": {
-                "code": f"# {skill_name} code generated\n# Input: {input_data}",
-                "tests": "# Test cases",
-            },
-            "Frontend": {
-                "components": "# React components",
-                "styles": "# CSS styles",
-            },
-            "Testing": {
-                "test_cases": "# Unit tests",
-                "coverage": 0.85,
-            },
-            "Security": {
-                "vulnerabilities": [],
-                "severity": "low",
-            },
-        }
-        return outputs.get(skill_name, {"result": f"{skill_name} executed"})
 
 # ============ 技能链执行器 ============
 

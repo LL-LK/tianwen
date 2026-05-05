@@ -776,13 +776,7 @@ class WorkflowEngine:
             except Exception as e:
                 source_stats["error"] = str(e)
         else:
-            results = [{
-                "title": f"Simulated paper about {query}",
-                "source": sources[0] if sources else "unknown",
-                "year": 2024,
-                "citation_count": 10,
-            }]
-            source_stats["simulated"] = len(results)
+            source_stats["error"] = "文献搜索模块未初始化，请配置 arXiv API 或 ADS API Token"
 
         ctx.literature_findings = results
         ctx.variables["literature_count"] = len(results)
