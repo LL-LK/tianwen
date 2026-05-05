@@ -284,7 +284,10 @@ tr:hover td{background:rgba(59,130,246,0.04)}
   <button class="tab-btn" data-tab="alerts">🔔 告警中心<span class="tab-badge" id="alertBadge" style="display:none">0</span></button>
   <button class="tab-btn" data-tab="telescope">🔭 望远镜控制</button>
   <button class="tab-btn" data-tab="chat">💬 智能对话</button>
-  <button class="tab-btn" data-tab="logs"> 系统日志</button>
+  <button class="tab-btn" data-tab="literature">📚 文献搜索</button>
+  <button class="tab-btn" data-tab="factcheck">✅ 事实校验</button>
+  <button class="tab-btn" data-tab="workflow">⚡ 工作流</button>
+  <button class="tab-btn" data-tab="logs">📋 系统日志</button>
   <button class="tab-btn" data-tab="manual">📖 说明书</button>
 </div>
 
@@ -646,6 +649,64 @@ tr:hover td{background:rgba(59,130,246,0.04)}
     <div style="display:flex;gap:8px">
       <input class="input" id="chatInput" placeholder="输入消息..." style="flex:1" onkeydown="if(event.key==='Enter')sendChat()">
       <button class="btn btn-primary" onclick="sendChat()">发送</button>
+    </div>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-literature">
+  <div class="card" style="display:flex;flex-direction:column;height:calc(100vh - 180px)">
+    <div class="card-header">
+      <span class="card-title"><span class="icon">📚</span>文献搜索</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="litSources" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px">
+          <option value="">全部数据源</option>
+          <option value="arxiv">arXiv</option>
+          <option value="ads">ADS</option>
+          <option value="semantic_scholar">Semantic Scholar</option>
+          <option value="openalex">OpenAlex</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="searchLiterature()">搜索</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input class="input" id="litSearchInput" placeholder="输入搜索关键词（如：supernova, exoplanet, dark matter）..." style="flex:1" onkeydown="if(event.key==='Enter')searchLiterature()">
+    </div>
+    <div id="litResults" style="flex:1;overflow-y:auto;padding:8px;background:var(--bg-secondary);border-radius:8px">
+      <div class="empty-state"><div class="icon">📚</div><div>输入关键词搜索天文文献</div><div style="font-size:12px;color:var(--text-secondary);margin-top:4px">支持 arXiv、ADS、Semantic Scholar、OpenAlex 多数据源聚合</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-factcheck">
+  <div class="card" style="display:flex;flex-direction:column;height:calc(100vh - 180px)">
+    <div class="card-header">
+      <span class="card-title"><span class="icon">✅</span>事实校验 & 幻觉检测</span>
+      <button class="btn btn-primary btn-sm" onclick="runFactCheck()">校验</button>
+    </div>
+    <div style="margin-bottom:12px">
+      <textarea class="input" id="factCheckInput" placeholder="粘贴需要校验的天文文本或LLM输出..." style="width:100%;height:120px;resize:vertical;font-family:monospace;font-size:13px"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input class="input" id="factCheckContext" placeholder="上下文（可选）" style="flex:1">
+      <input class="input" id="factCheckTopics" placeholder="预期主题，逗号分隔（可选）" style="flex:1">
+    </div>
+    <div id="factCheckResults" style="flex:1;overflow-y:auto;padding:8px;background:var(--bg-secondary);border-radius:8px">
+      <div class="empty-state"><div class="icon">✅</div><div>粘贴文本并点击"校验"进行事实核查和幻觉检测</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-workflow">
+  <div class="card" style="display:flex;flex-direction:column;height:calc(100vh - 180px)">
+    <div class="card-header">
+      <span class="card-title"><span class="icon">⚡</span>工作流编排</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="createWorkflow()">新建工作流</button>
+        <button class="btn btn-sm" onclick="loadWorkflows()" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border)">刷新</button>
+      </div>
+    </div>
+    <div id="workflowList" style="flex:1;overflow-y:auto;padding:8px;background:var(--bg-secondary);border-radius:8px">
+      <div class="empty-state"><div class="icon">⚡</div><div>暂无工作流</div><div style="font-size:12px;color:var(--text-secondary);margin-top:4px">点击"新建工作流"创建自动化研究流程</div></div>
     </div>
   </div>
 </div>
@@ -2205,6 +2266,278 @@ async function telCalcWindow(){
     if ($('#telWindowResult')) $('#telWindowResult').innerHTML = '<span style="color:var(--danger)">计算失败: ' + e.message + '</span>';
   }
 }
+
+// ============ 文献搜索函数 ============
+
+async function searchLiterature(){
+  var query = $('#litSearchInput').value.trim();
+  if (!query) { showToast('请输入搜索关键词', 'warning'); return; }
+
+  var sources = $('#litSources').value;
+  var resultsDiv = $('#litResults');
+  resultsDiv.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>搜索中...</div></div>';
+
+  try {
+    var url = API_BASE + '/literature/search?q=' + encodeURIComponent(query);
+    if (sources) url += '&sources=' + encodeURIComponent(sources);
+
+    var headers = {};
+    if (API_KEY) headers['X-API-Key'] = API_KEY;
+
+    var resp = await fetch(url, {headers: headers});
+    var data = await resp.json();
+
+    if (data.error) {
+      resultsDiv.innerHTML = '<div class="empty-state"><div class="icon">❌</div><div>搜索失败: ' + escapeHtml(data.error) + '</div></div>';
+      return;
+    }
+
+    var html = '<div style="margin-bottom:8px;font-size:12px;color:var(--text-muted)">找到 ' + (data.total || 0) + ' 篇文献 · 数据源: ' + (data.sources ? data.sources.join(', ') : 'all') + '</div>';
+
+    var papers = data.results || [];
+    if (papers.length === 0) {
+      html += '<div class="empty-state"><div class="icon">📭</div><div>未找到相关文献</div></div>';
+    } else {
+      papers.forEach(function(p, i){
+        var title = p.title || '无标题';
+        var authors = (p.authors || []).slice(0, 3).join(', ') + ((p.authors||[]).length > 3 ? ' et al.' : '');
+        var year = p.year || (p.published ? p.published.substring(0,4) : '?');
+        var source = p.source || 'unknown';
+        var abstract = (p.abstract || p.summary || '').substring(0, 200);
+        var url = p.url || p.pdf_url || p.landing_page || '#';
+        var citations = p.citation_count !== undefined ? p.citation_count : '--';
+
+        html += '<div style="margin-bottom:8px;padding:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:flex-start">';
+        html += '<div style="flex:1"><strong style="color:var(--accent)">' + escapeHtml(title) + '</strong></div>';
+        html += '<span style="font-size:10px;background:var(--bg-secondary);padding:2px 6px;border-radius:4px;white-space:nowrap;margin-left:8px">' + escapeHtml(source) + '</span>';
+        html += '</div>';
+        html += '<div style="font-size:12px;color:var(--text-muted);margin-top:4px">' + escapeHtml(authors) + ' · ' + year + ' · 引用: ' + citations + '</div>';
+        if (abstract) html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;line-height:1.5">' + escapeHtml(abstract) + '...</div>';
+        html += '<div style="margin-top:6px;display:flex;gap:6px">';
+        if (url && url !== '#') html += '<a href="' + url + '" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none">📄 查看原文</a>';
+        if (p.bibcode) html += '<span style="font-size:11px;color:var(--text-muted);cursor:pointer" onclick="loadCitationNetwork(\'' + p.bibcode + '\')">🔗 引用网络</span>';
+        html += '</div>';
+        html += '</div>';
+      });
+    }
+
+    resultsDiv.innerHTML = html;
+    showToast('找到 ' + (data.total || 0) + ' 篇文献', 'success');
+  } catch(e) {
+    resultsDiv.innerHTML = '<div class="empty-state"><div class="icon">❌</div><div>搜索失败: ' + escapeHtml(e.message) + '</div></div>';
+    showToast('搜索失败: ' + e.message, 'error');
+  }
+}
+
+async function loadCitationNetwork(bibcode){
+  showToast('加载引用网络...', 'info');
+  try {
+    var headers = {};
+    if (API_KEY) headers['X-API-Key'] = API_KEY;
+    var resp = await fetch(API_BASE + '/literature/citation-network?bibcode=' + encodeURIComponent(bibcode), {headers: headers});
+    var data = await resp.json();
+    showToast('引用网络: ' + (data.total_citations || 0) + '篇引用, ' + (data.total_references || 0) + '篇参考', 'info');
+  } catch(e) {
+    showToast('加载失败: ' + e.message, 'error');
+  }
+}
+
+// ============ 事实校验函数 ============
+
+async function runFactCheck(){
+  var text = $('#factCheckInput').value.trim();
+  if (!text) { showToast('请输入需要校验的文本', 'warning'); return; }
+
+  var context = $('#factCheckContext').value.trim();
+  var topicsStr = $('#factCheckTopics').value.trim();
+  var expectedTopics = topicsStr ? topicsStr.split(',').map(function(s){return s.trim()}) : null;
+
+  var resultsDiv = $('#factCheckResults');
+  resultsDiv.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>校验中...</div></div>';
+
+  try {
+    var headers = {'Content-Type': 'application/json'};
+    if (API_KEY) headers['X-API-Key'] = API_KEY;
+
+    var resp = await fetch(API_BASE + '/hallucination/detect', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({text: text, context: context, expected_topics: expectedTopics})
+    });
+    var data = await resp.json();
+
+    var html = '';
+
+    // 总体评分
+    var riskLevel = data.hallucination_risk || 'unknown';
+    var riskColor = riskLevel === 'low' ? 'var(--success)' : riskLevel === 'medium' ? 'var(--warning)' : 'var(--danger)';
+    var riskLabel = riskLevel === 'low' ? '低风险 ✅' : riskLevel === 'medium' ? '中等风险 ⚠️' : '高风险 ❌';
+
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:12px">';
+    html += '<div style="padding:10px;background:var(--bg-card);border-radius:8px;text-align:center"><div style="font-size:24px;color:' + riskColor + '">' + riskLabel + '</div><div style="font-size:11px;color:var(--text-muted)">幻觉风险</div></div>';
+    html += '<div style="padding:10px;background:var(--bg-card);border-radius:8px;text-align:center"><div style="font-size:24px;color:var(--accent)">' + (data.overall_confidence !== undefined ? (data.overall_confidence*100).toFixed(0) + '%' : '--') + '</div><div style="font-size:11px;color:var(--text-muted)">总体置信度</div></div>';
+    html += '<div style="padding:10px;background:var(--bg-card);border-radius:8px;text-align:center"><div style="font-size:24px;color:var(--success)">' + (data.verified_count || 0) + '</div><div style="font-size:11px;color:var(--text-muted)">已验证</div></div>';
+    html += '<div style="padding:10px;background:var(--bg-card);border-radius:8px;text-align:center"><div style="font-size:24px;color:var(--danger)">' + (data.contradicted_count || 0) + '</div><div style="font-size:11px;color:var(--text-muted)">矛盾</div></div>';
+    html += '</div>';
+
+    // 幻觉类型
+    if (data.hallucination_types && data.hallucination_types.length > 0) {
+      html += '<div style="margin-bottom:8px"><strong>检测到的幻觉类型:</strong></div>';
+      data.hallucination_types.forEach(function(h){
+        html += '<span style="display:inline-block;margin:2px;padding:2px 8px;background:var(--danger);color:#fff;border-radius:4px;font-size:11px">' + escapeHtml(h.type) + ' (' + (h.confidence*100).toFixed(0) + '%)</span>';
+      });
+      html += '<div style="margin-top:8px"></div>';
+    }
+
+    // 逐条声明
+    if (data.claims && data.claims.length > 0) {
+      html += '<div style="margin-top:8px"><strong>逐条声明分析:</strong></div>';
+      data.claims.forEach(function(c){
+        var icon = c.verified ? '✅' : '❌';
+        var bg = c.verified ? 'var(--bg-card)' : 'rgba(255,100,100,0.1)';
+        html += '<div style="margin:4px 0;padding:8px;background:' + bg + ';border-radius:6px;font-size:12px">';
+        html += icon + ' <strong>' + escapeHtml(c.category || 'fact') + '</strong>: ' + escapeHtml(c.claim);
+        html += ' <span style="color:var(--text-muted)">置信度: ' + ((c.confidence||0)*100).toFixed(0) + '%</span>';
+        if (c.contradictions && c.contradictions.length > 0) {
+          html += '<div style="color:var(--danger);margin-top:4px">⚠️ 矛盾: ' + c.contradictions.join('; ') + '</div>';
+        }
+        html += '</div>';
+      });
+    }
+
+    // 建议
+    if (data.suggestions && data.suggestions.length > 0) {
+      html += '<div style="margin-top:8px"><strong>💡 改进建议:</strong></div>';
+      data.suggestions.forEach(function(s){
+        html += '<div style="padding:4px 8px;font-size:12px;color:var(--info)">• ' + escapeHtml(s) + '</div>';
+      });
+    }
+
+    resultsDiv.innerHTML = html;
+    showToast('校验完成 · 风险: ' + riskLabel, riskLevel === 'low' ? 'success' : 'warning');
+  } catch(e) {
+    resultsDiv.innerHTML = '<div class="empty-state"><div class="icon">❌</div><div>校验失败: ' + escapeHtml(e.message) + '</div></div>';
+    showToast('校验失败: ' + e.message, 'error');
+  }
+}
+
+// ============ 工作流函数 ============
+
+async function loadWorkflows(){
+  var listDiv = $('#workflowList');
+  listDiv.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>加载中...</div></div>';
+
+  try {
+    var resp = await fetch(API_BASE + '/workflows');
+    var data = await resp.json();
+
+    var workflows = data.workflows || [];
+    if (workflows.length === 0) {
+      listDiv.innerHTML = '<div class="empty-state"><div class="icon">⚡</div><div>暂无工作流</div><div style="font-size:12px;color:var(--text-secondary);margin-top:4px">点击"新建工作流"创建自动化研究流程</div></div>';
+      return;
+    }
+
+    var html = '';
+    workflows.forEach(function(w){
+      var statusColor = w.status === 'completed' ? 'var(--success)' : w.status === 'running' ? 'var(--info)' : w.status === 'failed' ? 'var(--danger)' : 'var(--text-muted)';
+      html += '<div style="margin-bottom:8px;padding:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      html += '<div><strong>' + escapeHtml(w.name || w.workflow_id) + '</strong></div>';
+      html += '<span style="font-size:11px;color:' + statusColor + '">' + escapeHtml(w.status || 'pending') + '</span>';
+      html += '</div>';
+      html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">ID: ' + escapeHtml(w.workflow_id || '?') + ' · 步骤: ' + (w.steps || '?') + ' · ' + (w.created_at || '') + '</div>';
+      html += '<div style="margin-top:6px;display:flex;gap:6px">';
+      html += '<button class="btn btn-primary" style="padding:2px 8px;font-size:11px" onclick="executeWorkflow(\'' + (w.workflow_id || '') + '\')">▶ 执行</button>';
+      html += '<button class="btn btn-sm" style="padding:2px 8px;font-size:11px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border)" onclick="viewWorkflow(\'' + (w.workflow_id || '') + '\')">查看</button>';
+      html += '</div>';
+      html += '</div>';
+    });
+
+    listDiv.innerHTML = html;
+  } catch(e) {
+    listDiv.innerHTML = '<div class="empty-state"><div class="icon">❌</div><div>加载失败: ' + escapeHtml(e.message) + '</div></div>';
+  }
+}
+
+async function createWorkflow(){
+  var name = prompt('工作流名称:', '自动观测流程');
+  if (!name) return;
+
+  var stepsStr = prompt('步骤列表 (JSON格式):\n示例: [{"action":"search_literature","params":{"q":"supernova"}},{"action":"generate_hypothesis","params":{}}]', '[{"action":"search_literature","params":{"q":"exoplanet"}},{"action":"generate_hypothesis","params":{}}]');
+  if (!stepsStr) return;
+
+  try {
+    var steps = JSON.parse(stepsStr);
+    var headers = {'Content-Type': 'application/json'};
+    if (API_KEY) headers['X-API-Key'] = API_KEY;
+
+    var resp = await fetch(API_BASE + '/workflows', {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({name: name, steps: steps})
+    });
+    var data = await resp.json();
+
+    if (data.error) {
+      showToast('创建失败: ' + data.error, 'error');
+    } else {
+      showToast('工作流创建成功: ' + data.workflow_id, 'success');
+      loadWorkflows();
+    }
+  } catch(e) {
+    showToast('创建失败: ' + e.message, 'error');
+  }
+}
+
+async function executeWorkflow(workflowId){
+  showToast('执行工作流: ' + workflowId + '...', 'info');
+  try {
+    var headers = {'Content-Type': 'application/json'};
+    if (API_KEY) headers['X-API-Key'] = API_KEY;
+
+    var resp = await fetch(API_BASE + '/workflows/' + workflowId + '/execute', {
+      method: 'POST',
+      headers: headers
+    });
+    var data = await resp.json();
+
+    if (data.error) {
+      showToast('执行失败: ' + data.error, 'error');
+    } else {
+      showToast('工作流执行完成 · 状态: ' + (data.status || 'completed'), 'success');
+      loadWorkflows();
+    }
+  } catch(e) {
+    showToast('执行失败: ' + e.message, 'error');
+  }
+}
+
+async function viewWorkflow(workflowId){
+  try {
+    var resp = await fetch(API_BASE + '/workflows/' + workflowId);
+    var data = await resp.json();
+
+    if (data.error) {
+      showToast('查看失败: ' + data.error, 'error');
+      return;
+    }
+
+    var stepsHtml = '';
+    (data.steps || []).forEach(function(s){
+      var statusIcon = s.status === 'completed' ? '✅' : s.status === 'running' ? '⏳' : s.status === 'failed' ? '❌' : '⏸';
+      stepsHtml += '<div style="padding:4px 8px;font-size:12px">' + statusIcon + ' ' + escapeHtml(s.name) + ' (' + escapeHtml(s.action) + ') - ' + escapeHtml(s.status) + (s.error ? ' <span style="color:var(--danger)">' + escapeHtml(s.error) + '</span>' : '') + '</div>';
+    });
+
+    var msg = '工作流: ' + data.name + '\n状态: ' + data.status + '\n创建: ' + data.created_at + '\n\n步骤:\n' + (data.steps||[]).map(function(s){return s.status + ' ' + s.name}).join('\n');
+    alert(msg);
+  } catch(e) {
+    showToast('查看失败: ' + e.message, 'error');
+  }
+}
+
+// 页面加载时自动加载工作流列表
+setTimeout(function(){ if ($('#panel-workflow').style.display !== 'none') loadWorkflows(); }, 3000);
 </script>
 <script src="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.js" onload="initAladin()" defer></script>
 </body>

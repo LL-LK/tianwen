@@ -124,6 +124,19 @@ from web.dashboard import CycleStatisticsDashboard
 from research.hypothesis_tester import HypothesisTester
 import httpx
 
+try:
+    from agents.agent_enhancements import (
+        AgentEnhancements, ADSApiClient, SemanticScholarClient,
+        FactVerifier, HallucinationDetector, CitationTracker,
+        HybridRAG, ToolRegistry, WorkflowOrchestrator
+    )
+    _ENHANCEMENTS_AVAILABLE = True
+except ImportError:
+    _ENHANCEMENTS_AVAILABLE = False
+    AgentEnhancements = None
+
+_enhancements = AgentEnhancements() if _ENHANCEMENTS_AVAILABLE else None
+
 agent = HermesAGI()
 dashboard = CycleStatisticsDashboard()
 hypothesis_tester = HypothesisTester()
@@ -2662,6 +2675,333 @@ async def stats_summary():
         "uptime_hours": _observatory_state["uptime_hours"],
         "active_ws_clients": ws_manager.connection_count,
     })
+
+
+# ============================================================================
+# 智能体增强 API 端点 (v2.0)
+# ============================================================================
+
+@app.route("/api/enhancements/capabilities", methods=["GET"])
+async def get_enhancement_capabilities():
+    """获取智能体增强能力摘要"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用", "available": False})
+    return jsonify({
+        "available": True,
+        "capabilities": _enhancements.get_capability_summary()
+    })
+
+
+@app.route("/api/literature/search", methods=["GET"])
+@require_api_key
+async def enhanced_literature_search():
+    """增强文献搜索 - 多数据源聚合 (arXiv + ADS + Semantic Scholar)"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    query = request.args.get("q", "")
+    sources_str = request.args.get("sources", "")
+    sources = [s.strip() for s in sources_str.split(",") if s.strip()] if sources_str else None
+
+    if not query:
+        return jsonify({"error": "缺少查询参数 q"}), 400
+
+    try:
+        result = await _enhancements.enhanced_literature_search(query, sources)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/literature/citation-network", methods=["GET"])
+@require_api_key
+async def get_citation_network():
+    """获取论文引用网络"""
+    bibcode = request.args.get("bibcode", "")
+    paper_id = request.args.get("paper_id", "")
+    depth = int(request.args.get("depth", "1"))
+
+    if not bibcode and not paper_id:
+        return jsonify({"error": "需要 bibcode 或 paper_id 参数"}), 400
+
+    try:
+        if bibcode and _enhancements.ads_client.is_configured:
+            result = await _enhancements.ads_client.get_citation_network(bibcode, depth)
+        elif paper_id:
+            result = await _enhancements.s2_client.get_citation_graph(paper_id, depth)
+        else:
+            result = {"error": "ADS API 未配置，且未提供 paper_id"}
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/literature/ads-search", methods=["GET"])
+@require_api_key
+async def ads_search():
+    """ADS 文献搜索"""
+    if not _ENHANCEMENTS_AVAILABLE or not _enhancements.ads_client.is_configured:
+        return jsonify({"error": "ADS API 未配置，请设置 ADS_API_TOKEN 环境变量"}), 503
+
+    query = request.args.get("q", "")
+    max_results = int(request.args.get("n", "20"))
+    sort = request.args.get("sort", "date")
+
+    if not query:
+        return jsonify({"error": "缺少查询参数 q"}), 400
+
+    try:
+        results = await _enhancements.ads_client.search(query, max_results, sort)
+        return jsonify({"query": query, "total": len(results), "results": results})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/fact/verify", methods=["POST"])
+@require_api_key
+async def verify_facts():
+    """事实校验 - 验证LLM输出中的天文事实"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    data = await request.get_json()
+    text = data.get("text", "")
+
+    if not text:
+        return jsonify({"error": "缺少 text 参数"}), 400
+
+    try:
+        report = _enhancements.fact_verifier.verify_response(text)
+        return jsonify({
+            "overall_confidence": report.overall_confidence,
+            "hallucination_risk": report.hallucination_risk,
+            "verified_count": report.verified_count,
+            "unverified_count": report.unverified_count,
+            "contradicted_count": report.contradicted_count,
+            "suggestions": report.suggestions,
+            "claims": [
+                {
+                    "claim": c.claim,
+                    "category": c.category,
+                    "verified": c.verified,
+                    "confidence": c.confidence,
+                    "contradictions": c.contradictions
+                }
+                for c in report.claims
+            ]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/hallucination/detect", methods=["POST"])
+@require_api_key
+async def detect_hallucination():
+    """幻觉检测 - 多维度检测LLM输出"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    data = await request.get_json()
+    text = data.get("text", "")
+    context = data.get("context", "")
+    expected_topics = data.get("expected_topics", None)
+
+    if not text:
+        return jsonify({"error": "缺少 text 参数"}), 400
+
+    try:
+        result = _enhancements.hallucination_detector.detect(text, context, expected_topics)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/rag/hybrid-search", methods=["GET"])
+@require_api_key
+async def hybrid_rag_search():
+    """混合RAG检索 - 关键词+向量+重排序"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    query = request.args.get("q", "")
+    top_k = int(request.args.get("k", "5"))
+
+    if not query:
+        return jsonify({"error": "缺少查询参数 q"}), 400
+
+    try:
+        results = await _enhancements.hybrid_rag.hybrid_search(query, top_k)
+        reranked = _enhancements.hybrid_rag.rerank(query, results, top_k)
+        return jsonify({"query": query, "total": len(reranked), "results": reranked})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/mcp/tools", methods=["GET"])
+async def list_mcp_tools():
+    """列出所有MCP工具"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    category = request.args.get("category", "")
+    keyword = request.args.get("keyword", "")
+
+    tools = _enhancements.tool_registry.discover(
+        category=category or None,
+        keyword=keyword or None
+    )
+    return jsonify({"tools": tools, "total": len(tools)})
+
+
+@app.route("/api/mcp/tools/stats", methods=["GET"])
+async def get_mcp_tool_stats():
+    """获取MCP工具统计"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+    return jsonify(_enhancements.tool_registry.get_stats())
+
+
+@app.route("/api/mcp/call", methods=["POST"])
+@require_api_key
+async def call_mcp_tool():
+    """调用MCP工具"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    data = await request.get_json()
+    tool_name = data.get("tool", "")
+    params = data.get("params", {})
+
+    if not tool_name:
+        return jsonify({"error": "缺少 tool 参数"}), 400
+
+    try:
+        result = await _enhancements.tool_registry.call(tool_name, **params)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/mcp/chain", methods=["POST"])
+@require_api_key
+async def execute_mcp_chain():
+    """执行MCP工具调用链"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    data = await request.get_json()
+    chain = data.get("chain", [])
+
+    if not chain:
+        return jsonify({"error": "缺少 chain 参数"}), 400
+
+    try:
+        results = await _enhancements.tool_registry.call_chain(chain)
+        return jsonify({"chain_results": results, "total_steps": len(results)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflows", methods=["GET"])
+async def list_workflows():
+    """列出所有工作流"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+    return jsonify({"workflows": _enhancements.workflow_orchestrator.get_all_workflows()})
+
+
+@app.route("/api/workflows", methods=["POST"])
+@require_api_key
+async def create_workflow():
+    """创建工作流"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    data = await request.get_json()
+    name = data.get("name", "Untitled Workflow")
+    steps = data.get("steps", [])
+
+    if not steps:
+        return jsonify({"error": "缺少 steps 参数"}), 400
+
+    try:
+        state = _enhancements.workflow_orchestrator.create_workflow(name, steps)
+        return jsonify({
+            "workflow_id": state.workflow_id,
+            "name": state.name,
+            "steps": len(state.steps),
+            "status": state.status.value,
+            "created_at": state.created_at
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflows/<workflow_id>/execute", methods=["POST"])
+@require_api_key
+async def execute_workflow(workflow_id):
+    """执行工作流"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    try:
+        result = await _enhancements.workflow_orchestrator.execute_workflow(workflow_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflows/<workflow_id>", methods=["GET"])
+async def get_workflow(workflow_id):
+    """获取工作流详情"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    state = _enhancements.workflow_orchestrator.active_workflows.get(workflow_id)
+    if not state:
+        state = _enhancements.workflow_orchestrator.load_state(workflow_id)
+    if not state:
+        return jsonify({"error": "工作流不存在"}), 404
+
+    return jsonify({
+        "workflow_id": state.workflow_id,
+        "name": state.name,
+        "status": state.status.value,
+        "created_at": state.created_at,
+        "updated_at": state.updated_at,
+        "steps": [
+            {
+                "id": s.id, "name": s.name, "action": s.action,
+                "status": s.status.value, "error": s.error,
+                "retry_count": s.retry_count
+            }
+            for s in state.steps
+        ]
+    })
+
+
+@app.route("/api/chat/safe", methods=["POST"])
+@require_api_key
+async def safe_chat():
+    """安全对话 - 带幻觉检测和事实校验的对话"""
+    if not _ENHANCEMENTS_AVAILABLE:
+        return jsonify({"error": "增强模块不可用"}), 503
+
+    data = await request.get_json()
+    message = data.get("message", "")
+    context = data.get("context", "")
+    expected_topics = data.get("expected_topics", None)
+
+    if not message:
+        return jsonify({"error": "消息不能为空"}), 400
+
+    try:
+        safe_result = await _enhancements.safe_chat_response(
+            message, context, expected_topics
+        )
+        return jsonify(safe_result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
