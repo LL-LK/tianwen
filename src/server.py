@@ -1227,6 +1227,21 @@ except ImportError:
     _REALTIME_BRIDGE_AVAILABLE = False
     logger.warning("Realtime bridge module not available, using legacy WebSocket manager")
 
+
+if _REALTIME_BRIDGE_AVAILABLE:
+    @app.before_serving
+    async def _start_bridge_tasks():
+        asyncio.ensure_future(start_heartbeat_loop(_conn_manager))
+        asyncio.ensure_future(start_broadcast_loop(_conn_manager, _state_bridge))
+        logger.info("Realtime bridge background tasks started")
+
+
+@app.before_serving
+async def _start_ws_heartbeat():
+    asyncio.ensure_future(ws_manager.start_heartbeat_loop())
+    logger.info("WebSocket heartbeat loop started")
+
+
 # ============ NASA SkyView 星图 API ============
 try:
     from observation.sky_chart import NASA_SkyView_API, get_realtime_skychart, parse_coordinates, BUILTIN_CATALOG, SkySurvey
@@ -3228,18 +3243,5 @@ if __name__ == "__main__":
     logger.info(f"Agent Status WS: ws://localhost:{port}/ws/agent_status")
     logger.info(f"Observation WS: ws://localhost:{port}/ws/observation")
     logger.info("=" * 50)
-
-    if _REALTIME_BRIDGE_AVAILABLE:
-        @app.before_serving
-        async def start_bridge_tasks():
-            asyncio.ensure_future(start_heartbeat_loop(_conn_manager))
-            asyncio.ensure_future(start_broadcast_loop(_conn_manager, _state_bridge))
-            logger.info("Realtime bridge background tasks started")
-
-    # 启动WebSocket心跳循环
-    @app.before_serving
-    async def start_ws_heartbeat():
-        asyncio.ensure_future(ws_manager.start_heartbeat_loop())
-        logger.info("WebSocket heartbeat loop started")
 
     app.run(host="0.0.0.0", port=port, debug=DEBUG)

@@ -18,7 +18,7 @@ USER pyapp
 
 EXPOSE 5000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')" || exit 1
 
-CMD ["python", "src/server.py"]
+CMD ["hypercorn", "src.server:app", "--bind", "0.0.0.0:5000", "--workers", "2", "--backlog", "1024", "--keep-alive", "5", "--graceful-timeout", "30"]
