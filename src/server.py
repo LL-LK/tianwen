@@ -137,6 +137,15 @@ except ImportError:
 
 _enhancements = AgentEnhancements() if _ENHANCEMENTS_AVAILABLE else None
 
+try:
+    from agents.workflow_engine import WorkflowEngine, get_workflow_engine, NodeType, NodeStatus
+    _WORKFLOW_ENGINE_AVAILABLE = True
+except ImportError:
+    _WORKFLOW_ENGINE_AVAILABLE = False
+    WorkflowEngine = None
+
+_workflow_engine = get_workflow_engine() if _WORKFLOW_ENGINE_AVAILABLE else None
+
 agent = HermesAGI()
 dashboard = CycleStatisticsDashboard()
 hypothesis_tester = HypothesisTester()
@@ -1684,6 +1693,79 @@ async def observation_ws():
             ws_manager.unregister(client_id)
 
 
+@app.websocket('/ws/workflow-engine')
+async def workflow_engine_ws():
+    """
+    WebSocket端点：工作流引擎实时状态推送
+
+    推送事件类型:
+    - execution_started: 工作流开始执行
+    - node_status: 节点状态变化 (running/completed/failed)
+    - loop_iteration: 闭环迭代
+    - execution_completed: 工作流执行完成
+    - execution_error: 执行错误
+    """
+    client_id = str(uuid.uuid4())
+    ws = websocket._get_current_object()
+
+    if _REALTIME_BRIDGE_AVAILABLE:
+        _conn_manager.register(client_id, ws)
+    else:
+        ws_manager.register(client_id, ws)
+
+    if _WORKFLOW_ENGINE_AVAILABLE:
+        async def _wf_push(event_type, data):
+            try:
+                await ws.send(json.dumps({
+                    "type": event_type,
+                    "data": data,
+                    "timestamp": datetime.now().isoformat(),
+                }, ensure_ascii=False, default=str))
+            except Exception:
+                pass
+        _workflow_engine.register_ws_callback(_wf_push)
+
+    try:
+        while True:
+            data = await asyncio.wait_for(websocket.receive(), timeout=30)
+
+            if data == "ping":
+                await websocket.send("pong")
+            elif data and data.startswith("{"):
+                try:
+                    msg = json.loads(data)
+                    msg_type = msg.get("type", "")
+
+                    if msg_type == "get_status":
+                        wf_id = msg.get("workflow_id", "")
+                        if wf_id and _WORKFLOW_ENGINE_AVAILABLE:
+                            status = _workflow_engine.get_execution_status(wf_id)
+                            await websocket.send(json.dumps({
+                                "type": "execution_status",
+                                "data": status,
+                            }, ensure_ascii=False, default=str))
+
+                    elif msg_type == "get_history":
+                        if _WORKFLOW_ENGINE_AVAILABLE:
+                            history = _workflow_engine.get_execution_history()
+                            await websocket.send(json.dumps({
+                                "type": "execution_history",
+                                "data": history,
+                            }, ensure_ascii=False, default=str))
+
+                except json.JSONDecodeError:
+                    pass
+    except asyncio.TimeoutError:
+        pass
+    except Exception:
+        pass
+    finally:
+        if _REALTIME_BRIDGE_AVAILABLE:
+            _conn_manager.unregister(client_id)
+        else:
+            ws_manager.unregister(client_id)
+
+
 def _build_agent_status():
     """构建Agent状态数据"""
     return {
@@ -3002,6 +3084,131 @@ async def safe_chat():
         return jsonify(safe_result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ============================================================================
+# 可视化闭环工作流引擎 API (v2.0)
+# ============================================================================
+
+@app.route("/api/workflow-engine/node-types", methods=["GET"])
+async def get_node_types():
+    """获取所有可用节点类型"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+    return jsonify({"node_types": _workflow_engine.get_node_types()})
+
+
+@app.route("/api/workflow-engine/templates", methods=["GET"])
+async def get_workflow_templates():
+    """获取预置工作流模板"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+    return jsonify({"templates": _workflow_engine.get_templates()})
+
+
+@app.route("/api/workflow-engine/templates/<template_name>/instantiate", methods=["POST"])
+@require_api_key
+async def instantiate_template(template_name):
+    """从模板实例化工作流"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    data = await request.get_json() or {}
+    custom_name = data.get("name", None)
+
+    try:
+        result = _workflow_engine.instantiate_template(template_name, custom_name)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflow-engine/definitions", methods=["GET"])
+async def list_workflow_definitions():
+    """列出所有工作流定义"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+    return jsonify({"workflows": _workflow_engine.list_workflows()})
+
+
+@app.route("/api/workflow-engine/definitions", methods=["POST"])
+@require_api_key
+async def save_workflow_definition():
+    """创建/更新工作流定义（无代码配置）"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    data = await request.get_json()
+    if not data:
+        return jsonify({"error": "缺少工作流定义数据"}), 400
+
+    try:
+        result = _workflow_engine.create_workflow(data)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflow-engine/definitions/<wf_id>", methods=["GET"])
+async def get_workflow_definition(wf_id):
+    """获取工作流定义详情"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    wf = _workflow_engine.get_workflow(wf_id)
+    if not wf:
+        return jsonify({"error": "工作流不存在"}), 404
+    return jsonify(wf)
+
+
+@app.route("/api/workflow-engine/definitions/<wf_id>", methods=["DELETE"])
+@require_api_key
+async def delete_workflow_definition(wf_id):
+    """删除工作流定义"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    ok = _workflow_engine.delete_workflow(wf_id)
+    return jsonify({"deleted": ok})
+
+
+@app.route("/api/workflow-engine/execute/<wf_id>", methods=["POST"])
+@require_api_key
+async def execute_workflow_engine(wf_id):
+    """执行工作流"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    data = await request.get_json() or {}
+    initial_vars = data.get("variables", {})
+
+    try:
+        result = await _workflow_engine.execute_workflow(wf_id, initial_vars)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflow-engine/status/<wf_id>", methods=["GET"])
+async def get_workflow_execution_status(wf_id):
+    """获取工作流执行状态（实时）"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    status = _workflow_engine.get_execution_status(wf_id)
+    if not status:
+        return jsonify({"error": "工作流不存在"}), 404
+    return jsonify(status)
+
+
+@app.route("/api/workflow-engine/history", methods=["GET"])
+async def get_execution_history():
+    """获取执行历史"""
+    if not _WORKFLOW_ENGINE_AVAILABLE:
+        return jsonify({"error": "工作流引擎不可用"}), 503
+
+    limit = int(request.args.get("limit", "20"))
+    return jsonify({"history": _workflow_engine.get_execution_history(limit)})
 
 
 if __name__ == "__main__":

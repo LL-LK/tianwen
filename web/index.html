@@ -697,17 +697,66 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 </div>
 
 <div class="tab-panel" id="panel-workflow">
-  <div class="card" style="display:flex;flex-direction:column;height:calc(100vh - 180px)">
-    <div class="card-header">
-      <span class="card-title"><span class="icon">⚡</span>工作流编排</span>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-primary btn-sm" onclick="createWorkflow()">新建工作流</button>
-        <button class="btn btn-sm" onclick="loadWorkflows()" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border)">刷新</button>
+  <div style="display:flex;height:calc(100vh - 180px);gap:0">
+    <!-- 左侧：节点面板 -->
+    <div style="width:200px;min-width:200px;background:var(--bg-secondary);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:12px;border-bottom:1px solid var(--border);font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px">
+        <span>🧩</span>节点类型
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:8px" id="nodePalette"></div>
+    </div>
+
+    <!-- 中间：画布 -->
+    <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+      <!-- 工具栏 -->
+      <div style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--bg-primary)">
+        <select id="wfSelector" onchange="selectWorkflow(this.value)" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px;min-width:180px">
+          <option value="">-- 选择工作流 --</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="saveCurrentWorkflow()">💾 保存</button>
+        <button class="btn btn-sm" onclick="showTemplateDialog()" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border)">📋 模板</button>
+        <button class="btn btn-sm" onclick="newWorkflow()" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border)">➕ 新建</button>
+        <button class="btn btn-sm btn-success" onclick="executeCurrentWorkflow()" id="btnExecuteWF">▶ 执行</button>
+        <span style="margin-left:auto;font-size:12px;color:var(--text-muted)" id="wfStatusLabel">就绪</span>
+      </div>
+
+      <!-- SVG 画布 -->
+      <div id="wfCanvas" style="flex:1;overflow:auto;background:var(--bg-secondary);position:relative;background-image:radial-gradient(circle,var(--border) 1px,transparent 1px);background-size:20px 20px">
+        <svg id="wfSvg" style="width:100%;height:100%;min-width:1200px;min-height:800px"></svg>
       </div>
     </div>
-    <div id="workflowList" style="flex:1;overflow-y:auto;padding:8px;background:var(--bg-secondary);border-radius:8px">
-      <div class="empty-state"><div class="icon">⚡</div><div>暂无工作流</div><div style="font-size:12px;color:var(--text-secondary);margin-top:4px">点击"新建工作流"创建自动化研究流程</div></div>
+
+    <!-- 右侧：配置面板 -->
+    <div style="width:280px;min-width:280px;background:var(--bg-secondary);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden" id="configPanel">
+      <div style="padding:12px;border-bottom:1px solid var(--border);font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px">
+        <span>⚙️</span>节点配置
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:12px" id="nodeConfigContent">
+        <div class="empty-state"><div class="icon">👆</div><div>点击画布中的节点进行配置</div></div>
+      </div>
+      <!-- 闭环配置 -->
+      <div style="padding:12px;border-top:1px solid var(--border)" id="loopConfig">
+        <div style="font-weight:600;font-size:13px;margin-bottom:8px">🔄 闭环设置</div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:8px">
+          <input type="checkbox" id="loopEnabled" onchange="updateLoopConfig()"> 启用闭环迭代
+        </label>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px">
+          <span>最大迭代:</span>
+          <input type="number" id="maxLoops" value="3" min="1" max="20" onchange="updateLoopConfig()" style="width:60px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary)">
+        </div>
+      </div>
     </div>
+  </div>
+</div>
+
+<!-- 模板选择对话框 -->
+<div id="templateDialog" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:1000;justify-content:center;align-items:center">
+  <div style="background:var(--bg-primary);border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;border:1px solid var(--border)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="margin:0">📋 工作流模板库</h3>
+      <button onclick="closeTemplateDialog()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer">&times;</button>
+    </div>
+    <div id="templateList" style="display:flex;flex-direction:column;gap:12px"></div>
   </div>
 </div>
 
@@ -2424,120 +2473,679 @@ async function runFactCheck(){
 
 // ============ 工作流函数 ============
 
-async function loadWorkflows(){
-  var listDiv = $('#workflowList');
-  listDiv.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><div>加载中...</div></div>';
+// ============================================================================
+// 可视化闭环工作流编辑器 (v2.0)
+// ============================================================================
+
+var wfState = {
+  currentId: null,
+  name: 'Untitled',
+  description: '',
+  nodes: [],
+  edges: [],
+  loopEnabled: false,
+  maxLoops: 3,
+  selectedNodeId: null,
+  isExecuting: false,
+  nodeTypes: [],
+  templates: {},
+  dragFromPalette: null,
+  connectingFrom: null,
+  svgOffset: { x: 0, y: 0 },
+};
+
+var NODE_W = 160, NODE_H = 56;
+var STATUS_COLORS = {
+  idle: '#666', pending: '#888', running: '#4a9eff', completed: '#4caf50',
+  failed: '#f44336', skipped: '#9e9e9e', waiting_approval: '#ff9800'
+};
+
+async function initWorkflowEditor() {
+  try {
+    var resp = await fetch(API_BASE + '/workflow-engine/node-types');
+    var data = await resp.json();
+    wfState.nodeTypes = data.node_types || [];
+    renderNodePalette();
+  } catch(e) { console.warn('Failed to load node types:', e); }
 
   try {
-    var resp = await fetch(API_BASE + '/workflows');
-    var data = await resp.json();
+    var resp2 = await fetch(API_BASE + '/workflow-engine/templates');
+    var data2 = await resp2.json();
+    wfState.templates = data2.templates || {};
+  } catch(e) { console.warn('Failed to load templates:', e); }
 
+  refreshWorkflowList();
+  connectWorkflowWS();
+}
+
+function renderNodePalette() {
+  var palette = $('#nodePalette');
+  var html = '';
+  wfState.nodeTypes.forEach(function(nt) {
+    html += '<div class="palette-node" draggable="true" data-type="' + nt.type + '" ';
+    html += 'style="padding:8px 10px;margin-bottom:6px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;cursor:grab;font-size:12px;display:flex;align-items:center;gap:6px;transition:all 0.15s" ';
+    html += 'ondragstart="onPaletteDragStart(event,\'' + nt.type + '\')" ondragend="onPaletteDragEnd(event)">';
+    html += '<span style="font-size:16px">' + (nt.icon || '📦') + '</span>';
+    html += '<span>' + nt.label + '</span>';
+    html += '</div>';
+  });
+  palette.innerHTML = html;
+}
+
+function onPaletteDragStart(e, nodeType) {
+  wfState.dragFromPalette = nodeType;
+  e.dataTransfer.effectAllowed = 'copy';
+  e.dataTransfer.setData('text/plain', nodeType);
+}
+
+function onPaletteDragEnd(e) {
+  wfState.dragFromPalette = null;
+}
+
+function setupCanvasDrop() {
+  var canvas = $('#wfCanvas');
+  canvas.addEventListener('dragover', function(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  canvas.addEventListener('drop', function(e) {
+    e.preventDefault();
+    var nodeType = wfState.dragFromPalette || e.dataTransfer.getData('text/plain');
+    if (!nodeType) return;
+
+    var rect = canvas.getBoundingClientRect();
+    var x = e.clientX - rect.left + canvas.scrollLeft;
+    var y = e.clientY - rect.top + canvas.scrollTop;
+
+    var nt = wfState.nodeTypes.find(function(n) { return n.type === nodeType; });
+    var newNode = {
+      id: 'n_' + Date.now(),
+      type: nodeType,
+      label: nt ? nt.label : nodeType,
+      description: '',
+      config: {},
+      x: Math.round(x - NODE_W/2),
+      y: Math.round(y - NODE_H/2),
+      color: nt ? nt.color : '#4a9eff',
+      icon: nt ? nt.icon : '📦',
+      status: 'idle',
+      result: null,
+      error: '',
+      duration_ms: 0,
+    };
+
+    wfState.nodes.push(newNode);
+    renderWorkflow();
+  });
+}
+
+function renderWorkflow() {
+  var svg = $('#wfSvg');
+  var html = '<defs><marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">';
+  html += '<polygon points="0 0, 10 3.5, 0 7" fill="#888"/></marker>';
+  html += '<marker id="arrowhead-active" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">';
+  html += '<polygon points="0 0, 10 3.5, 0 7" fill="#4a9eff"/></marker></defs>';
+
+  // 绘制边
+  wfState.edges.forEach(function(edge) {
+    var src = wfState.nodes.find(function(n) { return n.id === edge.source; });
+    var tgt = wfState.nodes.find(function(n) { return n.id === edge.target; });
+    if (!src || !tgt) return;
+
+    var x1 = src.x + NODE_W;
+    var y1 = src.y + NODE_H/2;
+    var x2 = tgt.x;
+    var y2 = tgt.y + NODE_H/2;
+    var midX = (x1 + x2) / 2;
+
+    var isActive = wfState.isExecuting && src.status === 'completed';
+    var strokeColor = isActive ? '#4a9eff' : '#666';
+    var marker = isActive ? 'url(#arrowhead-active)' : 'url(#arrowhead)';
+
+    html += '<path d="M' + x1 + ',' + y1 + ' C' + midX + ',' + y1 + ' ' + midX + ',' + y2 + ' ' + x2 + ',' + y2 + '" ';
+    html += 'stroke="' + strokeColor + '" stroke-width="2" fill="none" marker-end="' + marker + '" ';
+    html += 'style="cursor:pointer" onclick="deleteEdge(\'' + edge.id + '\')"/>';
+
+    if (edge.label) {
+      html += '<text x="' + midX + '" y="' + ((y1+y2)/2 - 8) + '" text-anchor="middle" font-size="11" fill="#aaa">' + edge.label + '</text>';
+    }
+  });
+
+  // 绘制节点
+  wfState.nodes.forEach(function(node) {
+    var sc = STATUS_COLORS[node.status] || '#666';
+    var isSelected = node.id === wfState.selectedNodeId;
+    var strokeW = isSelected ? 3 : 1.5;
+    var strokeC = isSelected ? '#fff' : sc;
+
+    html += '<g transform="translate(' + node.x + ',' + node.y + ')" style="cursor:pointer" ';
+    html += 'onclick="selectNode(\'' + node.id + '\')" ';
+    html += 'onmousedown="startConnect(event,\'' + node.id + '\')" ';
+    html += 'onmouseup="endConnect(event,\'' + node.id + '\')">';
+
+    // 节点背景
+    html += '<rect x="0" y="0" width="' + NODE_W + '" height="' + NODE_H + '" rx="8" ry="8" ';
+    html += 'fill="' + node.color + '" fill-opacity="0.15" stroke="' + strokeC + '" stroke-width="' + strokeW + '"/>';
+
+    // 状态指示灯
+    html += '<circle cx="14" cy="' + (NODE_H/2) + '" r="6" fill="' + sc + '"/>';
+
+    // 图标和标签
+    html += '<text x="28" y="' + (NODE_H/2 - 4) + '" font-size="13" fill="var(--text-primary)" font-weight="600">' + (node.icon || '') + ' ' + node.label + '</text>';
+    html += '<text x="28" y="' + (NODE_H/2 + 14) + '" font-size="10" fill="var(--text-muted)">' + node.type + '</text>';
+
+    // 连接点
+    html += '<circle cx="' + NODE_W + '" cy="' + (NODE_H/2) + '" r="5" fill="#888" style="cursor:crosshair" ';
+    html += 'onmousedown="startConnectFromPort(event,\'' + node.id + '\')" onclick="event.stopPropagation()"/>';
+
+    // 删除按钮
+    html += '<circle cx="' + (NODE_W - 10) + '" cy="10" r="8" fill="rgba(244,67,54,0.8)" style="cursor:pointer" ';
+    html += 'onclick="deleteNode(event,\'' + node.id + '\')"/>';
+    html += '<text x="' + (NODE_W - 10) + '" y="14" text-anchor="middle" font-size="10" fill="#fff" style="cursor:pointer" ';
+    html += 'onclick="deleteNode(event,\'' + node.id + '\')">✕</text>';
+
+    html += '</g>';
+  });
+
+  // 连接中的临时线
+  if (wfState.connectingFrom) {
+    var srcNode = wfState.nodes.find(function(n) { return n.id === wfState.connectingFrom; });
+    if (srcNode) {
+      html += '<line x1="' + (srcNode.x + NODE_W) + '" y1="' + (srcNode.y + NODE_H/2) + '" ';
+      html += 'x2="' + (srcNode.x + NODE_W + 50) + '" y2="' + (srcNode.y + NODE_H/2) + '" ';
+      html += 'stroke="#4a9eff" stroke-width="2" stroke-dasharray="5,5"/>';
+    }
+  }
+
+  svg.innerHTML = html;
+}
+
+function selectNode(nodeId) {
+  wfState.selectedNodeId = nodeId;
+  renderWorkflow();
+  renderNodeConfig(nodeId);
+}
+
+function renderNodeConfig(nodeId) {
+  var node = wfState.nodes.find(function(n) { return n.id === nodeId; });
+  if (!node) {
+    $('#nodeConfigContent').innerHTML = '<div class="empty-state"><div class="icon">👆</div><div>点击画布中的节点进行配置</div></div>';
+    return;
+  }
+
+  var nt = wfState.nodeTypes.find(function(n) { return n.type === node.type; });
+  var schema = nt ? nt.config_schema : null;
+
+  var html = '<div style="margin-bottom:12px">';
+  html += '<label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">节点名称</label>';
+  html += '<input type="text" value="' + escapeHtml(node.label) + '" onchange="updateNodeLabel(\'' + nodeId + '\',this.value)" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:13px">';
+  html += '</div>';
+
+  html += '<div style="margin-bottom:12px">';
+  html += '<label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">描述</label>';
+  html += '<textarea onchange="updateNodeDesc(\'' + nodeId + '\',this.value)" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:12px;resize:vertical" rows="2">' + escapeHtml(node.description || '') + '</textarea>';
+  html += '</div>';
+
+  if (schema) {
+    html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;font-weight:600">参数配置</div>';
+    Object.keys(schema).forEach(function(key) {
+      var field = schema[key];
+      var val = node.config[key] !== undefined ? node.config[key] : field.default;
+      html += '<div style="margin-bottom:10px">';
+      html += '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">' + (field.label || key) + '</label>';
+
+      if (field.type === 'boolean') {
+        html += '<input type="checkbox" ' + (val ? 'checked' : '') + ' onchange="updateNodeConfig(\'' + nodeId + '\',\'' + key + '\',this.checked)" style="accent-color:var(--accent)">';
+      } else if (field.type === 'number') {
+        html += '<input type="number" value="' + val + '" onchange="updateNodeConfig(\'' + nodeId + '\',\'' + key + '\',parseFloat(this.value))" style="width:100%;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:12px">';
+      } else if (field.type === 'select' && field.options) {
+        html += '<select onchange="updateNodeConfig(\'' + nodeId + '\',\'' + key + '\',this.value)" style="width:100%;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:12px">';
+        field.options.forEach(function(opt) {
+          html += '<option value="' + opt + '" ' + (val === opt ? 'selected' : '') + '>' + opt + '</option>';
+        });
+        html += '</select>';
+      } else if (field.type === 'multi-select' && field.options) {
+        var arrVal = Array.isArray(val) ? val : [val];
+        html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+        field.options.forEach(function(opt) {
+          var checked = arrVal.indexOf(opt) >= 0;
+          html += '<label style="font-size:11px;display:flex;align-items:center;gap:3px;padding:2px 6px;border-radius:4px;border:1px solid var(--border);background:' + (checked ? 'var(--accent)' : 'var(--bg-primary)') + ';color:' + (checked ? '#fff' : 'var(--text-primary)') + ';cursor:pointer">';
+          html += '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="toggleMultiConfig(\'' + nodeId + '\',\'' + key + '\',\'' + opt + '\',this.checked)" style="display:none">';
+          html += opt + '</label>';
+        });
+        html += '</div>';
+      } else {
+        html += '<input type="text" value="' + escapeHtml(String(val)) + '" onchange="updateNodeConfig(\'' + nodeId + '\',\'' + key + '\',this.value)" style="width:100%;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-primary);color:var(--text-primary);font-size:12px">';
+      }
+      html += '</div>';
+    });
+  }
+
+  // 执行结果
+  if (node.status !== 'idle' && node.status !== 'pending') {
+    html += '<div style="margin-top:12px;padding:8px;background:var(--bg-primary);border-radius:6px;border:1px solid var(--border)">';
+    html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">执行结果</div>';
+    html += '<div style="font-size:11px;color:' + STATUS_COLORS[node.status] + '">状态: ' + node.status + '</div>';
+    if (node.duration_ms) html += '<div style="font-size:11px;color:var(--text-muted)">耗时: ' + node.duration_ms.toFixed(0) + 'ms</div>';
+    if (node.error) html += '<div style="font-size:11px;color:var(--danger);margin-top:4px">错误: ' + escapeHtml(node.error) + '</div>';
+    if (node.result) html += '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;max-height:100px;overflow-y:auto;white-space:pre-wrap">' + escapeHtml(JSON.stringify(node.result, null, 2).substring(0, 500)) + '</div>';
+    html += '</div>';
+  }
+
+  $('#nodeConfigContent').innerHTML = html;
+}
+
+function updateNodeLabel(nodeId, val) {
+  var node = wfState.nodes.find(function(n) { return n.id === nodeId; });
+  if (node) { node.label = val; renderWorkflow(); }
+}
+
+function updateNodeDesc(nodeId, val) {
+  var node = wfState.nodes.find(function(n) { return n.id === nodeId; });
+  if (node) { node.description = val; }
+}
+
+function updateNodeConfig(nodeId, key, val) {
+  var node = wfState.nodes.find(function(n) { return n.id === nodeId; });
+  if (node) { node.config[key] = val; }
+}
+
+function toggleMultiConfig(nodeId, key, opt, checked) {
+  var node = wfState.nodes.find(function(n) { return n.id === nodeId; });
+  if (!node) return;
+  var arr = Array.isArray(node.config[key]) ? node.config[key] : [];
+  if (checked) {
+    if (arr.indexOf(opt) < 0) arr.push(opt);
+  } else {
+    arr = arr.filter(function(x) { return x !== opt; });
+  }
+  node.config[key] = arr;
+  renderNodeConfig(nodeId);
+}
+
+function deleteNode(e, nodeId) {
+  e.stopPropagation();
+  wfState.nodes = wfState.nodes.filter(function(n) { return n.id !== nodeId; });
+  wfState.edges = wfState.edges.filter(function(e) { return e.source !== nodeId && e.target !== nodeId; });
+  if (wfState.selectedNodeId === nodeId) wfState.selectedNodeId = null;
+  renderWorkflow();
+  renderNodeConfig(null);
+}
+
+function deleteEdge(edgeId) {
+  wfState.edges = wfState.edges.filter(function(e) { return e.id !== edgeId; });
+  renderWorkflow();
+}
+
+function startConnectFromPort(e, nodeId) {
+  e.stopPropagation();
+  wfState.connectingFrom = nodeId;
+  renderWorkflow();
+}
+
+function endConnect(e, targetNodeId) {
+  if (!wfState.connectingFrom || wfState.connectingFrom === targetNodeId) {
+    wfState.connectingFrom = null;
+    renderWorkflow();
+    return;
+  }
+
+  var exists = wfState.edges.some(function(ed) {
+    return ed.source === wfState.connectingFrom && ed.target === targetNodeId;
+  });
+  if (!exists) {
+    wfState.edges.push({
+      id: 'e_' + Date.now(),
+      source: wfState.connectingFrom,
+      target: targetNodeId,
+      label: '',
+      condition: '',
+    });
+  }
+
+  wfState.connectingFrom = null;
+  renderWorkflow();
+}
+
+function startConnect(e, nodeId) {
+  // handled by port click
+}
+
+function updateLoopConfig() {
+  wfState.loopEnabled = $('#loopEnabled').checked;
+  wfState.maxLoops = parseInt($('#maxLoops').value) || 3;
+}
+
+// ==================== 工作流 CRUD ====================
+
+async function refreshWorkflowList() {
+  try {
+    var resp = await fetch(API_BASE + '/workflow-engine/definitions');
+    var data = await resp.json();
     var workflows = data.workflows || [];
-    if (workflows.length === 0) {
-      listDiv.innerHTML = '<div class="empty-state"><div class="icon">⚡</div><div>暂无工作流</div><div style="font-size:12px;color:var(--text-secondary);margin-top:4px">点击"新建工作流"创建自动化研究流程</div></div>';
-      return;
-    }
 
-    var html = '';
-    workflows.forEach(function(w){
-      var statusColor = w.status === 'completed' ? 'var(--success)' : w.status === 'running' ? 'var(--info)' : w.status === 'failed' ? 'var(--danger)' : 'var(--text-muted)';
-      html += '<div style="margin-bottom:8px;padding:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">';
-      html += '<div style="display:flex;justify-content:space-between;align-items:center">';
-      html += '<div><strong>' + escapeHtml(w.name || w.workflow_id) + '</strong></div>';
-      html += '<span style="font-size:11px;color:' + statusColor + '">' + escapeHtml(w.status || 'pending') + '</span>';
-      html += '</div>';
-      html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px">ID: ' + escapeHtml(w.workflow_id || '?') + ' · 步骤: ' + (w.steps || '?') + ' · ' + (w.created_at || '') + '</div>';
-      html += '<div style="margin-top:6px;display:flex;gap:6px">';
-      html += '<button class="btn btn-primary" style="padding:2px 8px;font-size:11px" onclick="executeWorkflow(\'' + (w.workflow_id || '') + '\')">▶ 执行</button>';
-      html += '<button class="btn btn-sm" style="padding:2px 8px;font-size:11px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border)" onclick="viewWorkflow(\'' + (w.workflow_id || '') + '\')">查看</button>';
-      html += '</div>';
-      html += '</div>';
+    var sel = $('#wfSelector');
+    sel.innerHTML = '<option value="">-- 选择工作流 --</option>';
+    workflows.forEach(function(w) {
+      sel.innerHTML += '<option value="' + w.id + '">' + escapeHtml(w.name) + ' (' + w.node_count + '节点)</option>';
     });
-
-    listDiv.innerHTML = html;
-  } catch(e) {
-    listDiv.innerHTML = '<div class="empty-state"><div class="icon">❌</div><div>加载失败: ' + escapeHtml(e.message) + '</div></div>';
-  }
+  } catch(e) { console.warn('Failed to refresh workflow list:', e); }
 }
 
-async function createWorkflow(){
-  var name = prompt('工作流名称:', '自动观测流程');
-  if (!name) return;
+function selectWorkflow(wfId) {
+  if (!wfId) { newWorkflow(); return; }
+  loadWorkflowToCanvas(wfId);
+}
 
-  var stepsStr = prompt('步骤列表 (JSON格式):\n示例: [{"action":"search_literature","params":{"q":"supernova"}},{"action":"generate_hypothesis","params":{}}]', '[{"action":"search_literature","params":{"q":"exoplanet"}},{"action":"generate_hypothesis","params":{}}]');
-  if (!stepsStr) return;
+async function loadWorkflowToCanvas(wfId) {
+  try {
+    var resp = await fetch(API_BASE + '/workflow-engine/definitions/' + wfId);
+    var data = await resp.json();
+    if (data.error) { showToast('加载失败: ' + data.error, 'error'); return; }
+
+    wfState.currentId = data.id;
+    wfState.name = data.name;
+    wfState.description = data.description || '';
+    wfState.nodes = (data.nodes || []).map(function(n) {
+      return {
+        id: n.id, type: n.type, label: n.label, description: n.description || '',
+        config: n.config || {}, x: n.x || 0, y: n.y || 0,
+        color: n.color || '#4a9eff', icon: n.icon || '',
+        status: 'idle', result: null, error: '', duration_ms: 0,
+      };
+    });
+    wfState.edges = (data.edges || []).map(function(e) {
+      return { id: e.id, source: e.source, target: e.target, label: e.label || '', condition: e.condition || '' };
+    });
+    wfState.loopEnabled = data.loop_enabled || false;
+    wfState.maxLoops = data.max_loops || 3;
+    wfState.selectedNodeId = null;
+
+    $('#loopEnabled').checked = wfState.loopEnabled;
+    $('#maxLoops').value = wfState.maxLoops;
+    $('#wfStatusLabel').textContent = '已加载: ' + data.name;
+
+    renderWorkflow();
+    renderNodeConfig(null);
+  } catch(e) { showToast('加载失败: ' + e.message, 'error'); }
+}
+
+function newWorkflow() {
+  wfState.currentId = null;
+  wfState.name = 'Untitled';
+  wfState.description = '';
+  wfState.nodes = [];
+  wfState.edges = [];
+  wfState.loopEnabled = false;
+  wfState.maxLoops = 3;
+  wfState.selectedNodeId = null;
+  wfState.isExecuting = false;
+
+  $('#loopEnabled').checked = false;
+  $('#maxLoops').value = 3;
+  $('#wfSelector').value = '';
+  $('#wfStatusLabel').textContent = '新建工作流';
+  $('#nodeConfigContent').innerHTML = '<div class="empty-state"><div class="icon">👆</div><div>从左侧拖拽节点到画布开始构建</div></div>';
+
+  renderWorkflow();
+}
+
+async function saveCurrentWorkflow() {
+  var name = wfState.name === 'Untitled' ? prompt('工作流名称:', '我的工作流') : wfState.name;
+  if (!name) return;
+  wfState.name = name;
+
+  var payload = {
+    id: wfState.currentId || undefined,
+    name: wfState.name,
+    description: wfState.description,
+    nodes: wfState.nodes.map(function(n) {
+      return { id: n.id, type: n.type, label: n.label, description: n.description, config: n.config, x: n.x, y: n.y, color: n.color, icon: n.icon };
+    }),
+    edges: wfState.edges.map(function(e) {
+      return { id: e.id, source: e.source, target: e.target, label: e.label, condition: e.condition };
+    }),
+    loop_enabled: wfState.loopEnabled,
+    max_loops: wfState.maxLoops,
+  };
 
   try {
-    var steps = JSON.parse(stepsStr);
-    var headers = {'Content-Type': 'application/json'};
+    var headers = { 'Content-Type': 'application/json' };
     if (API_KEY) headers['X-API-Key'] = API_KEY;
 
-    var resp = await fetch(API_BASE + '/workflows', {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify({name: name, steps: steps})
+    var resp = await fetch(API_BASE + '/workflow-engine/definitions', {
+      method: 'POST', headers: headers, body: JSON.stringify(payload)
     });
     var data = await resp.json();
 
-    if (data.error) {
-      showToast('创建失败: ' + data.error, 'error');
-    } else {
-      showToast('工作流创建成功: ' + data.workflow_id, 'success');
-      loadWorkflows();
-    }
-  } catch(e) {
-    showToast('创建失败: ' + e.message, 'error');
-  }
+    if (data.error) { showToast('保存失败: ' + data.error, 'error'); return; }
+
+    wfState.currentId = data.id;
+    $('#wfStatusLabel').textContent = '已保存: ' + data.name;
+    showToast('工作流已保存: ' + data.name, 'success');
+    refreshWorkflowList();
+  } catch(e) { showToast('保存失败: ' + e.message, 'error'); }
 }
 
-async function executeWorkflow(workflowId){
-  showToast('执行工作流: ' + workflowId + '...', 'info');
+async function executeCurrentWorkflow() {
+  if (!wfState.currentId) {
+    showToast('请先保存工作流', 'warning');
+    return;
+  }
+
+  if (wfState.nodes.length === 0) {
+    showToast('工作流没有节点', 'warning');
+    return;
+  }
+
+  wfState.isExecuting = true;
+  $('#btnExecuteWF').textContent = '⏳ 执行中...';
+  $('#btnExecuteWF').disabled = true;
+  $('#wfStatusLabel').textContent = '执行中...';
+
+  // 重置所有节点状态
+  wfState.nodes.forEach(function(n) { n.status = 'pending'; n.result = null; n.error = ''; n.duration_ms = 0; });
+  renderWorkflow();
+
   try {
-    var headers = {'Content-Type': 'application/json'};
+    var headers = { 'Content-Type': 'application/json' };
     if (API_KEY) headers['X-API-Key'] = API_KEY;
 
-    var resp = await fetch(API_BASE + '/workflows/' + workflowId + '/execute', {
-      method: 'POST',
-      headers: headers
+    var resp = await fetch(API_BASE + '/workflow-engine/execute/' + wfState.currentId, {
+      method: 'POST', headers: headers, body: JSON.stringify({ variables: {} })
     });
     var data = await resp.json();
 
     if (data.error) {
       showToast('执行失败: ' + data.error, 'error');
+      $('#wfStatusLabel').textContent = '执行失败';
     } else {
-      showToast('工作流执行完成 · 状态: ' + (data.status || 'completed'), 'success');
-      loadWorkflows();
+      // 更新节点状态
+      if (data.node_results) {
+        Object.keys(data.node_results).forEach(function(nid) {
+          var nr = data.node_results[nid];
+          var node = wfState.nodes.find(function(n) { return n.id === nid; });
+          if (node) {
+            node.status = nr.status || 'completed';
+            node.result = nr.result_summary;
+            node.error = nr.error || '';
+            node.duration_ms = nr.duration_ms || 0;
+          }
+        });
+      }
+      showToast('工作流执行完成 · ' + data.completed + '/' + data.total_nodes + ' 节点成功', 'success');
+      $('#wfStatusLabel').textContent = '执行完成 · ' + data.iterations + ' 轮迭代';
     }
   } catch(e) {
     showToast('执行失败: ' + e.message, 'error');
+    $('#wfStatusLabel').textContent = '执行出错';
   }
+
+  wfState.isExecuting = false;
+  $('#btnExecuteWF').textContent = '▶ 执行';
+  $('#btnExecuteWF').disabled = false;
+  renderWorkflow();
 }
 
-async function viewWorkflow(workflowId){
+// ==================== 模板对话框 ====================
+
+function showTemplateDialog() {
+  var list = $('#templateList');
+  var html = '';
+  Object.keys(wfState.templates).forEach(function(key) {
+    var t = wfState.templates[key];
+    html += '<div style="padding:14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;display:flex;justify-content:space-between;align-items:center">';
+    html += '<div><div style="font-weight:600;font-size:14px">' + escapeHtml(t.name) + '</div>';
+    html += '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">' + escapeHtml(t.description) + '</div>';
+    html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px">' + t.node_count + ' 节点 · ' + t.edge_count + ' 连接' + (t.loop_enabled ? ' · 🔄闭环' : '') + '</div></div>';
+    html += '<button class="btn btn-primary btn-sm" onclick="useTemplate(\'' + key + '\')">使用</button>';
+    html += '</div>';
+  });
+  list.innerHTML = html || '<div class="empty-state"><div>暂无模板</div></div>';
+  $('#templateDialog').style.display = 'flex';
+}
+
+function closeTemplateDialog() {
+  $('#templateDialog').style.display = 'none';
+}
+
+async function useTemplate(templateName) {
+  closeTemplateDialog();
+  var customName = prompt('工作流名称:', wfState.templates[templateName] ? wfState.templates[templateName].name : templateName);
+  if (!customName) return;
+
   try {
-    var resp = await fetch(API_BASE + '/workflows/' + workflowId);
+    var headers = { 'Content-Type': 'application/json' };
+    if (API_KEY) headers['X-API-Key'] = API_KEY;
+
+    var resp = await fetch(API_BASE + '/workflow-engine/templates/' + templateName + '/instantiate', {
+      method: 'POST', headers: headers, body: JSON.stringify({ name: customName })
+    });
     var data = await resp.json();
 
-    if (data.error) {
-      showToast('查看失败: ' + data.error, 'error');
-      return;
-    }
+    if (data.error) { showToast('实例化失败: ' + data.error, 'error'); return; }
 
-    var stepsHtml = '';
-    (data.steps || []).forEach(function(s){
-      var statusIcon = s.status === 'completed' ? '✅' : s.status === 'running' ? '⏳' : s.status === 'failed' ? '❌' : '⏸';
-      stepsHtml += '<div style="padding:4px 8px;font-size:12px">' + statusIcon + ' ' + escapeHtml(s.name) + ' (' + escapeHtml(s.action) + ') - ' + escapeHtml(s.status) + (s.error ? ' <span style="color:var(--danger)">' + escapeHtml(s.error) + '</span>' : '') + '</div>';
+    wfState.currentId = data.id;
+    wfState.name = data.name;
+    wfState.description = data.description || '';
+    wfState.nodes = (data.nodes || []).map(function(n) {
+      return {
+        id: n.id, type: n.type, label: n.label, description: n.description || '',
+        config: n.config || {}, x: n.x || 0, y: n.y || 0,
+        color: n.color || '#4a9eff', icon: n.icon || '',
+        status: 'idle', result: null, error: '', duration_ms: 0,
+      };
     });
+    wfState.edges = (data.edges || []).map(function(e) {
+      return { id: e.id, source: e.source, target: e.target, label: e.label || '', condition: e.condition || '' };
+    });
+    wfState.loopEnabled = data.loop_enabled || false;
+    wfState.maxLoops = data.max_loops || 3;
+    wfState.selectedNodeId = null;
 
-    var msg = '工作流: ' + data.name + '\n状态: ' + data.status + '\n创建: ' + data.created_at + '\n\n步骤:\n' + (data.steps||[]).map(function(s){return s.status + ' ' + s.name}).join('\n');
-    alert(msg);
-  } catch(e) {
-    showToast('查看失败: ' + e.message, 'error');
+    $('#loopEnabled').checked = wfState.loopEnabled;
+    $('#maxLoops').value = wfState.maxLoops;
+    $('#wfStatusLabel').textContent = '模板已加载: ' + data.name;
+
+    renderWorkflow();
+    renderNodeConfig(null);
+    refreshWorkflowList();
+    showToast('模板已加载: ' + data.name, 'success');
+  } catch(e) { showToast('实例化失败: ' + e.message, 'error'); }
+}
+
+// ==================== WebSocket 实时更新 ====================
+
+var wfWs = null;
+var wfWsReconnectTimer = null;
+
+function connectWorkflowWS() {
+  var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var wsUrl = protocol + '//' + location.host + '/ws/workflow-engine';
+
+  try {
+    wfWs = new WebSocket(wsUrl);
+
+    wfWs.onopen = function() {
+      console.log('[WF-WS] Connected');
+      if (wfWsReconnectTimer) { clearInterval(wfWsReconnectTimer); wfWsReconnectTimer = null; }
+    };
+
+    wfWs.onmessage = function(event) {
+      try {
+        var msg = JSON.parse(event.data);
+        handleWorkflowWSEvent(msg);
+      } catch(e) {}
+    };
+
+    wfWs.onclose = function() {
+      console.log('[WF-WS] Disconnected, reconnecting...');
+      if (!wfWsReconnectTimer) {
+        wfWsReconnectTimer = setInterval(function() {
+          if (!wfWs || wfWs.readyState === WebSocket.CLOSED) connectWorkflowWS();
+        }, 3000);
+      }
+    };
+
+    wfWs.onerror = function() {};
+
+    // 心跳
+    setInterval(function() {
+      if (wfWs && wfWs.readyState === WebSocket.OPEN) wfWs.send('ping');
+    }, 15000);
+
+  } catch(e) { console.warn('[WF-WS] Connection failed:', e); }
+}
+
+function handleWorkflowWSEvent(msg) {
+  var type = msg.type;
+  var data = msg.data || {};
+
+  if (type === 'node_status' && data.workflow_id === wfState.currentId) {
+    var node = wfState.nodes.find(function(n) { return n.id === data.node_id; });
+    if (node) {
+      node.status = data.status || 'pending';
+      if (data.result_summary) node.result = data.result_summary;
+      if (data.error) node.error = data.error;
+      if (data.duration_ms) node.duration_ms = data.duration_ms;
+      renderWorkflow();
+      if (wfState.selectedNodeId === data.node_id) renderNodeConfig(data.node_id);
+    }
+  }
+
+  if (type === 'loop_iteration' && data.workflow_id === wfState.currentId) {
+    $('#wfStatusLabel').textContent = '闭环迭代 ' + data.iteration + '/' + data.max_iterations;
+  }
+
+  if (type === 'execution_completed' && data.workflow_id === wfState.currentId) {
+    wfState.isExecuting = false;
+    $('#btnExecuteWF').textContent = '▶ 执行';
+    $('#btnExecuteWF').disabled = false;
+    $('#wfStatusLabel').textContent = '执行完成 · ' + (data.iterations || 1) + ' 轮迭代';
+    showToast('工作流执行完成', 'success');
+
+    if (data.node_results) {
+      Object.keys(data.node_results).forEach(function(nid) {
+        var nr = data.node_results[nid];
+        var node = wfState.nodes.find(function(n) { return n.id === nid; });
+        if (node) {
+          node.status = nr.status || 'completed';
+          node.result = nr.result_summary;
+          node.error = nr.error || '';
+          node.duration_ms = nr.duration_ms || 0;
+        }
+      });
+    }
+    renderWorkflow();
+  }
+
+  if (type === 'execution_error' && data.workflow_id === wfState.currentId) {
+    showToast('工作流执行出错: ' + (data.failed_nodes || []).join(', '), 'error');
   }
 }
 
-// 页面加载时自动加载工作流列表
-setTimeout(function(){ if ($('#panel-workflow').style.display !== 'none') loadWorkflows(); }, 3000);
+// 初始化
+setTimeout(function() {
+  initWorkflowEditor();
+  setupCanvasDrop();
+}, 1500);
 </script>
 <script src="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.js" onload="initAladin()" defer></script>
 </body>
