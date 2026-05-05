@@ -13,12 +13,11 @@ COPY requirements.txt /app/
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r /app/requirements.txt
 
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')" && \
-    python -c "import chromadb; chromadb.Client()" && \
-    python -c "import numpy; import scipy; import sklearn"
-
 COPY src /app/src
 COPY web /app/web
+COPY docker-entrypoint.sh /app/
+
+RUN chmod +x /app/docker-entrypoint.sh
 
 RUN mkdir -p /app/runtime/data/workflows \
     && mkdir -p /app/runtime/data/chroma_db \
@@ -38,4 +37,4 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
     CMD curl -f http://localhost:${PORT:-5000}/api/ping || exit 1
 
-CMD hypercorn src.server:app --bind 0.0.0.0:${PORT:-5000} --workers 1 --backlog 512 --keep-alive 5 --graceful-timeout 30
+CMD ["/app/docker-entrypoint.sh"]

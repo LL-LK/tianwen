@@ -17,6 +17,7 @@ hypercorn>=0.17.0
 
 # Sentence Embeddings - for memory persistence
 sentence-transformers==2.2.0
+huggingface-hub<1.0
 
 # Async File Operations
 aiofiles==23.2.1
