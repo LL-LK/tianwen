@@ -8,8 +8,8 @@
  * WebSocket: CF Worker → Durable Object → Railway WebSocket
  */
 
-const RAILWAY_URL = "https://tianwen-agi-production.up.railway.app";
-const RAILWAY_WS = "wss://tianwen-agi-production.up.railway.app";
+const RAILWAY_URL = env.RENDER_BACKEND || "https://tianwen-agi-backend.onrender.com";
+const RAILWAY_WS = env.RENDER_BACKEND ? env.RENDER_BACKEND.replace("https://", "wss://") : "wss://tianwen-agi-backend.onrender.com";
 const FRONTEND_ORIGIN = "https://tianwen-agi.pages.dev";
 
 const CORS_HEADERS = {

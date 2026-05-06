@@ -95,7 +95,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 interface Env {
   MINIMAX_API_KEY: string;
   MINIMAX_GROUP_ID: string;
-  RAILWAY_BACKEND: string;
+  RENDER_BACKEND: string;
   DB: D1Database;
   VECTORIZE: VectorizeIndex;
   AI: Ai;

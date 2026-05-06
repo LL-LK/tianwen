@@ -19,4 +19,4 @@ index_name = "tianwen-agi-rag"
 
 [vars]
 DEBUG = "false"
-RAILWAY_BACKEND = "https://tianwen-agi-production.up.railway.app"
+RENDER_BACKEND = "https://tianwen-agi-backend.onrender.com"

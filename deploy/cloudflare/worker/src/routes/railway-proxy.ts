@@ -1,10 +1,10 @@
 /**
- * railway-proxy.ts - 代理 astronomy 模块到 Railway
+ * render-proxy.ts - 代理 astronomy 模块到 Render
  */
 
 import type { Env } from '../types';
 
-const RAILWAY_HEADERS = [
+const RENDER_HEADERS = [
   'accept',
   'content-type',
   'content-length',
@@ -28,13 +28,13 @@ export async function handleRailwayProxy(
     'Access-Control-Max-Age': '86400',
   };
 
-  const backend = env.RAILWAY_BACKEND || 'https://tianwen-agi-production.up.railway.app';
+  const backend = env.RENDER_BACKEND || 'https://tianwen-agi-backend.onrender.com';
   const targetUrl = backend + pathname + search;
 
   // 构建转发的 headers
   const headers = new Headers();
   for (const [key, value] of request.headers.entries()) {
-    if (RAILWAY_HEADERS.includes(key.toLowerCase())) {
+    if (RENDER_HEADERS.includes(key.toLowerCase())) {
       headers.set(key, value);
     }
   }
@@ -70,7 +70,7 @@ export async function handleRailwayProxy(
       headers: respHeaders,
     });
   } catch (err) {
-    console.error('Railway proxy error:', err);
+    console.error('Render proxy error:', err);
     return jsonResponse({
       error: '后端服务不可达',
       detail: String(err),
