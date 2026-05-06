@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0a0e17">
 <link rel="manifest" href="/manifest.json">
 
-<link rel="preconnect" href="https://tianwen-agi-production.up.railway.app" crossorigin>
+<link rel="preconnect" href="https://tianwen-agi-worker.2214097561.workers.dev" crossorigin>
 <link rel="preconnect" href="https://cdn.plot.ly" crossorigin>
 <link rel="preconnect" href="https://aladin.u-strasbg.fr" crossorigin>
 <link rel="dns-prefetch" href="https://api.minimax.chat">
@@ -933,7 +933,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 var BACKEND_URL = 'https://tianwen-agi-worker.2214097561.workers.dev';
 var API_BASE = BACKEND_URL + '/api';
 var API_KEY = '';
-var WS_URL = 'wss://tianwen-agi-production.up.railway.app/ws/observatory';
+var WS_URL = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws/observatory';
 
 var ws = null;
 var wsConnected = false;
