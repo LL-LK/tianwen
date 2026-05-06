@@ -1,0 +1,22 @@
+name = "tianwen-agi-worker"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Cloudflare D1 数据库 - 会话存储
+[[d1_databases]]
+binding = "DB"
+database_name = "tianwen-agi-sessions"
+database_id = "63fc90ac-31cc-42dc-aeea-a181409df77e"
+
+# Cloudflare Vectorize - 向量搜索
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "tianwen-agi-rag"
+
+# 环境变量（通过 wrangler secret set）
+# MINIMAX_API_KEY
+# MINIMAX_GROUP_ID
+
+[vars]
+DEBUG = "false"
+RAILWAY_BACKEND = "https://tianwen-agi-production.up.railway.app"
