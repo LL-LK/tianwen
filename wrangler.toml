@@ -7,8 +7,8 @@ class_name = "TianwenBackend"
 image = "./Dockerfile"
 
 [[durable_objects.bindings]]
-name = "WEBSOCKET_RELAY"
-class_name = "WebSocketRelay"
+name = "WS_RELAY"
+class_name = "WSRelay"
 
 [vars]
 DEBUG = "false"
