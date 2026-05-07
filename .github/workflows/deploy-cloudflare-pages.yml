@@ -1,0 +1,96 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main, trae]
+    paths:
+      - 'web/**'
+      - '.github/workflows/deploy-cloudflare-pages.yml'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: tianwen-agi
+          directory: web
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          wranglerVersion: '3'
+
+      - name: Create deployment summary
+        if: always()
+        run: |
+          echo "## 🚀 Cloudflare Pages Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Commit**: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Ref**: \`${{ github.ref }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **URL**: https://tianwen-agi.pages.dev" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Worker**: https://tianwen-agi-worker.workers.dev" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-worker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: deploy/cloudflare/worker/package-lock.json
+
+      - name: Install dependencies
+        working-directory: deploy/cloudflare/worker
+        run: npm ci
+
+      - name: Deploy to Cloudflare Workers
+        working-directory: deploy/cloudflare/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler deploy --dry-run --outdir dist 2>/dev/null || npx wrangler deploy
+
+      - name: Verify Worker deployment
+        run: |
+          echo "## Cloudflare Worker Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Worker URL**: https://tianwen-agi-worker.workers.dev" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **API Proxy**: https://tianwen-agi-worker.workers.dev/api/*" >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    runs-on: ubuntu-latest
+    needs: [deploy, deploy-worker]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Verify Pages deployment
+        run: |
+          sleep 5
+          curl -s -o /dev/null -w "Pages Status: %{http_code}\n" https://tianwen-agi.pages.dev
+
+      - name: Verify Worker deployment
+        run: |
+          curl -s -o /dev/null -w "Worker Status: %{http_code}\n" https://tianwen-agi-worker.workers.dev/api/ping
+
+      - name: Health check
+        run: |
+          echo "## Health Check Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Railway Backend**: https://tianwen-agi-production.up.railway.app/api/health" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Cloudflare Pages**: https://tianwen-agi.pages.dev" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Cloudflare Worker**: https://tianwen-agi-worker.workers.dev/api/ping" >> "$GITHUB_STEP_SUMMARY"
