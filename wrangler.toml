@@ -2,11 +2,13 @@ name = "tianwen-agi-api"
 compatibility_date = "2025-01-01"
 main = "src/worker.js"
 
-# Cloudflare Container 配置
 [[containers]]
 class_name = "TianwenBackend"
 image = "./Dockerfile"
 
-# 环境变量（敏感信息通过 wrangler secret set）
+[[durable_objects.bindings]]
+name = "WS_RELAY"
+class_name = "WSRelay"
+
 [vars]
 DEBUG = "false"

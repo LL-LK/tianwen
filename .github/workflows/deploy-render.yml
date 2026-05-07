@@ -1,0 +1,56 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches: [render-deploy]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Render
+        id: deploy
+        run: |
+          RESPONSE=$(curl -s -X POST \
+            "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"branch": "render-deploy"}')
+          
+          DEPLOY_ID=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
+          echo "deploy_id=$DEPLOY_ID" >> $GITHUB_OUTPUT
+          echo "Deploy initiated: $DEPLOY_ID"
+
+      - name: Wait for deploy
+        if: steps.deploy.outputs.deploy_id != ''
+        run: |
+          echo "Waiting for Render deployment..."
+          sleep 60
+          
+      - name: Health check
+        run: |
+          RENDER_URL=${{ secrets.RENDER_BACKEND_URL }}
+          for i in {1..5}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$RENDER_URL/api/ping" 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Backend is ready!"
+              exit 0
+            fi
+            echo "Attempt $i: status=$STATUS, retrying..."
+            sleep 15
+          done
+          echo "Health check failed after retries"
+          exit 1
+
+      - name: Create deployment summary
+        if: always()
+        run: |
+          echo "## Render Deployment Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Branch**: \`render-deploy\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Backend**: ${{ secrets.RENDER_BACKEND_URL }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Worker**: Update RENDER_BACKEND env var to point here" >> "$GITHUB_STEP_SUMMARY"

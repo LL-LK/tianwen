@@ -1,0 +1,34 @@
+# Render Blueprint - Tianwen-AGI Backend
+# Deploy: render-cli deploy --plan starter
+# Or connect GitHub repo in Render dashboard
+
+services:
+  - type: web
+    name: tianwen-agi-backend
+    env: python
+    region: oregon  # closest to CF Workers
+    plan: starter  # $7/month, shared CPU, 512MB RAM, 1GB disk
+    buildCommand: pip install -r requirements.txt
+    startCommand: hypercorn src.server:app --bind 0.0.0.0:$PORT --workers 1 --keep-alive 5
+    healthCheckPath: /api/ping
+    envVars:
+      - key: DEBUG
+        value: false
+      - key: CORS_ORIGINS
+        value: https://tianwen-agi.pages.dev
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
+      # LLM Provider - set in Render dashboard
+      - key: MINIMAX_API_KEY
+        sync: false
+      - key: MINIMAX_GROUP_ID
+        sync: false
+      # Optional: ChromaDB persistence (Render persistent disk)
+      - key: CHROMA_DB_PATH
+        value: /data/chroma_db
+    disks:
+      - name: data
+        mountPath: /data
+        sizeGB: 1
