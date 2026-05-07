@@ -1,17 +1,28 @@
 """
 天问-AGI 统一配置管理模块
+
+提供类型安全的配置管理，支持：
+- 环境变量读取
+- 配置验证
+- 敏感信息脱敏
+- 运行时重载
 """
 
 import os
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from functools import lru_cache
+import logging
 
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
+
+
+ENV_PREFIX = "TIANWEN_"
 
 
 @dataclass
@@ -26,6 +37,19 @@ class LLMConfig:
     qwen_endpoint: str = "http://localhost:8000"
     ollama_endpoint: str = "http://localhost:11434"
     ollama_model: str = "llama2"
+    
+    def get_active_providers(self) -> List[str]:
+        """获取已配置的服务提供商"""
+        providers = []
+        if self.minimax_api_key:
+            providers.append("minimax")
+        if self.deepseek_api_key:
+            providers.append("deepseek")
+        if self.qwen_endpoint:
+            providers.append("qwen")
+        if self.ollama_endpoint:
+            providers.append("ollama")
+        return providers
 
 
 @dataclass
@@ -36,6 +60,13 @@ class SecurityConfig:
     debug: bool = False
     rate_limit_window: int = 60
     rate_limit_max_requests: int = 30
+    
+    def validate(self) -> List[str]:
+        """验证配置，返回错误列表"""
+        errors = []
+        if self.debug and not os.environ.get("DEBUG", ""):
+            logging.warning("Debug mode is enabled in production")
+        return errors
 
 
 @dataclass
@@ -44,6 +75,17 @@ class DatabaseConfig:
     redis_url: str = ""
     chromadb_path: str = "./runtime/data/chroma_db"
     session_ttl: int = 3600
+    
+    def validate(self) -> List[str]:
+        errors = []
+        if self.chromadb_path:
+            path = Path(self.chromadb_path)
+            if not path.exists():
+                try:
+                    path.mkdir(parents=True, exist_ok=True)
+                except Exception as e:
+                    errors.append(f"Cannot create chromadb directory: {e}")
+        return errors
 
 
 @dataclass
@@ -60,6 +102,14 @@ class WebSocketConfig:
     heartbeat_interval: int = 30
     heartbeat_timeout: int = 60
     max_reconnect_attempts: int = 10
+    
+    def validate(self) -> List[str]:
+        errors = []
+        if self.heartbeat_interval <= 0:
+            errors.append("heartbeat_interval must be positive")
+        if self.heartbeat_timeout <= self.heartbeat_interval:
+            errors.append("heartbeat_timeout should be greater than heartbeat_interval")
+        return errors
 
 
 @dataclass
@@ -68,6 +118,14 @@ class WorkflowConfig:
     state_dir: str = "./runtime/data/workflows"
     max_loops: int = 10
     default_timeout: int = 300
+    
+    def validate(self) -> List[str]:
+        errors = []
+        if self.max_loops <= 0:
+            errors.append("max_loops must be positive")
+        if self.default_timeout <= 0:
+            errors.append("default_timeout must be positive")
+        return errors
 
 
 @dataclass
@@ -80,36 +138,76 @@ class AppSettings:
     websocket: WebSocketConfig = field(default_factory=WebSocketConfig)
     workflow: WorkflowConfig = field(default_factory=WorkflowConfig)
     version: str = "2.4.0"
+    app_name: str = "tianwen-agi"
+    
+    def validate(self) -> Dict[str, List[str]]:
+        """验证所有配置项"""
+        all_errors = {}
+        
+        for name, config in [
+            ("security", self.security),
+            ("database", self.database),
+            ("websocket", self.websocket),
+            ("workflow", self.workflow),
+        ]:
+            if hasattr(config, "validate"):
+                errors = config.validate()
+                if errors:
+                    all_errors[name] = errors
+        
+        if not self.llm.get_active_providers():
+            all_errors["llm"] = ["No LLM provider is configured"]
+        
+        return all_errors
+    
+    def is_production(self) -> bool:
+        """判断是否为生产环境"""
+        return os.environ.get("ENV", "development") == "production"
 
 
 class ConfigLoader:
     """配置加载器"""
     
     @staticmethod
-    def _get_env(key: str, default: Any = None) -> Any:
-        return os.environ.get(key, default)
+    def _get_env(key: str, default: Any = None, prefix: str = ENV_PREFIX) -> Any:
+        """获取环境变量"""
+        full_key = f"{prefix}{key}"
+        return os.environ.get(full_key, os.environ.get(key, default))
     
     @staticmethod
-    def _get_env_bool(key: str, default: bool = False) -> bool:
-        value = os.environ.get(key, str(default)).lower()
-        return value in ("true", "1", "yes", "on")
+    def _get_env_bool(key: str, default: bool = False, prefix: str = ENV_PREFIX) -> bool:
+        """获取布尔类型环境变量"""
+        full_key = f"{prefix}{key}"
+        value = os.environ.get(full_key, os.environ.get(key, str(default))).lower()
+        return value in ("true", "1", "yes", "on", "enabled")
     
     @staticmethod
-    def _get_env_int(key: str, default: int = 0) -> int:
+    def _get_env_int(key: str, default: int = 0, prefix: str = ENV_PREFIX) -> int:
+        """获取整数类型环境变量"""
+        full_key = f"{prefix}{key}"
+        value = os.environ.get(full_key, os.environ.get(key, str(default)))
         try:
-            return int(os.environ.get(key, str(default)))
-        except ValueError:
+            return int(value)
+        except (ValueError, TypeError):
             return default
     
     @staticmethod
-    def _get_env_list(key: str, separator: str = ",", default: List[str] = None) -> List[str]:
-        value = os.environ.get(key, "")
+    def _get_env_list(
+        key: str, 
+        separator: str = ",", 
+        default: List[str] = None,
+        prefix: str = ENV_PREFIX
+    ) -> List[str]:
+        """获取列表类型环境变量"""
+        full_key = f"{prefix}{key}"
+        value = os.environ.get(full_key, os.environ.get(key, ""))
         if not value:
             return default or []
         return [item.strip() for item in value.split(separator) if item.strip()]
     
     @classmethod
-    def load(cls) -> AppSettings:
+    def load(cls, skip_validation: bool = False) -> AppSettings:
+        """加载所有配置"""
         settings = AppSettings()
         
         settings.llm.minimax_api_key = cls._get_env("MINIMAX_API_KEY", "")
@@ -144,17 +242,54 @@ class ConfigLoader:
         settings.workflow.max_loops = cls._get_env_int("WORKFLOW_MAX_LOOPS", 10)
         settings.workflow.default_timeout = cls._get_env_int("WORKFLOW_DEFAULT_TIMEOUT", 300)
         
+        settings.app_name = cls._get_env("APP_NAME", "tianwen-agi")
+        
+        if not skip_validation:
+            errors = settings.validate()
+            if errors:
+                error_msg = "; ".join(f"{k}: {v}" for k, v in errors.items())
+                raise ValueError(f"Configuration validation failed: {error_msg}")
+        
         return settings
 
 
-settings = ConfigLoader.load()
-
-
+@lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
-    return settings
+    """获取配置实例（带缓存）"""
+    return ConfigLoader.load()
+
+
+# 全局配置实例
+settings = get_settings()
 
 
 def reload_settings() -> AppSettings:
-    global settings
-    settings = ConfigLoader.load()
-    return settings
+    """重新加载配置（清除缓存）"""
+    get_settings.cache_clear()
+    return get_settings()
+
+
+def mask_sensitive_value(value: str, visible_chars: int = 4) -> str:
+    """脱敏敏感信息"""
+    if not value or len(value) <= visible_chars:
+        return "***"
+    return value[:visible_chars] + "***"
+
+
+def get_masked_settings() -> Dict[str, Any]:
+    """获取脱敏后的配置（用于日志）"""
+    settings = get_settings()
+    return {
+        "app_name": settings.app_name,
+        "version": settings.version,
+        "debug": settings.security.debug,
+        "llm_providers": settings.llm.get_active_providers(),
+        "database": {
+            "chromadb_path": settings.database.chromadb_path,
+            "session_ttl": settings.database.session_ttl,
+        },
+        "telescope": {
+            "simulator_enabled": settings.telescope.simulator_enabled,
+            "auto_track": settings.telescope.auto_track,
+        },
+    }

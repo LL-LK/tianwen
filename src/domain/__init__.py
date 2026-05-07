@@ -1,1 +1,1 @@
-from .task import Task, TaskStatus, TaskType, TaskResult, TaskStep, TaskContext
+from .task import Task, TaskStatus, TaskType, TaskPriority, TaskResult, TaskStep, TaskContext, TaskFactory
