@@ -318,7 +318,9 @@ class TelescopeSimulator:
         error_dec = random.uniform(-0.01, 0.01)
         
         # 视场角 (度)
-        fov = (self.SPECS["sensor"][0] * self.SPECS["pixel_size"] / 1000) / self.SPECS["focal_length"] * 57.3
+        res_parts = self.SPECS["resolution"].split("x")
+        sensor_width_pixels = float(res_parts[0])
+        fov = (sensor_width_pixels * self.SPECS["pixel_size"] / 1000) / self.SPECS["focal_length"] * 57.3
         
         result = {
             "ra": self.state.current_coords.ra + error_ra,
@@ -355,6 +357,7 @@ class TelescopeSimulator:
         self.state.current_coords = Coordinates(ra=ra, dec=dec)
         self.state.pointing_error = 0.0
         print(f"[{self.name}] 坐标同步完成")
+        return True
     
     # ============ 跟踪控制 ============
     
