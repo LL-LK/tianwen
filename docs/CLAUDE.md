@@ -1,110 +1,199 @@
-# 天问-AGI (Tianwen-AGI) 智能体
+# 天问-AGI (Tianwen-AGI)
 
 > 天文研究的认知大脑 + 具身智能的认知执行体
-> 版本: 2.1.0 | 状态: 活跃开发中
+> 版本: 3.7.0 | 状态: 活跃开发中
+> 路线: 三路并行，观测自动化优先
+
+---
 
 ## 智能体概述
 
 - **名称**: 天问-AGI (Tianwen-AGI)
-- **代号**: Hermes-AGI
-- **版本**: 2.1.0
+- **版本**: 3.7.0
 - **定位**: 天文研究领域的通用认知智能体
-- **核心范式**: 认知脑 + 执行肢（天问作为认知大脑，具身智能作为执行四肢）
-- **创建日期**: 2026/04/29
-- **技能库**: F:/skill/ (33个技能)
-- **调度中枢**: Product-Manager.md
-- **核心引擎**: Cognitive-Engine, Planning-Engine, Execution-Engine
+- **核心范式**: 认知脑（知识推理）+ 执行肢（望远镜控制）
+- **战略路线**: 三路并行 — AGI研究平台 / 观测自动化 / 天文知识引擎
 
 ---
 
-## 目录结构
+## 战略路线图（三路并行）
 
 ```
-F:/model_01/
-├── CLAUDE.md           # 本文件 - 智能体索引
-├── agent.md            # 智能体核心配置
-├── skills/             # 技能引用目录
-└── memory/             # 记忆存储
-    ├── user-preferences.md      # 用户偏好
-    ├── task-history.md          # 任务历史
-    ├── skill-feedback.md        # 技能反馈
-    ├── learned-patterns.md      # 学习模式
-    ├── knowledge-graph.md       # 知识图谱
-    └── evolution-log.md         # 进化日志
+路线A ──── AGI研究平台 ────────── 认知架构 + 多智能体协作（10%资源）
+路线B ──── 观测自动化 ★ ──────── 望远镜控制 + 调度优化（50%资源） ← 最高优先
+路线C ──── 天文知识引擎 ───────── 文献RAG + 假说生成 + 模式发现（40%资源）
+```
+
+详见: `docs/THREE_ROADMAP_20260509.md`
+
+---
+
+## 源码结构（src/）
+
+```
+src/
+├── agents/              # 多智能体协调层
+│   ├── browser.py       # 浏览器自动化
+│   ├── coordinator.py   # 智能体协调器
+│   ├── data_miner.py   # 数据采集智能体
+│   ├── discovery.py     # 发现追踪智能体
+│   ├── hypothesis_gen.py    # 假说生成
+│   ├── hypothesis_test.py   # 假说验证
+│   ├── literature.py    # 文献调研智能体
+│   ├── mcp.py           # MCP协议智能体
+│   ├── observation.py   # 观测任务智能体
+│   ├── self_review.py   # 自我审查
+│   ├── tri_agent.py     # 三引擎智能体（认知/规划/执行）
+│   └── workflow_engine.py  # 工作流引擎
+├── api/
+│   └── endpoints/       # REST API 端点
+├── astronomy/           # 天文算法核心
+│   ├── algorithms.py   # 天文算法库
+│   ├── analyzer.py     # 天文图像分析
+│   ├── catalog.py      # 星表管理
+│   ├── fits_processor.py  # FITS格式处理
+│   ├── pipeline.py     # 图像处理管道（三阶段：检测/关联/发现）
+│   ├── platesolver.py  # Plate Solving（坐标求解）
+│   ├── sextractor.py   # SExtractor图像处理
+│   ├── sky_chart.py    # 星图生成
+│   └── star_recognizer.py  # 恒星识别
+├── config/             # 配置管理
+├── core/               # 核心认知引擎
+│   ├── cognitive.py    # 认知引擎
+│   ├── dream.py        # 梦境/发散思维
+│   └── reasoning.py    # 推理引擎
+├── data/               # 数据采集与处理
+│   ├── analysis.py     # 数据分析
+│   ├── astro_pipeline.py  # 天文数据管道
+│   ├── classifier.py   # 数据分类器
+│   ├── collector.py    # 数据采集器
+│   ├── fits.py         # FITS数据处理
+│   ├── kepler.py       # Kepler/NASA TAP API
+│   ├── kepler_client.py
+│   ├── miner.py        # 数据挖掘
+│   ├── pipeline.py     # 数据处理管道
+│   ├── processor.py    # 数据处理器
+│   └── weather.py       # 天气数据
+├── domain/             # 领域模型
+├── engine/             # 引擎抽象层
+├── learning/           # 学习与优化
+│   ├── dream.py        # 梦境学习
+│   ├── overfit.py      # 过拟合检测
+│   ├── overfit_correction.py
+│   ├── rl_scheduler.py # 强化学习调度器
+│   ├── skill_integration.py
+│   └── skill_tester.py
+├── memory/             # 记忆系统
+│   ├── persistence.py  # 持久化存储
+│   ├── rag.py          # RAG 向量检索（ChromaDB）
+│   ├── scenario.py     # 场景记忆
+│   ├── session.py      # 会话记忆
+│   ├── vector.py       # 向量嵌入
+│   └── vector_store.py # 向量存储
+├── models/             # 预训练模型
+│   ├── resnet50_astro_classifier.pth
+│   └── yolo11s_astro_detection.pt
+├── observation/        # 观测自动化（核心差异化）
+│   ├── app.py          # 观测应用
+│   ├── auto.py         # 自动观测
+│   ├── data_processor.py
+│   ├── embodied.py     # 具身智能层
+│   ├── enhanced_scheduler.py  # 增强调度器
+│   ├── executor.py     # 观测执行器（模拟）
+│   ├── realtime.py     # 实时观测
+│   ├── rl_scheduler.py # RL调度器
+│   ├── scheduler.py    # 综合评分调度器
+│   ├── sky_chart.py    # 观测星图
+│   └── workflow.py     # 观测工作流
+├── research/           # 研究流程
+│   ├── discovery.py    # 发现追踪
+│   ├── hypothesis.py   # 假说管理
+│   ├── hypothesis_tester.py  # 假说验证
+│   ├── linker.py       # 知识链接
+│   ├── literature.py   # 文献调研
+│   └── loop.py         # 研究闭环
+├── service/            # 业务服务层
+├── telescope/          # 望远镜控制层
+│   ├── enhanced_scheduler.py
+│   ├── linker.py       # 望远镜抽象（ASCOM/INDI/Seestar）
+│   ├── mcp_client.py   # Seestar MCP客户端
+│   ├── mqtt_bridge.py  # MQTT望远镜桥接
+│   ├── scheduler.py    # 望远镜调度
+│   ├── seestar_client.py
+│   └── simulator.py    # 望远镜模拟器
+├── utils/              # 工具函数
+│   ├── config.py
+│   ├── logger.py
+│   ├── mcp.py
+│   ├── models.py
+│   ├── sandbox.py
+│   ├── self_review.py
+│   ├── skill_integration.py
+│   ├── skill_tester.py
+│   └── visualization.py
+└── web/                # Web界面
+    ├── bridge.py
+    ├── dashboard.py
+    ├── session.py
+    ├── 3d/
+    ├── _headers
+    ├── _redirects
+    ├── index.html
+    └── manifest.json
+
+runtime/                  # 望远镜抽象层
+├── observatory_linker.py  # 统一望远镜接口（ASCOM/INDI/Seestar）
+└── data/
+
+backend/                  # 后端服务（部署用）
+web/                      # 前端静态文件
+docs/                     # 文档
 ```
 
 ---
 
-## 核心能力
+## 核心能力矩阵
 
-### 三大核心引擎
-| 引擎 | 职责 | 输入 | 输出 |
-|-----|------|-----|-----|
-| 认知引擎 | 理解用户意图 | 自然语言 | 任务模型 |
-| 规划引擎 | 分解和规划任务 | 任务模型 | 执行计划 |
-| 执行引擎 | 调用技能执行 | 执行计划 | 整合输出 |
-
-### 自我进化系统
-- **自我进化**: Self-Evolution.md - 持续学习改进
-- **长期记忆**: Long-Term-Memory.md - 知识持久化
-
----
-
-## 技能库 (33个技能)
-
-| 类别 | 数量 | 技能 |
-|-----|------|------|
-| 核心引擎 | 3 | Cognitive-Engine, Planning-Engine, Execution-Engine |
-| 调度进化 | 3 | Product-Manager, Self-Evolution, Long-Term-Memory |
-| 开发技能 | 8 | UI-Visual, Frontend, React, NodeJS-Backend, Python-Backend, Database, API-Design, WeChat-MiniProgram |
-| 质量保障 | 6 | Code-Review, Refactoring, Testing, Security, Debugging, DSA |
-| 架构运维 | 5 | Architecture, DevOps, Linux-Operations, Cloud-Deployment, Git-Workflow |
-| AI相关 | 2 | Prompt-Engineering, AI-Agent |
-| 数据分析 | 1 | Data-Analysis |
-| 产品管理 | 2 | Product, Project-Management |
-| 职业发展 | 2 | Resume-Optimization, Interview-Preparation |
+| 模块 | 职责 | 成熟度 | 备注 |
+|------|------|--------|------|
+| 三引擎（认知/规划/执行） | 智能体核心 | ★★★★☆ | 框架完整，待串联 |
+| 望远镜控制（INDI/Seestar） | 路线B核心 | ★★★☆☆ | 模拟完成，真实连接待测 |
+| 观测调度器 | 路线B核心 | ★★★★☆ | 综合评分算法成熟 |
+| 文献RAG（ChromaDB） | 路线C核心 | ★★☆☆☆ | 框架有，落地待做 |
+| 假说生成/验证 | 路线C核心 | ★★★☆☆ | 有框架，质量待提升 |
+| Plate Solving | 观测后处理 | ★★★☆☆ | 有框架，集成待做 |
+| 图像分析管道 | 数据处理 | ★★★☆☆ | 三阶段检测，精度待标定 |
+| Kepler/TESS数据 | 数据源 | ★★★☆☆ | NASA TAP API集成 |
 
 ---
 
 ## 工作流程
 
 ```
-用户输入
-    │
-    ▼
-┌──────────────────────────────────────────────────┐
-│                 认知引擎                         │
-│  意图识别 → 实体提取 → 上下文理解 → 任务建模     │
-└──────────────────────────────────────────────────┘
-    │
-    ▼
-┌──────────────────────────────────────────────────┐
-│                 规划引擎                         │
-│  任务分解 → 依赖分析 → 执行排序 → 风险评估       │
-└──────────────────────────────────────────────────┘
-    │
-    ▼
-┌──────────────────────────────────────────────────┐
-│                 执行引擎                         │
-│  技能匹配 → 工具调用 → 结果验证 → 整合输出       │
-└──────────────────────────────────────────────────┘
-    │
-    ▼
-┌──────────────────────────────────────────────────┐
-│                 自我进化                         │
-│  结果评估 → 模式提取 → 知识更新 → 策略优化       │
-└──────────────────────────────────────────────────┘
+路线C: 知识引擎                    路线B: 观测自动化
+┌──────────────────────┐         ┌──────────────────────┐
+│ 文献调研 → 假说生成  │────────▶│ 观测计划制定        │
+│      ↑               │         │      ↓               │
+│  发现追踪 ← 模式发现 │◀────────│ 望远镜控制/执行    │
+└──────────────────────┘         │      ↓               │
+                                 │ 图像采集/Plate Solve│
+                                 │      ↓               │
+                                 │ 图像分析 → 发现报告 │
+                                 └──────────────────────┘
 ```
+
+路线A（三引擎协调）: 调度三大引擎，连接路线B/C
 
 ---
 
-## 自我优化机制
+## 关键文件索引
 
-1. **即时学习**: 每次任务后记录经验到 task-history.md
-2. **知识沉淀**: 有效模式更新到 learned-patterns.md
-3. **反馈追踪**: 技能使用反馈更新到 skill-feedback.md
-4. **持续进化**: 重大更新记录到 evolution-log.md
-5. **知识图谱**: 结构化知识存储在 knowledge-graph.md
+| 文档 | 位置 | 用途 |
+|------|------|------|
+| 三路路线图 | `docs/THREE_ROADMAP_20260509.md` | 战略总纲 |
+| src重构方案 | `docs/SRC_REFACTOR_PLAN.md` | 代码架构优化 |
+| 产品需求 | `docs/PRODUCT.md` | 产品全景 |
+| 归档文档 | `docs/archive/PRO/` | 历史研究文档（83个） |
 
 ---
 
@@ -112,25 +201,6 @@ F:/model_01/
 
 | 版本 | 日期 | 更新内容 |
 |-----|------|---------|
-| 1.0.0 | 2026/04/28 | 初始化智能体结构 |
-| 1.1.0 | 2026/04/28 | 扩展技能库至 26 个 |
-| 2.0.0 | 2026/04/29 | AGI架构升级，33个技能，3大核心引擎 |
-
----
-
-## 与 F:/skill/ 的关系
-
-```
-F:/model_01/ (智能体实例)
-├── CLAUDE.md (索引)
-├── agent.md (配置)
-├── memory/ (记忆存储 - 6个文件)
-└── skills/ (引用目录)
-
-F:/skill/ (技能库 - 33个技能)
-├── 核心引擎 (3): Cognitive-Engine, Planning-Engine, Execution-Engine
-├── 调度进化 (3): Product-Manager, Self-Evolution, Long-Term-Memory
-├── 开发技能 (8), 质量保障 (6), 架构运维 (5)
-├── AI相关 (2), 数据分析 (1), 产品管理 (2), 职业发展 (2)
-└── Hermes-AGI.md (统一接口)
-```
+| 3.7.0 | 2026-05-09 | 三路路线图，文档归档，src架构重构方案 |
+| 3.6.0 | 2026-05-01~08 | 多智能体协作深化，观测自动化框架 |
+| 3.0.0 | 2026-04-29 | AGI架构升级 |
