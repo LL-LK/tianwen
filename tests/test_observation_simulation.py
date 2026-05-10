@@ -166,6 +166,57 @@ async def test_scheduler(targets: list[ObservationTarget]) -> dict:
     return results
 
 
+async def test_scheduler_time_params(targets: list[ObservationTarget]) -> dict:
+    """测试观测调度器时间窗口参数化（start_time/end_time）"""
+    print("\n" + "="*60)
+    print("📡 测试1b: 观测调度器时间窗口参数化")
+    print("="*60)
+
+    location = Location(
+        name="兴隆观测站",
+        lat=40.3964,
+        lon=117.5075,
+        elevation=900,
+        timezone="Asia/Shanghai",
+        light_pollution=2
+    )
+    scheduler = ObservationScheduler(location)
+
+    # 固定测试时间：北京时间 2026-05-10 20:00（UTC 12:00）
+    # 此时 M31(RA=10.68°) 刚好在地平线下，RA过滤边界
+    # 调度器固定时间：2026-05-10 03:25 UTC（+8=CST 11:25）
+    # 此时 M31 高度 71.9°，M42 不可见（低于 30°）
+    fixed_date = datetime(2026, 5, 10, 3, 25, 0)
+
+    # 用 start_time/end_time 指定观测窗口
+    start = datetime(2026, 5, 10, 22, 0, 0)  # 北京22:00
+    end = datetime(2026, 5, 11, 2, 0, 0)       # 北京次日02:00
+
+    m31_target = next(t for t in targets if "M31" in t.name)
+    try:
+        window = await scheduler.calculate_best_window(
+            m31_target,
+            date=fixed_time,
+            start_time=start,
+            end_time=end
+        )
+        if window:
+            print(f"\n✅ {m31_target.name} 在指定窗口 {start.strftime('%H:%M')}-{end.strftime('%H:%M')} 内:")
+            print(f"   锚定时间: {fixed_time} (LST计算用)")
+            print(f"   观测窗口: {window.start_time.strftime('%H:%M')}-{window.end_time.strftime('%H:%M')}")
+            print(f"   高度角: {window.altitude:.1f}°  方位角: {window.azimuth:.1f}°")
+            print(f"   综合评分: {window.score:.1f}/100")
+            return {"parametric_window": True, "window": window}
+        else:
+            print(f"\n⚠️  {m31_target.name} 在指定窗口仍无可用窗口")
+            return {"parametric_window": False, "window": None}
+    except Exception as e:
+        print(f"\n⚠️  时间参数化测试异常: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"parametric_window": False, "error": str(e)}
+
+
 def _get_target_attr(target, attr):
     """获取目标属性，支持 dict 或 object"""
     if isinstance(target, dict):
@@ -339,8 +390,11 @@ async def main():
         priority = _get_target_attr(t, "priority")
         print(f"  • {name} - 优先级 {priority}")
 
-    # 测试1: 调度器
+    # 测试1: 调度器（基础）
     windows = await test_scheduler(targets)
+
+    # 测试1b: 调度器（时间窗口参数化）
+    time_params_result = await test_scheduler_time_params(targets)
 
     # 测试2: 执行器（始终运行，无窗口则用模拟数据）
     if any(w is not None for w in windows.values()):
@@ -384,6 +438,8 @@ async def main():
 
     scheduled = sum(1 for w in windows.values() if w is not None)
     print(f"  调度器: {scheduled}/{len(targets)} 目标已规划窗口")
+    tp_ok = time_params_result.get("parametric_window", False)
+    print(f"  调度器(时间参数化): {'✅ 可用' if tp_ok else '⚠️  跳过/失败'}")
 
     if exec_result:
         print(f"  执行器: {exec_result['successful']}/{exec_result['total_instructions']} 指令成功")

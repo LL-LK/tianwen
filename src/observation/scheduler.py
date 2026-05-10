@@ -256,7 +256,8 @@ class AstroPlanner:
         self,
         obj: Dict,
         interval_time: int,
-        d_moon: float = 15
+        d_moon: float = 15,
+        date: datetime = None
     ) -> bool:
         """
         判断目标在指定时间窗口内是否可观测
@@ -279,20 +280,16 @@ class AstroPlanner:
         # 纬度决定最低高度角：35.678度（兴隆站纬度）用40度，其他用30度
         alt_constraint_deg = 40 if abs(self.location.lat - 35.678) < 0.1 else 30
 
-        target = FixedTarget(
-            name=obj["name"],
-            coord=SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame='icrs')
-        )
-
-        # 构build约束
+        # 构建约束
         constraints = [
             AltitudeConstraint(min=alt_constraint_deg * u.deg),
             MoonSeparationConstraint(min=d_moon * u.deg),
             AtNightConstraint.twilight_astronomical(),
         ]
 
-        # 时间窗口
-        start = Time(datetime.utcnow())
+        # 时间窗口（使用传入的date而非当前时间，保证调度时间一致性）
+        _now = date or datetime.utcnow()
+        start = Time(_now)
         end = start + timedelta(minutes=interval_time)
 
         try:
@@ -303,7 +300,9 @@ class AstroPlanner:
                 name=obj["name"],
                 coord=SkyCoord(ra=obj["ra"] * u.deg, dec=obj["dec"] * u.deg, frame="icrs")
             )
-            table = observability_table(constraints, self.observer, [target_obj], times=[start, end])
+            # astroplan 0.10.x times 参数必须是单个 Time 对象，不能是 list
+            # 它会自动在 start 的基础上用 interval_time 决定窗口长度
+            table = observability_table(constraints, self.observer, [target_obj], times=start)
             observable = bool(table["ever observable"][0])
             logger.debug(f"{obj['name']}: observable={observable}, alt_constraint={alt_constraint_deg}deg")
             return observable
@@ -645,26 +644,40 @@ class ObservationScheduler:
     async def calculate_best_window(
         self,
         target: ObservationTarget,
-        date: datetime = None
+        date: datetime = None,
+        start_time: datetime = None,
+        end_time: datetime = None
     ) -> Optional[ObservationWindow]:
-        """计算目标最佳观测窗口"""
+        """计算目标最佳观测窗口
+
+        参数:
+            target: 观测目标
+            date: 锚定时间（用于LST计算），默认当前时间
+            start_time: 观测窗口开始时间，默认 date 或当前时间
+            end_time: 观测窗口结束时间，默认 start_time + 1小时
+        """
         if date is None:
             date = datetime.utcnow()
+        anchor = start_time or date
+        window_end = end_time or (anchor + timedelta(hours=1))
 
         if not HAS_ASTROPLAN or self.astro is None:
-            return self._basic_window(target, date)
+            return self._basic_window(target, anchor)
 
         try:
             # 1. 获取可观测时段
             tw_morning, tw_evening = self.astro.calculate_observable_period()
 
-            # 2. 计算当前RA范围
-            utc_str = date.strftime("%Y-%m-%d %H:%M:%S")
+            # 2. 计算锚定时间的RA范围（用于调试日志，不做硬过滤）
+            utc_str = anchor.strftime("%Y-%m-%d %H:%M:%S")
             ra_min, ra_max = self.astro.calculate_lst_and_corresponding_ra_range(utc_str)
+            logger.debug(f"RA范围=[{ra_min:.2f}, {ra_max:.2f}]deg 用于 {target.name}(RA={target.ra:.2f}deg)")
 
-            # 3. 检查目标是否可观测
+            # 3. 检查目标是否在观测窗口内可观测（传入anchor保证时间一致性）
             obj_dict = {"name": target.name, "ra": target.ra, "dec": target.dec}
-            if not self.astro.is_target_observable_in_interval(obj_dict, 60):
+            interval_minutes = max(30, int((window_end - anchor).total_seconds() / 60))
+            if not self.astro.is_target_observable_in_interval(obj_dict, interval_minutes, date=anchor):
+                logger.debug(f"{target.name}: 在 {anchor} 不可观测（alt<40或月光或非夜间）")
                 return None
 
             # 4. 计算高度角和方位角
@@ -674,7 +687,7 @@ class ObservationScheduler:
             az = float(altaz.az.deg)
 
             # 5. 月亮信息
-            moon = self.astro.get_moon_info(date)
+            moon = self.astro.get_moon_info(anchor)
             moon_dist = float(
                 SkyCoord(ra=target.ra * u.deg, dec=target.dec * u.deg)
                 .separation(SkyCoord(ra=moon.get("ra", 0) * u.deg,
@@ -692,10 +705,11 @@ class ObservationScheduler:
                 reasons.append("月光干扰小")
             if score > 80:
                 reasons.append("综合评分优秀")
+            reasons.append(f"RA范围[{ra_min:.1f},{ra_max:.1f}]deg内")
 
             return ObservationWindow(
-                start_time=date,
-                end_time=date + timedelta(hours=1),
+                start_time=anchor,
+                end_time=window_end,
                 target=target.name,
                 altitude=alt,
                 azimuth=az,
@@ -709,7 +723,7 @@ class ObservationScheduler:
 
         except Exception as e:
             logger.error(f"窗口计算失败: {e}")
-            return self._basic_window(target, date)
+            return self._basic_window(target, anchor)
 
     def _basic_window(self, target: ObservationTarget, date: datetime) -> ObservationWindow:
         """基础窗口计算（无astroplan）"""
