@@ -296,8 +296,14 @@ class AstroPlanner:
         end = start + timedelta(minutes=interval_time)
 
         try:
-            from astroplan import observability_table
-            table = observability_table(constraints, target, self.observer, times=[start, end])
+            from astroplan import observability_table, FixedTarget
+            from astropy.coordinates import SkyCoord
+            # Convert dict to FixedTarget and wrap in list
+            target_obj = FixedTarget(
+                name=obj["name"],
+                coord=SkyCoord(ra=obj["ra"] * u.deg, dec=obj["dec"] * u.deg, frame="icrs")
+            )
+            table = observability_table(constraints, self.observer, [target_obj], times=[start, end])
             observable = bool(table["ever observable"][0])
             logger.debug(f"{obj['name']}: observable={observable}, alt_constraint={alt_constraint_deg}deg")
             return observable
@@ -731,8 +737,9 @@ class ObservationScheduler:
 
     @staticmethod
     def _compute_lst(dt: datetime) -> float:
-        jd = (datetime(dt.year, dt.month, dt.day + dt.hour / 24 + dt.minute / 1440,
-                       0, 0) - datetime(2000, 1, 1, 12, 0, 0)).total_days() / 36525.0
+        jd = (datetime(dt.year, dt.month, dt.day,
+                       dt.hour, dt.minute, dt.second) -
+              datetime(2000, 1, 1, 12, 0, 0)).days / 36525.0
         lst = 280.46061837 + 360.98564736629 * (
             (dt - datetime(2000, 1, 1, 12, 0, 0)).days + (dt.hour - 12) / 24 + dt.minute / 1440
         ) + jd * jd * (0.000387933 - jd / 38710000.0)
