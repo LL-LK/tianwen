@@ -372,7 +372,7 @@ class QwenAdapter(BaseAdapter):
             json_match = re.search(r'\{.*\}', result.content, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group())
-        except:
+        except Exception:
             pass
 
         return {
@@ -508,7 +508,7 @@ class OllamaAdapter(BaseAdapter):
             json_match = re.search(r'\{.*\}', result.content, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group())
-        except:
+        except Exception:
             pass
 
         return {
@@ -730,7 +730,7 @@ class DeepSeekAdapter(BaseAdapter):
                     key_contributions=data.get("key_contributions", []),
                     methodology_quality=data.get("methodology_quality", "")
                 )
-        except:
+        except Exception:
             pass
 
         return PaperAnalysis(
@@ -1077,7 +1077,7 @@ Gap {i}:
             if json_match:
                 data = json.loads(json_match.group())
                 return data.get("hypotheses", [])
-        except:
+        except Exception:
             pass
 
         return []
@@ -1122,7 +1122,7 @@ async def quick_think(prompt: str, model: str = "auto") -> str:
             qwen_config=ModelConfig.qwen_local(),
             deepseek_config=None  # 需要用户自己配置API Key
         )
-    except:
+    except Exception:
         pass
 
     if model == "qwen":
@@ -1153,7 +1153,7 @@ async def analyze_research_state(state: Any) -> Dict:
             qwen_config=ModelConfig.qwen_local(),
             deepseek_config=ModelConfig.deepseek_api("")  # 需要API Key
         )
-    except:
+    except Exception:
         pass
 
     # 生成假说

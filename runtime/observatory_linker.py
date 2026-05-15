@@ -639,7 +639,7 @@ query coo {ra} {dec} -unit ra deg -unit dec deg -radius {radius}s
                 return sign * (degrees + arcminutes / 60.0)
             else:
                 return float(sex_str)
-        except:
+        except Exception:
             return 0.0
 
     async def close(self):

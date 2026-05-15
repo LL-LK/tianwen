@@ -117,7 +117,7 @@ class TelescopeSimulator:
         "focal_length": 250,      # mm
         "f_ratio": 5.0,
         "sensor": "IMX462",       # 索尼星光摄
-        "resolution": 1920x1080,  # pixels
+        "resolution": (1920, 1080),  # pixels (width, height)
         "pixel_size": 2.9,        # microns
         "mount_type": "alt-az",   # 目地式支架
         "weight": 2.5,            # kg

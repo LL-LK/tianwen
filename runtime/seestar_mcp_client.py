@@ -224,7 +224,7 @@ class ASCOMInterface(BaseHardwareInterface):
         if self.driver:
             try:
                 self.driver.Connected = False
-            except:
+            except Exception:
                 pass
         self.is_connected = False
 

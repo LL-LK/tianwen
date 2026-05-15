@@ -1683,7 +1683,7 @@ class LiteratureResearcher:
                 year = paper.published_date[:4]
                 if year.isdigit():
                     timeline[year] = timeline.get(year, 0) + 1
-            except:
+            except Exception:
                 continue
 
         return dict(sorted(timeline.items()))

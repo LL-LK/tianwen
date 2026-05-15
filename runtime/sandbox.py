@@ -259,7 +259,7 @@ else:
                         try:
                             process.kill()
                             await process.wait()
-                        except:
+                        except Exception:
                             pass
                         return ExecutionResult(
                             success=False,
@@ -292,12 +292,12 @@ else:
                 finally:
                     try:
                         os.unlink(code_file_path)
-                    except:
+                    except Exception:
                         pass
             finally:
                 try:
                     os.unlink(input_file_path)
-                except:
+                except Exception:
                     pass
 
         except SecurityError as e:
@@ -381,7 +381,7 @@ if (typeof result !== 'undefined') {{
                     if result.returncode == 0:
                         node_path = path
                         break
-                except:
+                except Exception:
                     continue
 
             if not node_path:
@@ -426,7 +426,7 @@ if (typeof result !== 'undefined') {{
                         try:
                             process.kill()
                             await process.wait()
-                        except:
+                        except Exception:
                             pass
                         return ExecutionResult(
                             success=False,
@@ -451,12 +451,12 @@ if (typeof result !== 'undefined') {{
                 finally:
                     try:
                         os.unlink(code_file_path)
-                    except:
+                    except Exception:
                         pass
             finally:
                 try:
                     os.unlink(input_file_path)
-                except:
+                except Exception:
                     pass
 
         except SecurityError as e:
