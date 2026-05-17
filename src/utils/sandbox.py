@@ -618,7 +618,6 @@ class TestSandbox(unittest.IsolatedAsyncioTestCase):
     async def test_security_block_eval(self):
         """测试 eval 阻断"""
         sandbox = CodeSandbox(timeout=10)
-        code = "result = eval('2 + 2')"
         result = await sandbox.execute_python(code)
         self.assertFalse(result.success)
         self.assertIn("安全检查失败", result.error or "")

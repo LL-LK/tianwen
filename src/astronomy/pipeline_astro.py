@@ -254,9 +254,6 @@ class StageIIClassifier:
         # import torchvision.models as models
         #
         # self.model = models.resnet50(pretrained=False, num_classes=self.num_classes)
-        # self.model.load_state_dict(torch.load(self.weights_path, map_location=self.device))
-        # self.model.to(self.device)
-        # self.model.eval()
 
     async def classify_sources(
         self,
