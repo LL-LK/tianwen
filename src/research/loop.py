@@ -909,7 +909,7 @@ async def demo():
     # 输出总结
     logger.debug("="*60)
     logger.info("闭环验证结果")
-    print("="*60)
+    logger.info("="*60)
     logger.info(f"主题: {result.topic}")
     logger.info(f"成功: {result.success}")
     logger.info(f"生成假说: {len(result.hypotheses)}")
