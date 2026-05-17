@@ -2,6 +2,8 @@
 Hermes-AGI Skill Integration System
 技能集成系统 - 实现技能间调用协议和数据传递
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import re
 import os
@@ -361,7 +363,7 @@ def create_chain_executor(skill_dir: str = "./skills") -> SkillChainExecutor:
 async def demo():
     """演示技能链执行"""
     print("=" * 50)
-    print("Hermes-AGI Skill Chain Demo")
+    logger.info("Hermes-AGI Skill Chain Demo")
     print("=" * 50)
 
     chain = create_chain_executor()
@@ -370,7 +372,7 @@ async def demo():
     skills = ["Backend"]
 
     # 执行链
-    print(f"\n执行技能链: {' -> '.join(skills)}\n")
+    logger.info(f"\n执行技能链: {' -> '.join(skills)}\n")
 
     results = await chain.execute_chain(
         skills,
@@ -380,21 +382,21 @@ async def demo():
 
     # 输出结果
     for result in results:
-        print(f"\n{result.skill_name}:")
-        print(f"  Status: {result.status.value}")
+        logger.info(f"\n{result.skill_name}:")
+        logger.info(f"  Status: {result.status.value}")
         if result.output_data:
             for k, v in result.output_data.items():
-                print(f"  {k}: {v}")
+                logger.info(f"  {k}: {v}")
         if result.error:
-            print(f"  Error: {result.error}")
+            logger.error(f"  Error: {result.error}")
 
     # 显示数据流
-    print("\n\n数据流:")
+    logger.info("\n\n数据流:")
     flow = chain.get_data_flow(skills)
     for step in flow:
-        print(f"  {step['skill']}:")
-        print(f"    Inputs: {[i['name'] for i in step['inputs']]}")
-        print(f"    Outputs: {[o['name'] for o in step['outputs']]}")
+        logger.info(f"  {step['skill']}:")
+        logger.info(f"    Inputs: {[i['name'] for i in step['inputs']]}")
+        logger.info(f"    Outputs: {[o['name'] for o in step['outputs']]}")
 
 if __name__ == "__main__":
     import asyncio

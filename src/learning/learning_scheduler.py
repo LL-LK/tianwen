@@ -19,6 +19,8 @@
 """
 
 from __future__ import annotations
+import logging
+logger = logging.getLogger(__name__)
 import math
 import random
 from dataclasses import dataclass, field
@@ -1514,9 +1516,9 @@ RLSchedulerState = SchedulerState
 
 def run_demo():
     """运行演示测试"""
-    print("=" * 70)
-    print("强化学习观测调度器 (RL-based Observation Scheduler)")
-    print("=" * 70)
+    logger.debug("=" * 70)
+    logger.info("强化学习观测调度器 (RL-based Observation Scheduler)")
+    logger.debug("=" * 70)
 
     # 创建观测位置（冷湖观测站）
     location = GeographicLocation(
@@ -1525,33 +1527,33 @@ def run_demo():
         longitude=93.0,
         elevation=3200
     )
-    print(f"\n观测位置: {location.name}")
-    print(f"  纬度: {location.latitude}°")
-    print(f"  经度: {location.longitude}°")
-    print(f"  海拔: {location.elevation}m")
+    logger.info(f"\n观测位置: {location.name}")
+    logger.info(f"  纬度: {location.latitude}°")
+    logger.info(f"  经度: {location.longitude}°")
+    logger.info(f"  海拔: {location.elevation}m")
 
     # 创建强化学习调度器
-    print("\n" + "-" * 70)
-    print("1. 初始化强化学习调度器")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("1. 初始化强化学习调度器")
+    logger.debug("-" * 70)
 
     # 测试DQN调度器
     dqn_scheduler = DQNScheduler(state_dim=16, action_dim=4)
-    print(f"  DQN调度器初始化完成")
-    print(f"    状态维度: {dqn_scheduler.state_dim}")
-    print(f"    动作维度: {dqn_scheduler.action_dim}")
-    print(f"    初始探索率: {dqn_scheduler.epsilon}")
+    logger.info(f"  DQN调度器初始化完成")
+    logger.info(f"    状态维度: {dqn_scheduler.state_dim}")
+    logger.info(f"    动作维度: {dqn_scheduler.action_dim}")
+    logger.info(f"    初始探索率: {dqn_scheduler.epsilon}")
 
     # 测试PPO调度器
     ppo_scheduler = PPOScheduler()
-    print(f"\n  PPO调度器初始化完成")
-    print(f"    Clip epsilon: {ppo_scheduler.clip_epsilon}")
-    print(f"    Gamma: {ppo_scheduler.gamma}")
+    logger.info(f"\n  PPO调度器初始化完成")
+    logger.info(f"    Clip epsilon: {ppo_scheduler.clip_epsilon}")
+    logger.info(f"    Gamma: {ppo_scheduler.gamma}")
 
     # 2. 测试状态空间
-    print("\n" + "-" * 70)
-    print("2. 状态空间测试")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("2. 状态空间测试")
+    logger.debug("-" * 70)
 
     state = SchedulerState(
         telescope_ra=180.0,
@@ -1571,42 +1573,42 @@ def run_demo():
         scheduled_fraction=0.75
     )
 
-    print(f"  状态信息:")
-    print(f"    望远镜位置: RA={state.telescope_ra}°, DEC={state.telescope_dec}°")
-    print(f"    可见目标数: {len(state.visible_targets)}")
-    print(f"    已调度目标数: {len(state.scheduled_targets)}")
-    print(f"    碎片数量: {state.gap_count}")
-    print(f"    已调度比例: {state.scheduled_fraction:.2%}")
-    print(f"  状态向量维度: {state.get_state_dim()}")
-    print(f"  状态向量: {[f'{v:.3f}' for v in state.to_vector()[:8]]}...")
+    logger.info(f"  状态信息:")
+    logger.info(f"    望远镜位置: RA={state.telescope_ra}°, DEC={state.telescope_dec}°")
+    logger.info(f"    可见目标数: {len(state.visible_targets)}")
+    logger.info(f"    已调度目标数: {len(state.scheduled_targets)}")
+    logger.info(f"    碎片数量: {state.gap_count}")
+    logger.info(f"    已调度比例: {state.scheduled_fraction:.2%}")
+    logger.info(f"  状态向量维度: {state.get_state_dim()}")
+    logger.info(f"  状态向量: {[f'{v:.3f}' for v in state.to_vector()[:8]]}...")
 
     # 3. 测试奖励函数
-    print("\n" + "-" * 70)
-    print("3. 奖励函数测试")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("3. 奖励函数测试")
+    logger.debug("-" * 70)
 
     # 测试选择目标奖励
     action1 = SchedulerAction.SELECT_TARGET_NEXT
     reward1 = compute_reward(action1, state, state.visible_targets[0])
-    print(f"  选择最高优先级目标: reward = {reward1:.2f}")
+    logger.info(f"  选择最高优先级目标: reward = {reward1:.2f}")
 
     # 测试等待奖励
     action2 = SchedulerAction.WAIT_FOR_BETTER
     reward2 = compute_reward(action2, state, state.visible_targets[0])
-    print(f"  等待更好的时机: reward = {reward2:.2f}")
+    logger.info(f"  等待更好的时机: reward = {reward2:.2f}")
 
     # 测试完成奖励
     action3 = SchedulerAction.FINISH_SCHEDULING
     reward3 = compute_reward(action3, state)
-    print(f"  完成调度: reward = {reward3:.2f}")
+    logger.info(f"  完成调度: reward = {reward3:.2f}")
 
     # 4. 测试DQN学习
-    print("\n" + "-" * 70)
-    print("4. DQN学习测试")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("4. DQN学习测试")
+    logger.debug("-" * 70)
 
     # 模拟一些经验
-    print("  模拟经验回放...")
+    logger.info("  模拟经验回放...")
     for i in range(10):
         next_state = SchedulerState(
             telescope_ra=random.uniform(0, 360),
@@ -1627,21 +1629,21 @@ def run_demo():
             done
         )
 
-    print(f"  记忆容量: {len(dqn_scheduler.memory)}")
+    logger.info(f"  记忆容量: {len(dqn_scheduler.memory)}")
 
     # 训练步骤
     td_error = dqn_scheduler.train_step()
-    print(f"  训练TD误差: {td_error:.4f}")
-    print(f"  探索率: {dqn_scheduler.epsilon:.4f}")
+    logger.error(f"  训练TD误差: {td_error:.4f}")
+    logger.info(f"  探索率: {dqn_scheduler.epsilon:.4f}")
 
     # 选择动作测试
     chosen_action = dqn_scheduler.choose_action(state)
-    print(f"  选择的动作: {chosen_action.value}")
+    logger.info(f"  选择的动作: {chosen_action.value}")
 
     # 5. 测试碎片化分析
-    print("\n" + "-" * 70)
-    print("5. 碎片化分析测试")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("5. 碎片化分析测试")
+    logger.debug("-" * 70)
 
     operable_periods = [
         (datetime(2026, 5, 1, 20, 0), datetime(2026, 5, 2, 6, 0))
@@ -1655,17 +1657,17 @@ def run_demo():
 
     fragmentation = compute_fragmentation_metrics(operable_periods, scheduled_blocks)
 
-    print(f"  空闲可操作时间: {fragmentation.idle_operable_hours:.2f} 小时")
-    print(f"  间隙数量: {fragmentation.gap_count}")
-    print(f"  间隙平均时长: {fragmentation.gap_mean_minutes:.1f} 分钟")
-    print(f"  间隙中位数时长: {fragmentation.gap_median_minutes:.1f} 分钟")
-    print(f"  间隙90分位时长: {fragmentation.gap_p90_minutes:.1f} 分钟")
-    print(f"  已调度比例: {fragmentation.scheduled_fraction:.2%}")
+    logger.info(f"  空闲可操作时间: {fragmentation.idle_operable_hours:.2f} 小时")
+    logger.info(f"  间隙数量: {fragmentation.gap_count}")
+    logger.info(f"  间隙平均时长: {fragmentation.gap_mean_minutes:.1f} 分钟")
+    logger.info(f"  间隙中位数时长: {fragmentation.gap_median_minutes:.1f} 分钟")
+    logger.info(f"  间隙90分位时长: {fragmentation.gap_p90_minutes:.1f} 分钟")
+    logger.info(f"  已调度比例: {fragmentation.scheduled_fraction:.2%}")
 
     # 6. 测试多目标优化
-    print("\n" + "-" * 70)
-    print("6. 多目标优化测试")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("6. 多目标优化测试")
+    logger.debug("-" * 70)
 
     optimizer = MultiObjectiveOptimizer()
 
@@ -1681,19 +1683,19 @@ def run_demo():
     # Pareto优化
     pareto_solutions = optimizer.pareto_optimize(targets, constraints)
 
-    print(f"  Pareto最优解数量: {len(pareto_solutions)}")
+    logger.info(f"  Pareto最优解数量: {len(pareto_solutions)}")
     for solution in pareto_solutions:
         scores = optimizer._evaluate_candidate(solution)
-        print(f"    策略: {solution['name']}")
-        print(f"      效率: {scores['efficiency']:.2f}")
-        print(f"      科学价值: {scores['scientific_value']:.2f}")
-        print(f"      平滑性: {scores['smoothness']:.2f}")
-        print(f"      总分: {scores['total']:.2f}")
+        logger.info(f"    策略: {solution['name']}")
+        logger.info(f"      效率: {scores['efficiency']:.2f}")
+        logger.info(f"      科学价值: {scores['scientific_value']:.2f}")
+        logger.info(f"      平滑性: {scores['smoothness']:.2f}")
+        logger.info(f"      总分: {scores['total']:.2f}")
 
     # 7. 测试强化学习增强调度器
-    print("\n" + "-" * 70)
-    print("7. 强化学习增强调度器测试")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("7. 强化学习增强调度器测试")
+    logger.debug("-" * 70)
 
     rl_scheduler = RLEnhancedScheduler(location, algorithm="DQN")
 
@@ -1741,43 +1743,43 @@ def run_demo():
         max_iterations=20
     )
 
-    print(f"  调度结果:")
-    print(f"    调度目标数: {schedule_result['n_targets_scheduled']}")
-    print(f"    总奖励: {schedule_result['total_reward']:.2f}")
-    print(f"    碎片化指标:")
+    logger.info(f"  调度结果:")
+    logger.info(f"    调度目标数: {schedule_result['n_targets_scheduled']}")
+    logger.info(f"    总奖励: {schedule_result['total_reward']:.2f}")
+    logger.info(f"    碎片化指标:")
     for key, value in schedule_result['fragmentation'].items():
-        print(f"      {key}: {value}")
+        logger.info(f"      {key}: {value}")
 
-    print(f"\n  调度详情:")
+    logger.info(f"\n  调度详情:")
     for item in schedule_result['schedule'][:3]:
         target = item['target']
-        print(f"    - {target['name']}: RA={target['ra']:.2f}, DEC={target['dec']:.2f}")
-        print(f"      优先级: {target['priority']:.2f}, 奖励: {item['reward']:.2f}")
+        logger.info(f"    - {target['name']}: RA={target['ra']:.2f}, DEC={target['dec']:.2f}")
+        logger.info(f"      优先级: {target['priority']:.2f}, 奖励: {item['reward']:.2f}")
 
     # 8. 与增强调度器集成测试
-    print("\n" + "-" * 70)
-    print("8. 与增强调度器集成测试")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("8. 与增强调度器集成测试")
+    logger.debug("-" * 70)
 
     if HAS_ENHANCED_SCHEDULER:
-        print("  使用增强调度器计算夜天文时间...")
+        logger.info("  使用增强调度器计算夜天文时间...")
 
         enhanced_scheduler = EnhancedObservationScheduler(location)
         astronomical_windows = enhanced_scheduler.compute_astronomical_nights(period)
 
-        print(f"  夜天文窗口数: {len(astronomical_windows)}")
+        logger.info(f"  夜天文窗口数: {len(astronomical_windows)}")
         if astronomical_windows:
             window = astronomical_windows[0]
-            print(f"  第一个窗口: {window.start} - {window.end}")
-            print(f"    持续时间: {(window.end - window.start).total_seconds() / 3600:.2f} 小时")
+            logger.info(f"  第一个窗口: {window.start} - {window.end}")
+            logger.info(f"    持续时间: {(window.end - window.start).total_seconds() / 3600:.2f} 小时")
 
-        print("  增强调度器集成成功")
+        logger.info("  增强调度器集成成功")
     else:
-        print("  增强调度器不可用，跳过集成测试")
+        logger.info("  增强调度器不可用，跳过集成测试")
 
-    print("\n" + "=" * 70)
-    print("演示完成")
-    print("=" * 70)
+    logger.debug("\n=" * 70)
+    logger.info("演示完成")
+    logger.debug("=" * 70)
 
     return {
         "dqn_scheduler": dqn_scheduler,

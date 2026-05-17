@@ -3,6 +3,8 @@ Hermes-AGI Agent Runtime v2.0
 运行时主入口 - 整合认知、规划、执行引擎
 优化: 添加重试机制、错误分类、健康监控、真实after_task进化
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import re
 import json
@@ -515,39 +517,39 @@ async def main():
     if len(sys.argv) > 1:
         # 命令行模式
         user_input = " ".join(sys.argv[1:])
-        print(f"\n[Hermes-AGI v2.0] 收到任务: {user_input}\n")
+        logger.info(f"\n[Hermes-AGI v2.0] 收到任务: {user_input}\n")
 
         result = await agent.process(user_input)
 
         print(result.output)
-        print(f"\n[Hermes-AGI] 执行完成")
-        print(f"  耗时: {result.metrics.get('duration', 0):.2f}秒")
-        print(f"  健康分数: {agent.get_health_score():.2f}")
+        logger.info(f"\n[Hermes-AGI] 执行完成")
+        logger.info(f"  耗时: {result.metrics.get('duration', 0):.2f}秒")
+        logger.info(f"  健康分数: {agent.get_health_score():.2f}")
 
         # 显示进化统计
         stats = agent.evolution.get_stats()
-        print(f"\n[Evolution v2.0] 统计:")
-        print(f"  总任务数: {stats['total_tasks']}")
-        print(f"  成功率: {stats.get('success_rate', 0)*100:.0f}%")
-        print(f"  健康分数: {stats.get('health_score', 0)*100:.0f}%")
-        print(f"  模式数: {stats.get('patterns_count', 0)}")
+        logger.info(f"\n[Evolution v2.0] 统计:")
+        logger.info(f"  总任务数: {stats['total_tasks']}")
+        logger.info(f"  成功率: {stats.get('success_rate', 0)*100:.0f}%")
+        logger.info(f"  健康分数: {stats.get('health_score', 0)*100:.0f}%")
+        logger.info(f"  模式数: {stats.get('patterns_count', 0)}")
 
         # 显示健康监控详情
         if 'health_stats' in stats:
             hs = stats['health_stats']
-            print(f"\n[HealthMonitor] 详情:")
-            print(f"  成功任务: {hs.get('successful_tasks', 0)}")
-            print(f"  失败任务: {hs.get('failed_tasks', 0)}")
-            print(f"  重试次数: {hs.get('retried_tasks', 0)}")
-            print(f"  平均执行时间: {hs.get('avg_execution_time', 0):.2f}秒")
+            logger.info(f"\n[HealthMonitor] 详情:")
+            logger.info(f"  成功任务: {hs.get('successful_tasks', 0)}")
+            logger.info(f"  失败任务: {hs.get('failed_tasks', 0)}")
+            logger.info(f"  重试次数: {hs.get('retried_tasks', 0)}")
+            logger.info(f"  平均执行时间: {hs.get('avg_execution_time', 0):.2f}秒")
     else:
         # 交互模式
-        print("Hermes-AGI Agent Runtime v2.0")
-        print("=" * 40)
-        print("优化: 重试机制、错误分类、健康监控、真实进化")
-        print("输入任务描述，或输入 'quit' 退出")
-        print("输入 'health' 查看健康状态")
-        print()
+        logger.info("Hermes-AGI Agent Runtime v2.0")
+        logger.debug("=" * 40)
+        logger.info("优化: 重试机制、错误分类、健康监控、真实进化")
+        logger.info("输入任务描述，或输入 'quit' 退出")
+        logger.info("输入 'health' 查看健康状态")
+        logger.debug("")  # blank line separator
 
         while True:
             try:
@@ -556,23 +558,23 @@ async def main():
                     break
                 if user_input.lower() == 'health':
                     stats = agent.evolution.get_stats()
-                    print(f"\n[健康状态]")
-                    print(f"  健康分数: {stats.get('health_score', 0)*100:.0f}%")
-                    print(f"  总任务: {stats.get('total_tasks', 0)}")
-                    print(f"  成功率: {stats.get('success_rate', 0)*100:.0f}%")
-                    print()
+                    logger.info(f"\n[健康状态]")
+                    logger.info(f"  健康分数: {stats.get('health_score', 0)*100:.0f}%")
+                    logger.info(f"  总任务: {stats.get('total_tasks', 0)}")
+                    logger.info(f"  成功率: {stats.get('success_rate', 0)*100:.0f}%")
+                    logger.debug("")  # blank line after health
                     continue
                 if not user_input:
                     continue
 
-                print()
+                logger.debug("")  # blank line before output
                 result = await agent.process(user_input)
                 print(result.output)
-                print(f"\n健康分数: {agent.get_health_score():.2f}")
+                logger.info(f"\n健康分数: {agent.get_health_score():.2f}")
                 print()
 
             except KeyboardInterrupt:
-                print("\n再见!")
+                logger.info("\n再见!")
                 break
 
 if __name__ == "__main__":

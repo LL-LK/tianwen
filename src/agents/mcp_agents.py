@@ -504,41 +504,41 @@ class MCPEnabledAgent:
 
 async def demo():
     """演示MCP"""
-    print("=" * 50)
-    print("Hermes-AGI MCP Demo")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info("Hermes-AGI MCP Demo")
+    logger.info("=" * 50)
 
     server = MCPServer()
 
     # 显示可用工具
-    print("\n可用工具分类:")
+    logger.info("\n可用工具分类:")
     for category in server.get_tool_categories():
-        print(f"  - {category}")
+        logger.info(f"  - {category}")
 
-    print(f"\n工具总数: {len(server.get_available_tools())}")
+    logger.info(f"\n工具总数: {len(server.get_available_tools())}")
 
     # 调用工具示例
-    print("\n调用 file_exists 工具:")
+    logger.info("\n调用 file_exists 工具:")
     result = await server.call_tool("file_exists", {"path": "/tmp/test.txt"})
-    print(f"  成功: {result.success}")
-    print(f"  结果: {result.result}")
+    logger.info(f"  成功: {result.success}")
+    logger.info(f"  结果: {result.result}")
 
-    print("\n调用 get_system_info 工具:")
+    logger.info("\n调用 get_system_info 工具:")
     result = await server.call_tool("get_system_info", {})
-    print(f"  成功: {result.success}")
-    print(f"  系统信息: {result.result}")
+    logger.info(f"  成功: {result.success}")
+    logger.info(f"  系统信息: {result.result}")
 
-    print("\n调用 web_search 工具:")
+    logger.info("\n调用 web_search 工具:")
     result = await server.call_tool("web_search", {"query": "Python async programming"})
-    print(f"  成功: {result.success}")
+    logger.info(f"  成功: {result.success}")
     if result.result:
-        print(f"  搜索结果数: {result.result.get('total_results', 0)}")
+        logger.info(f"  搜索结果数: {result.result.get('total_results', 0)}")
 
     # 显示调用历史
-    print("\n调用历史:")
+    logger.info("\n调用历史:")
     history = server.get_call_history()
     for call in history:
-        print(f"  - {call['tool_name']} @ {call['timestamp']}")
+        logger.info(f"  - {call['tool_name']} @ {call['timestamp']}")
 
 if __name__ == "__main__":
     asyncio.run(demo())

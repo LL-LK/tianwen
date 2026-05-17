@@ -13,6 +13,8 @@ Issue #13 增强:
 - 过拟合信号跨Agent传播
 - 协同纠正机制
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import json
 import math
@@ -342,7 +344,7 @@ class OverfittingSelfCorrector:
                     "timestamp": datetime.now().isoformat()
                 })
             except Exception as e:
-                print(f"[OverfitCorrection] 回调错误: {e}")
+                logger.info(f"[OverfitCorrection] 回调错误: {e}")
 
     def get_cross_agent_overfit_report(self) -> Dict[str, Any]:
         """
@@ -599,7 +601,7 @@ class SelfEvolutionWithOverfitCorrection:
     def _analyze_failure(self, result):
         """分析失败原因"""
         for error in result.errors:
-            print(f"[Evolution] 失败分析: {error}")
+            logger.error(f"[Evolution] 失败分析: {error}")
 
     def get_stats(self) -> Dict:
         """获取统计信息"""
@@ -623,7 +625,7 @@ class SelfEvolutionWithOverfitCorrection:
 def demo():
     """演示过拟合自我纠正系统"""
     print("=" * 60)
-    print("Hermes-AGI Overfitting Self-Correction Demo")
+    logger.info("Hermes-AGI Overfitting Self-Correction Demo")
     print("=" * 60)
 
     # 创建增强版自我进化系统
@@ -660,7 +662,7 @@ def demo():
         },
     ]
 
-    print("\n[1] 执行过拟合检测演示:")
+    logger.info("\n[1] 执行过拟合检测演示:")
     for task in test_tasks:
         result = evolution.after_task({
             "task_model": type('obj', (), {
@@ -674,24 +676,24 @@ def demo():
             "errors": [] if task["success"] else ["Task failed"]
         })
 
-        print(f"\n  Task: {task['task_id']}")
-        print(f"    - Overfit Detected: {result['overfit_detected']}")
-        print(f"    - Diversity: {result['diversity']:.3f}")
-        print(f"    - Reward: {result['reward']:.3f}")
+        logger.info(f"\n  Task: {task['task_id']}")
+        logger.info(f"    - Overfit Detected: {result['overfit_detected']}")
+        logger.info(f"    - Diversity: {result['diversity']:.3f}")
+        logger.info(f"    - Reward: {result['reward']:.3f}")
         if result['suggestion']:
-            print(f"    - Suggestion: {result['suggestion']}")
+            logger.info(f"    - Suggestion: {result['suggestion']}")
 
     # 显示整体报告
-    print("\n[2] 过拟合状态报告:")
+    logger.info("\n[2] 过拟合状态报告:")
     stats = evolution.get_stats()
-    print(f"  Total Tasks: {stats['total_tasks']}")
-    print(f"  Success Rate: {stats['success_rate']*100:.1f}%")
-    print(f"  Overfitting Status: {stats['overfitting']['status']}")
-    print(f"  Total Corrections: {stats['overfitting']['total_corrections']}")
-    print(f"  Overfit Trend: {stats['overfitting']['overfit_trend']:.3f}")
+    logger.info(f"  Total Tasks: {stats['total_tasks']}")
+    logger.info(f"  Success Rate: {stats['success_rate']*100:.1f}%")
+    logger.info(f"  Overfitting Status: {stats['overfitting']['status']}")
+    logger.info(f"  Total Corrections: {stats['overfitting']['total_corrections']}")
+    logger.info(f"  Overfit Trend: {stats['overfitting']['overfit_trend']:.3f}")
 
-    print("\n" + "=" * 60)
-    print("Demo Complete")
+    logger.debug("\n" + "=" * 60)
+    logger.info("Demo Complete")
     print("=" * 60)
 
 

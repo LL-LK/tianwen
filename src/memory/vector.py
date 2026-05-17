@@ -9,6 +9,8 @@ Hermes-AGI Vector Memory System
 - 与literature_researcher.py无缝集成
 - RAG能力增强
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import os
 import json
@@ -61,16 +63,16 @@ class VectorMemory:
         if experiences_file.exists():
             try:
                 self.experiences_store.load(str(experiences_file))
-                print(f"[VectorMemory] Loaded {self.experiences_store.count()} experiences")
+                logger.info(f"[VectorMemory] Loaded {self.experiences_store.count()} experiences")
             except Exception as e:
-                print(f"[VectorMemory] Failed to load experiences: {e}")
+                logger.info(f"[VectorMemory] Failed to load experiences: {e}")
 
         if patterns_file.exists():
             try:
                 self.patterns_store.load(str(patterns_file))
-                print(f"[VectorMemory] Loaded {self.patterns_store.count()} patterns")
+                logger.info(f"[VectorMemory] Loaded {self.patterns_store.count()} patterns")
             except Exception as e:
-                print(f"[VectorMemory] Failed to load patterns: {e}")
+                logger.info(f"[VectorMemory] Failed to load patterns: {e}")
 
     def _save_stores(self):
         """保存存储"""
@@ -227,9 +229,9 @@ class EnhancedVectorMemory:
                     if "paper_id" in metadata:
                         self.metadata_index[metadata["paper_id"]] = metadata
 
-                print(f"[EnhancedVectorMemory] Loaded {self.papers_store.count()} paper embeddings")
+                logger.info(f"[EnhancedVectorMemory] Loaded {self.papers_store.count()} paper embeddings")
             except Exception as e:
-                print(f"[EnhancedVectorMemory] Failed to load papers: {e}")
+                logger.info(f"[EnhancedVectorMemory] Failed to load papers: {e}")
 
     def _save_papers_store(self):
         """保存论文向量存储"""
@@ -282,7 +284,7 @@ class EnhancedVectorMemory:
         # 保存
         self._save_papers_store()
 
-        print(f"[EnhancedVectorMemory] Added embedding for paper: {paper.title[:50]}...")
+        logger.info(f"[EnhancedVectorMemory] Added embedding for paper: {paper.title[:50]}...")
 
     async def add_papers_batch(self, papers: List[Paper]) -> int:
         """
@@ -306,7 +308,7 @@ class EnhancedVectorMemory:
             if len(embeddings.shape) == 1:
                 embeddings = embeddings.reshape(1, -1)
         except Exception as e:
-            print(f"[EnhancedVectorMemory] Batch embedding error: {e}")
+            logger.error(f"[EnhancedVectorMemory] Batch embedding error: {e}")
             # Fallback to sequential processing
             added_count = 0
             for paper in papers:
@@ -314,7 +316,7 @@ class EnhancedVectorMemory:
                     await self.add_paper_embedding(paper)
                     added_count += 1
                 except Exception as ex:
-                    print(f"[EnhancedVectorMemory] Failed to add paper {paper.id}: {ex}")
+                    logger.info(f"[EnhancedVectorMemory] Failed to add paper {paper.id}: {ex}")
             return added_count
 
         # 批量添加到向量存储
@@ -345,11 +347,11 @@ class EnhancedVectorMemory:
                 added_count += 1
 
             except Exception as e:
-                print(f"[EnhancedVectorMemory] Failed to add paper {paper.id}: {e}")
+                logger.info(f"[EnhancedVectorMemory] Failed to add paper {paper.id}: {e}")
 
         # 保存
         self._save_papers_store()
-        print(f"[EnhancedVectorMemory] Batch added {added_count} papers")
+        logger.info(f"[EnhancedVectorMemory] Batch added {added_count} papers")
 
         return added_count
 
@@ -390,7 +392,7 @@ class EnhancedVectorMemory:
                 )
                 papers.append(paper)
             except Exception as e:
-                print(f"[EnhancedVectorMemory] Failed to parse paper result: {e}")
+                logger.info(f"[EnhancedVectorMemory] Failed to parse paper result: {e}")
 
         return papers
 
@@ -432,7 +434,7 @@ class EnhancedVectorMemory:
                 )
                 papers.append(paper)
             except Exception as e:
-                print(f"[EnhancedVectorMemory] Failed to parse paper result: {e}")
+                logger.info(f"[EnhancedVectorMemory] Failed to parse paper result: {e}")
 
         return papers
 
@@ -543,9 +545,9 @@ class MemoryIntegratedAgent:
         # 1. 搜索相似经验
         similar = self.memory.search_similar_experiences(user_input, k=3)
         if similar:
-            print(f"\n[Memory] Found {len(similar)} similar experiences")
+            logger.info(f"\n[Memory] Found {len(similar)} similar experiences")
             for s in similar[:1]:
-                print(f"  - {s['metadata'].get('task_description', 'N/A')[:50]}...")
+                logger.info(f"  - {s['metadata'].get('task_description', 'N/A')[:50]}...")
 
         # 2. 处理请求
         result = await self.base_agent.process(user_input)
@@ -574,7 +576,7 @@ def create_enhanced_memory(memory_dir: str = "./paper_memory") -> EnhancedVector
 async def demo_enhanced():
     """演示增强型向量记忆"""
     print("=" * 60)
-    print("EnhancedVectorMemory RAG Demo")
+    logger.info("EnhancedVectorMemory RAG Demo")
     print("=" * 60)
 
     # 创建增强型向量记忆
@@ -618,31 +620,31 @@ async def demo_enhanced():
     ]
 
     # 添加论文
-    print("\n📚 Indexing sample papers...")
+    logger.info("\n📚 Indexing sample papers...")
     count = await memory.add_papers_batch(sample_papers)
-    print(f"   Indexed {count} papers")
+    logger.info(f"   Indexed {count} papers")
 
     # 语义搜索
-    print("\n🔍 Search: 'machine learning for astronomical objects'")
+    logger.info("\n🔍 Search: 'machine learning for astronomical objects'")
     results = await memory.search_similar_papers(
         "machine learning for astronomical objects",
         top_k=3
     )
     for i, paper in enumerate(results, 1):
-        print(f"\n   [{i}] {paper.title}")
-        print(f"       Score: {paper.relevance_score:.3f}")
-        print(f"       Authors: {', '.join(paper.authors[:2])}")
-        print(f"       Abstract: {paper.abstract[:80]}...")
+        logger.info(f"\n   [{i}] {paper.title}")
+        logger.info(f"       Score: {paper.relevance_score:.3f}")
+        logger.info(f"       Authors: {', '.join(paper.authors[:2])}")
+        logger.info(f"       Abstract: {paper.abstract[:80]}...")
 
     # 基于向量搜索
-    print("\n🔍 Search by embedding...")
+    logger.info("\n🔍 Search by embedding...")
     query_emb = memory._get_embedding("deep learning for star classification")
     results = await memory.search_by_embedding(query_emb, top_k=2)
     for paper in results:
-        print(f"   - {paper.title} (score: {paper.relevance_score:.3f})")
+        logger.info(f"   - {paper.title} (score: {paper.relevance_score:.3f})")
 
     # 统计
-    print(f"\n📊 Stats: {memory.get_stats()}")
+    logger.info(f"\n📊 Stats: {memory.get_stats()}")
 
     # 清理演示目录
     import shutil
@@ -652,8 +654,8 @@ async def demo_enhanced():
 
 async def demo_integration():
     """演示与LiteratureResearcher集成"""
-    print("\n" + "=" * 60)
-    print("Integration with LiteratureResearcher Demo")
+    logger.debug("\n" + "=" * 60)
+    logger.info("Integration with LiteratureResearcher Demo")
     print("=" * 60)
 
     # 这个演示展示了如何将两个模块结合使用
@@ -663,7 +665,7 @@ async def demo_integration():
     memory = EnhancedVectorMemory(memory_dir="./demo_integration_memory")
 
     # 模拟从researcher获取论文
-    print("\n📥 Simulating LiteratureResearcher workflow...")
+    logger.info("\n📥 Simulating LiteratureResearcher workflow...")
 
     # 创建兼容的Paper对象
     lr_papers = [
@@ -700,7 +702,7 @@ async def demo_integration():
 
     # 搜索
     results = await memory.search_similar_papers("artificial intelligence research", top_k=3)
-    print(f"\n🔍 Found {len(results)} relevant papers")
+    logger.info(f"\n🔍 Found {len(results)} relevant papers")
 
     # 清理
     import shutil

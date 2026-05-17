@@ -892,7 +892,7 @@ async def run_analysis_pipeline(
 
 if __name__ == "__main__":
     async def test():
-        print("Testing DataAnalysisPipeline...")
+        logger.info("Testing DataAnalysisPipeline...")
 
         # 测试管道编排
         pipeline = PipelineOrchestrator()
@@ -909,8 +909,8 @@ if __name__ == "__main__":
             report_format=ReportFormat.MARKDOWN
         )
 
-        print(f"Pipeline result: {result}")
-        print(f"Success: {result['success']}")
-        print(f"Report: {result.get('report_path')}")
+        logger.info(f"Pipeline result: {result}")
+        logger.info(f"Success: {result['success']}")
+        logger.info(f"Report: {result.get('report_path')}")
 
     asyncio.run(test())

@@ -8,6 +8,8 @@
 3. 调度碎片化分析
 4. 综合观测条件评分
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import math
 import asyncio
@@ -1216,7 +1218,7 @@ class EnhancedObservationScheduler:
             priorities: Dict mapping hypothesis_id to priority score (0-100)
         """
         self._hypothesis_priority_map = priorities
-        print(f"[Scheduler] 已设置 {len(priorities)} 个假说的优先级")
+        logger.info(f"[Scheduler] 已设置 {len(priorities)} 个假说的优先级")
 
     def compute_astronomical_nights(
         self,
@@ -1469,7 +1471,7 @@ class EnhancedObservationScheduler:
     def reset_schedule(self) -> None:
         """重置调度器状态"""
         self._scheduled_targets.clear()
-        print("[Scheduler] 调度器已重置")
+        logger.info("[Scheduler] 调度器已重置")
 
 
 # ============ 兼容性别名 ============
@@ -1482,9 +1484,9 @@ Location = GeographicLocation
 
 def run_demo():
     """运行演示测试"""
-    print("=" * 70)
-    print("天问-AGI 增强型观测调度引擎 (TSI算法参考实现)")
-    print("=" * 70)
+    logger.debug("=" * 70)
+    logger.info("天问-AGI 增强型观测调度引擎 (TSI算法参考实现)")
+    logger.debug("=" * 70)
 
     # 创建观测位置（冷湖观测站）
     location = GeographicLocation(
@@ -1493,18 +1495,18 @@ def run_demo():
         longitude=93.0,
         elevation=3200
     )
-    print(f"\n观测位置: {location.name}")
-    print(f"  纬度: {location.latitude}°")
-    print(f"  经度: {location.longitude}°")
-    print(f"  海拔: {location.elevation}m")
+    logger.info(f"\n观测位置: {location.name}")
+    logger.info(f"  纬度: {location.latitude}°")
+    logger.info(f"  经度: {location.longitude}°")
+    logger.info(f"  海拔: {location.elevation}m")
 
     # 创建调度器
     scheduler = EnhancedObservationScheduler(location)
 
     # 1. 计算夜天文时间
-    print("\n" + "-" * 70)
-    print("1. 夜天文时间计算")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("1. 夜天文时间计算")
+    logger.debug("-" * 70)
 
     test_date = datetime(2026, 5, 1)
     period = (datetime(2026, 5, 1, 0, 0), datetime(2026, 5, 2, 0, 0))
@@ -1513,14 +1515,14 @@ def run_demo():
 
     for window in astronomical_windows:
         duration_hours = (window.end - window.start).total_seconds() / 3600
-        print(f"  夜天文时间: {window.start.strftime('%H:%M')} - {window.end.strftime('%H:%M')}")
-        print(f"    持续时间: {duration_hours:.2f} 小时")
-        print(f"    最高太阳高度: {window.max_altitude:.1f}°")
+        logger.info(f"  夜天文时间: {window.start.strftime('%H:%M')} - {window.end.strftime('%H:%M')}")
+        logger.info(f"    持续时间: {duration_hours:.2f} 小时")
+        logger.info(f"    最高太阳高度: {window.max_altitude:.1f}°")
 
     # 2. 计算目标可见性
-    print("\n" + "-" * 70)
-    print("2. 目标可见性计算")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("2. 目标可见性计算")
+    logger.debug("-" * 70)
 
     # 创建测试目标
     targets = [
@@ -1557,23 +1559,23 @@ def run_demo():
     for target in targets:
         operable = scheduler.compute_operable_periods(target, period)
 
-        print(f"\n  目标: {target.name}")
-        print(f"    赤经: {target.ra:.2f}°, 赤纬: {target.dec:.2f}°")
+        logger.info(f"\n  目标: {target.name}")
+        logger.info(f"    赤经: {target.ra:.2f}°, 赤纬: {target.dec:.2f}°")
 
         if operable:
             total_hours = sum((w.end - w.start).total_seconds() / 3600 for w in operable)
-            print(f"    可操作总时间: {total_hours:.2f} 小时")
+            logger.info(f"    可操作总时间: {total_hours:.2f} 小时")
 
             for window in operable[:2]:  # 只显示前两个窗口
-                print(f"    窗口: {window.start.strftime('%H:%M')} - {window.end.strftime('%H:%M')}")
-                print(f"      最高高度: {window.max_altitude:.1f}°, 平均高度: {window.avg_altitude:.1f}°")
+                logger.info(f"    窗口: {window.start.strftime('%H:%M')} - {window.end.strftime('%H:%M')}")
+                logger.info(f"      最高高度: {window.max_altitude:.1f}°, 平均高度: {window.avg_altitude:.1f}°")
         else:
-            print("    无可见窗口")
+            logger.info("    无可见窗口")
 
     # 3. 碎片化分析
-    print("\n" + "-" * 70)
-    print("3. 调度碎片化分析")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("3. 调度碎片化分析")
+    logger.debug("-" * 70)
 
     # 模拟已调度的时间块
     simulated_scheduled = []
@@ -1597,41 +1599,41 @@ def run_demo():
         astronomical_windows, simulated_scheduled
     )
 
-    print(f"  空闲可操作时间: {fragmentation.idle_operable_hours:.2f} 小时")
-    print(f"  间隙数量: {fragmentation.gap_count}")
-    print(f"  间隙平均时长: {fragmentation.gap_mean.total_seconds() / 60:.1f} 分钟")
-    print(f"  间隙中位数时长: {fragmentation.gap_median.total_seconds() / 60:.1f} 分钟")
-    print(f"  间隙90分位时长: {fragmentation.gap_p90.total_seconds() / 60:.1f} 分钟")
-    print(f"  已调度比例: {fragmentation.scheduled_fraction:.1%}")
+    logger.info(f"  空闲可操作时间: {fragmentation.idle_operable_hours:.2f} 小时")
+    logger.info(f"  间隙数量: {fragmentation.gap_count}")
+    logger.info(f"  间隙平均时长: {fragmentation.gap_mean.total_seconds() / 60:.1f} 分钟")
+    logger.info(f"  间隙中位数时长: {fragmentation.gap_median.total_seconds() / 60:.1f} 分钟")
+    logger.info(f"  间隙90分位时长: {fragmentation.gap_p90.total_seconds() / 60:.1f} 分钟")
+    logger.info(f"  已调度比例: {fragmentation.scheduled_fraction:.1%}")
 
     # 4. 综合评分
-    print("\n" + "-" * 70)
-    print("4. 观测条件综合评分")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("4. 观测条件综合评分")
+    logger.debug("-" * 70)
 
     test_time = datetime(2026, 5, 1, 23, 0)
     moon_phase = 0.25  # 弦月
     cloud_coverage = 0.1  # 10%云量
 
-    print(f"  测试时间: {test_time.strftime('%Y-%m-%d %H:%M')}")
-    print(f"  月相: {moon_phase:.2f} (接近新月)")
-    print(f"  云覆盖率: {cloud_coverage:.0%}")
+    logger.info(f"  测试时间: {test_time.strftime('%Y-%m-%d %H:%M')}")
+    logger.info(f"  月相: {moon_phase:.2f} (接近新月)")
+    logger.info(f"  云覆盖率: {cloud_coverage:.0%}")
 
     for target in targets[:2]:
         score = scheduler.score_candidate(target, test_time, moon_phase, cloud_coverage)
         detailed = scheduler.score_detailed(target, test_time, moon_phase, cloud_coverage)
 
-        print(f"\n  目标: {target.name}")
-        print(f"    综合评分: {score:.1f}/100")
-        print(f"    高度角评分: {detailed['altitude_score']:.1f} (高度: {detailed['altitude']:.1f}°)")
-        print(f"    云量评分: {detailed['cloud_score']:.1f}")
-        print(f"    月光评分: {detailed['moon_score']:.1f}")
-        print(f"    窗口评分: {detailed['window_score']:.1f}")
+        logger.info(f"\n  目标: {target.name}")
+        logger.info(f"    综合评分: {score:.1f}/100")
+        logger.info(f"    高度角评分: {detailed['altitude_score']:.1f} (高度: {detailed['altitude']:.1f}°)")
+        logger.info(f"    云量评分: {detailed['cloud_score']:.1f}")
+        logger.info(f"    月光评分: {detailed['moon_score']:.1f}")
+        logger.info(f"    窗口评分: {detailed['window_score']:.1f}")
 
     # 5. 生成调度计划
-    print("\n" + "-" * 70)
-    print("5. 生成观测计划")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("5. 生成观测计划")
+    logger.debug("-" * 70)
 
     schedule = scheduler.generate_schedule(
         targets=targets,
@@ -1660,40 +1662,40 @@ def run_demo():
         max_targets_per_night=4
     )
 
-    print(f"\n  调度统计:")
-    print(f"    覆盖夜数: {schedule['nights_count']}")
-    print(f"    总已调度比例: {schedule['fragmentation']['scheduled_fraction']:.1%}")
-    print(f"    空闲可操作时间: {schedule['fragmentation']['idle_operable_hours']:.1f} 小时")
+    logger.info(f"\n  调度统计:")
+    logger.info(f"    覆盖夜数: {schedule['nights_count']}")
+    logger.info(f"    总已调度比例: {schedule['fragmentation']['scheduled_fraction']:.1%}")
+    logger.info(f"    空闲可操作时间: {schedule['fragmentation']['idle_operable_hours']:.1f} 小时")
 
-    print(f"\n  调度详情:")
+    logger.info(f"\n  调度详情:")
     for night in schedule['schedule']:
-        print(f"\n    日期: {night['date']}")
-        print(f"    夜天文时长: {night['astronomical_night']['duration_hours']:.1f} 小时")
-        print(f"    月相: {night['conditions']['moon_phase']:.2f}, 云量: {night['conditions']['cloud_coverage']:.0%}")
-        print(f"    调度目标数: {len(night['scheduled_targets'])}")
+        logger.info(f"\n    日期: {night['date']}")
+        logger.info(f"    夜天文时长: {night['astronomical_night']['duration_hours']:.1f} 小时")
+        logger.info(f"    月相: {night['conditions']['moon_phase']:.2f}, 云量: {night['conditions']['cloud_coverage']:.0%}")
+        logger.info(f"    调度目标数: {len(night['scheduled_targets'])}")
 
         for st in night['scheduled_targets']:
-            print(f"      - {st['name']}: {st['window_start'].split('T')[1][:5]} - {st['window_end'].split('T')[1][:5]}")
-            print(f"        最高高度: {st['max_altitude']:.1f}°, 评分: {st['score']:.1f}")
+            logger.info(f"      - {st['name']}: {st['window_start'].split('T')[1][:5]} - {st['window_end'].split('T')[1][:5]}")
+            logger.info(f"        最高高度: {st['max_altitude']:.1f}°, 评分: {st['score']:.1f}")
 
     # 6. 月亮位置计算
-    print("\n" + "-" * 70)
-    print("6. 月亮与目标距离计算")
-    print("-" * 70)
+    logger.debug("\n-" * 70)
+    logger.info("6. 月亮与目标距离计算")
+    logger.debug("-" * 70)
 
     for target in targets[:2]:
         moon_info = scheduler.calculator.compute_moon_distance_and_phase(
             target.ra, target.dec, test_time
         )
 
-        print(f"\n  目标: {target.name}")
-        print(f"    月亮相位: {moon_info.phase:.2f}")
-        print(f"    月亮照明度: {moon_info.illumination:.1%}")
-        print(f"    目标-月亮角距离: {moon_info.distance:.1f}°")
+        logger.info(f"\n  目标: {target.name}")
+        logger.info(f"    月亮相位: {moon_info.phase:.2f}")
+        logger.info(f"    月亮照明度: {moon_info.illumination:.1%}")
+        logger.info(f"    目标-月亮角距离: {moon_info.distance:.1f}°")
 
-    print("\n" + "=" * 70)
-    print("演示完成")
-    print("=" * 70)
+    logger.debug("\n=" * 70)
+    logger.info("演示完成")
+    logger.debug("=" * 70)
 
     return schedule
 

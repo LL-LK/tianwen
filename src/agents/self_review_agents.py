@@ -9,6 +9,9 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from collections import defaultdict
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ============ 复盘数据模型 ============
 
@@ -388,9 +391,9 @@ def format_review_report(review: WeeklyReview) -> str:
 
 def demo():
     """演示复盘系统"""
-    print("=" * 50)
-    print("Hermes-AGI Self-Review Demo")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info("Hermes-AGI Self-Review Demo")
+    logger.info("=" * 50)
 
     review_system = SelfReviewSystem(memory_dir="./demo_memory")
 
@@ -414,18 +417,18 @@ def demo():
     review_system._save_data()
 
     # 生成周报
-    print("\n生成周复盘报告...")
+    logger.info("生成周复盘报告...")
     review = review_system.generate_weekly_review()
     report = format_review_report(review)
-    print(report)
+    logger.info(report)
 
     # 检查自动触发
-    print("\n检查自动复盘触发...")
+    logger.info("检查自动复盘触发...")
     auto_review = review_system.check_and_trigger_review()
     if auto_review:
-        print("已自动触发周复盘!")
+        logger.info("已自动触发周复盘!")
     else:
-        print("今天不是复盘日，跳过")
+        logger.info("今天不是复盘日，跳过")
 
     # 清理
     if Path("./demo_memory").exists():

@@ -13,6 +13,8 @@ telescope_simulator.py - 望远镜模拟器
 Author: Tianwen-AGI
 参考: seestar-mcp, INDI Protocol
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import random
@@ -175,29 +177,29 @@ class TelescopeSimulator:
         Returns:
             bool: 连接是否成功
         """
-        print(f"[{self.name}] 连接中...")
+        logger.info(f"[{self.name}] 连接中...")
         await asyncio.sleep(1.0)  # 模拟连接延迟
         
         self.connected = True
         self.state = TelescopeState()
         self._running = True
-        print(f"[{self.name}] 连接成功!")
-        print(f"  型号: {self.name}")
-        print(f"  规格: f/{self.SPECS['f_ratio']}, {self.SPECS['focal_length']}mm焦距")
-        print(f"  传感器: {self.SPECS['sensor']} {self.SPECS['resolution'][0]}x{self.SPECS['resolution'][1]}")
+        logger.info(f"[{self.name}] 连接成功!")
+        logger.info(f"  型号: {self.name}")
+        logger.info(f"  规格: f/{self.SPECS['f_ratio']}, {self.SPECS['focal_length']}mm焦距")
+        logger.info(f"  传感器: {self.SPECS['sensor']} {self.SPECS['resolution'][0]}x{self.SPECS['resolution'][1]}")
         
         return True
     
     async def disconnect(self):
         """断开望远镜连接"""
         if self.state.status == TelescopeStatus.EXPOSING:
-            print(f"[{self.name}] 曝光中，请先停止...")
+            logger.info(f"[{self.name}] 曝光中，请先停止...")
             return False
         
         await self.park()
         self.connected = False
         self._running = False
-        print(f"[{self.name}] 已断开连接")
+        logger.info(f"[{self.name}] 已断开连接")
         return True
     
     async def get_status(self) -> TelescopeState:
@@ -217,20 +219,20 @@ class TelescopeSimulator:
             bool: 是否成功
         """
         if not self.connected:
-            print(f"[{self.name}] 未连接!")
+            logger.info(f"[{self.name}] 未连接!")
             return False
         
         # 解析目标
         coords = self._parse_target(target)
         if coords is None:
-            print(f"[{self.name}] 无法识别目标: {target}")
+            logger.info(f"[{self.name}] 无法识别目标: {target}")
             return False
         
         self.state.target_coords = coords
         self.state.status = TelescopeStatus.GOTO_IN_PROGRESS
         
-        print(f"[{self.name}] GOTO: {target}")
-        print(f"  目标坐标: {coords}")
+        logger.info(f"[{self.name}] GOTO: {target}")
+        logger.info(f"  目标坐标: {coords}")
         
         # 计算角距离
         if self.state.current_coords:
@@ -238,14 +240,14 @@ class TelescopeSimulator:
                 self.state.current_coords.ra, self.state.current_coords.dec,
                 coords.ra, coords.dec
             )
-            print(f"  角距离: {sep:.2f}°")
+            logger.info(f"  角距离: {sep:.2f}°")
             
             # 估算转动时间 (最大5°/秒)
             slew_time = min(sep / self.SPECS["max_goto_speed"], 30)
         else:
             slew_time = 3.0
         
-        print(f"  预计转动时间: {slew_time:.1f}秒")
+        logger.info(f"  预计转动时间: {slew_time:.1f}秒")
         
         # 模拟转动过程
         for i in range(int(slew_time * 2)):
@@ -259,7 +261,7 @@ class TelescopeSimulator:
             )
             
             if i % 4 == 0:
-                print(f"  进度: {progress*100:.0f}% - {self.state.current_coords}")
+                logger.info(f"  进度: {progress*100:.0f}% - {self.state.current_coords}")
         
         # 完成GOTO
         self.state.current_coords = coords
@@ -269,7 +271,7 @@ class TelescopeSimulator:
         self.stats["total_gotos"] += 1
         self.stats["successful_slew"] += 1
         
-        print(f"[{self.name}] GOTO完成! 指向误差: {self.state.pointing_error:.2f}'")
+        logger.error(f"[{self.name}] GOTO完成! 指向误差: {self.state.pointing_error:.2f}'")
         
         # 模拟错误
         if self.simulate_errors and random.random() < 0.1:
@@ -283,7 +285,7 @@ class TelescopeSimulator:
     async def abort_goto(self):
         """中断GOTO"""
         if self.state.status == TelescopeStatus.GOTO_IN_PROGRESS:
-            print(f"[{self.name}] 中断GOTO...")
+            logger.info(f"[{self.name}] 中断GOTO...")
             self.state.status = TelescopeStatus.IDLE
             self.stats["failed_slew"] += 1
             return True
@@ -303,14 +305,14 @@ class TelescopeSimulator:
         if not self.connected:
             return None
         
-        print(f"[{self.name}] Plate Solving...")
+        logger.info(f"[{self.name}] Plate Solving...")
         
         # 模拟曝光获取星图
         await asyncio.sleep(2.0)
         
         # 模拟成功/失败 (95%成功率)
         if self.simulate_errors and random.random() < 0.05:
-            print(f"[{self.name}] Plate Solving 失败: 星图匹配失败")
+            logger.info(f"[{self.name}] Plate Solving 失败: 星图匹配失败")
             return None
         
         # 计算实际指向误差
@@ -338,10 +340,10 @@ class TelescopeSimulator:
         
         self.stats["plate_solves"] += 1
         
-        print(f"[{self.name}] Plate Solving 完成!")
-        print(f"  匹配星数: {result['stars_matched']}")
-        print(f"  RMS误差: {result['rms_error']:.2f}\"")
-        print(f"  校准后坐标: {self.state.current_coords}")
+        logger.info(f"[{self.name}] Plate Solving 完成!")
+        logger.info(f"  匹配星数: {result['stars_matched']}")
+        logger.info(f"  RMS误差: {result['rms_error']:.2f}\"")
+        logger.info(f"  校准后坐标: {self.state.current_coords}")
         
         return result
     
@@ -353,10 +355,10 @@ class TelescopeSimulator:
             ra: 正确的赤经
             dec: 正确的赤纬
         """
-        print(f"[{self.name}] 同步坐标: RA={ra}, Dec={dec}")
+        logger.info(f"[{self.name}] 同步坐标: RA={ra}, Dec={dec}")
         self.state.current_coords = Coordinates(ra=ra, dec=dec)
         self.state.pointing_error = 0.0
-        print(f"[{self.name}] 坐标同步完成")
+        logger.info(f"[{self.name}] 坐标同步完成")
         return True
     
     # ============ 跟踪控制 ============
@@ -369,10 +371,10 @@ class TelescopeSimulator:
             bool: 是否成功
         """
         if self.state.status == TelescopeStatus.GOTO_IN_PROGRESS:
-            print(f"[{self.name}] GOTO进行中，请等待")
+            logger.info(f"[{self.name}] GOTO进行中，请等待")
             return False
         
-        print(f"[{self.name}] 开始跟踪: {self.state.current_coords}")
+        logger.info(f"[{self.name}] 开始跟踪: {self.state.current_coords}")
         self.state.tracking_enabled = True
         self.state.status = TelescopeStatus.TRACKING
         
@@ -385,7 +387,7 @@ class TelescopeSimulator:
         """停止跟踪"""
         self.state.tracking_enabled = False
         self.state.status = TelescopeStatus.IDLE
-        print(f"[{self.name}] 停止跟踪")
+        logger.info(f"[{self.name}] 停止跟踪")
     
     async def _tracking_drift(self):
         """模拟跟踪漂移"""
@@ -437,7 +439,7 @@ class TelescopeSimulator:
             )
         
         self.state.status = TelescopeStatus.EXPOSING
-        print(f"[{self.name}] 开始曝光: {exposure}秒 x {count}帧")
+        logger.info(f"[{self.name}] 开始曝光: {exposure}秒 x {count}帧")
         
         # 如果没有指定目标，从当前坐标查找最近的目标
         if target is None and self.state.current_coords:
@@ -460,7 +462,7 @@ class TelescopeSimulator:
             self.state.exposure_count += 1
             self.state.total_exposure_time += exposure
             
-            print(f" 完成")
+            logger.info(f" 完成")
         
         self.state.status = TelescopeStatus.TRACKING if self.state.tracking_enabled else TelescopeStatus.IDLE
         
@@ -479,7 +481,7 @@ class TelescopeSimulator:
         
         self.stats["total_exposures"] += 1
         
-        print(f"[{self.name}] 曝光完成: {count}帧, 保存至 {result.file_path}")
+        logger.info(f"[{self.name}] 曝光完成: {count}帧, 保存至 {result.file_path}")
         
         return result
     
@@ -494,7 +496,7 @@ class TelescopeSimulator:
     async def cancel_exposure(self):
         """取消当前曝光"""
         if self.state.status == TelescopeStatus.EXPOSING:
-            print(f"[{self.name}] 取消曝光...")
+            logger.info(f"[{self.name}] 取消曝光...")
             self.state.status = TelescopeStatus.IDLE
             return True
         return False
@@ -514,13 +516,13 @@ class TelescopeSimulator:
         if self.state.status == TelescopeStatus.EXPOSING:
             await self.cancel_exposure()
         
-        print(f"[{self.name}] 望远镜归位中...")
+        logger.info(f"[{self.name}] 望远镜归位中...")
         self.state.status = TelescopeStatus.PARKING
         
         await asyncio.sleep(2.0)
         
         self.state.status = TelescopeStatus.IDLE
-        print(f"[{self.name}] 望远镜已归位")
+        logger.info(f"[{self.name}] 望远镜已归位")
         
         return True
     
@@ -667,60 +669,61 @@ def calculate_observation_window(
 
 async def demo():
     """演示望远镜模拟器的完整操作流程"""
-    print("=" * 60)
-    print("望远镜模拟器演示 - Plan A 完整操作流程")
-    print("=" * 60)
+    logger.debug("=" * 60)
+    logger.info("望远镜模拟器演示 - Plan A 完整操作流程")
+    logger.debug("=" * 60)
     
     sim = TelescopeSimulator()
     
     # 1. 连接
-    print("\n[Step 1] 连接望远镜")
+    logger.info("\n[Step 1] 连接望远镜")
     await sim.connect()
     
     # 2. GOTO目标
-    print("\n[Step 2] GOTO指向 M31 (仙女座星系)")
+    logger.info("\n[Step 2] GOTO指向 M31 (仙女座星系)")
     await sim.goto("M31")
     
     # 3. Plate Solving校准
-    print("\n[Step 3] Plate Solving校准")
+    logger.info("\n[Step 3] Plate Solving校准")
     solve_result = await sim.plate_solve()
     if solve_result:
-        print(f"  校准参数: RA={solve_result['ra']:.4f}, Dec={solve_result['dec']:.4f}")
+        logger.info(f"  校准参数: RA={solve_result['ra']:.4f}, Dec={solve_result['dec']:.4f}")
     
     # 4. 开始跟踪
-    print("\n[Step 4] 开始跟踪")
+    logger.info("\n[Step 4] 开始跟踪")
     await sim.start_tracking()
     
     # 5. 曝光成像
-    print("\n[Step 5] 执行曝光成像")
+    logger.info("\n[Step 5] 执行曝光成像")
     result = await sim.expose(exposure=10, count=3, target="M31")
-    print(f"  成像结果: {'成功' if result.success else '失败'}")
-    print(f"  保存路径: {result.file_path}")
+    logger.info(f"  成像结果: {'成功' if result.success else '失败'}")
+    logger.info(f"  保存路径: {result.file_path}")
     
     # 6. 观测窗口计算
-    print("\n[Step 6] 计算M31观测窗口")
+    logger.info("\n[Step 6] 计算M31观测窗口")
     obj = TelescopeSimulator.CATALOG["M31"]
     window = calculate_observation_window(obj["ra"], obj["dec"])
-    print(f"  当前高度: {window['current_altitude']:.1f}°")
-    print(f"  可见性: {'是' if window['is_visible'] else '否'}")
-    print(f"  最佳时段: {window['best_window_start']} ~ {window['best_window_end']}")
+    logger.info(f"  当前高度: {window['current_altitude']:.1f}°")
+    logger.info(f"  可见性: {'是' if window['is_visible'] else '否'}")
+    logger.info(f"  最佳时段: {window['best_window_start']} ~ {window['best_window_end']}")
     
     # 7. 停车
-    print("\n[Step 7] 望远镜归位")
+    logger.info("\n[Step 7] 望远镜归位")
     await sim.park()
     
     # 8. 断开连接
-    print("\n[Step 8] 断开连接")
+    logger.info("\n[Step 8] 断开连接")
     await sim.disconnect()
     
     # 统计
-    print("\n" + "=" * 60)
-    print("操作统计:")
+    logger.debug("\n" + "=" * 60)
+    logger.info("操作统计:")
     stats = sim.get_stats()
     for k, v in stats.items():
-        print(f"  {k}: {v}")
-    print("=" * 60)
+        logger.info(f"  {k}: {v}")
+    logger.debug("=" * 60)
 
+    asyncio.run(demo())
 
 if __name__ == "__main__":
     asyncio.run(demo())

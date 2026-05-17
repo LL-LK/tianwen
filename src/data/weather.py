@@ -628,19 +628,19 @@ if __name__ == "__main__":
     # 获取当前数据
     weather = collector.fetch_current()
     if weather:
-        print(f"\n=== 气象数据 ({weather.source}) ===")
-        print(f"  温度: {weather.temperature:.1f}°C")
-        print(f"  湿度: {weather.humidity:.1f}%")
-        print(f"  云量: {weather.cloud_cover:.1f}%")
-        print(f"  风速: {weather.wind_speed:.1f} m/s")
-        print(f"  气压: {weather.pressure:.1f} hPa")
-        print(f"  视宁度: {weather.star_fwhm:.2f} arcsec")
-        print(f"  观测评分: {weather.observation_score:.1f}/100")
-        print(f"  安全观测: {'是' if weather.is_safe else '否'}")
+        logger.info(f"\n=== 气象数据 ({weather.source}) ===")
+        logger.info(f"  温度: {weather.temperature:.1f}°C")
+        logger.info(f"  湿度: {weather.humidity:.1f}%")
+        logger.info(f"  云量: {weather.cloud_cover:.1f}%")
+        logger.info(f"  风速: {weather.wind_speed:.1f} m/s")
+        logger.info(f"  气压: {weather.pressure:.1f} hPa")
+        logger.info(f"  视宁度: {weather.star_fwhm:.2f} arcsec")
+        logger.info(f"  观测评分: {weather.observation_score:.1f}/100")
+        logger.info(f"  安全观测: {'是' if weather.is_safe else '否'}")
 
     # 获取最佳观测窗口
     windows = collector.get_best_observation_window()
-    print("\n=== 48小时预报 ===")
-    print(f"  良好观测小时数: {windows['good_observation_hours']}/{windows['total_hours_forecast']}")
+    logger.info("\n=== 48小时预报 ===")
+    logger.info(f"  良好观测小时数: {windows['good_observation_hours']}/{windows['total_hours_forecast']}")
     for w in windows.get("best_windows", [])[:3]:
-        print(f"  {w['time']}: 云量{w['cloud_cover']:.0f}%, 风速{w['wind_speed']:.1f}m/s, 评分{w['observation_score']:.0f}")
+        logger.info(f"  {w['time']}: 云量{w['cloud_cover']:.0f}%, 风速{w['wind_speed']:.1f}m/s, 评分{w['observation_score']:.0f}")

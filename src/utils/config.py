@@ -11,6 +11,8 @@
     # 生产环境
     config = ProductionConfig()
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import os
 from typing import Optional
@@ -197,8 +199,8 @@ volumes:
         """保存Docker Compose文件"""
         with open(path, 'w', encoding='utf-8') as f:
             f.write(cls.DOCKER_COMPOSE)
-        print(f"✅ Docker Compose配置已保存到: {path}")
-        print("   使用命令启动: docker-compose up -d")
+        logger.info(f"✅ Docker Compose配置已保存到: {path}")
+        logger.info("   使用命令启动: docker-compose up -d")
 
 
 def get_config() -> BaseConfig:
@@ -223,15 +225,15 @@ def print_config_summary():
     config_type = type(config).__name__
 
     print("=" * 50)
-    print(f"天问-AGI 配置 ({config_type})")
+    logger.info(f"天问-AGI 配置 ({config_type})")
     print("=" * 50)
-    print(f"Neo4j URI: {config.neo4j_uri or '内存模式'}")
-    print(f"ChromaDB: {config.chroma_persist_dir or '内存模式'}")
-    print(f"日志级别: {config.log_level}")
+    logger.info(f"Neo4j URI: {config.neo4j_uri or '内存模式'}")
+    logger.info(f"ChromaDB: {config.chroma_persist_dir or '内存模式'}")
+    logger.info(f"日志级别: {config.log_level}")
     print("=" * 50)
 
 
 if __name__ == "__main__":
     print_config_summary()
-    print("\n生成Docker Compose配置:")
+    logger.info("\n生成Docker Compose配置:")
     print(DockerComposeConfig.DOCKER_COMPOSE[:500] + "...")

@@ -5,6 +5,8 @@ Hermes-AGI Vector Store - 统一向量存储基类
 该模块统一了原本分散在 vector_memory.py、memory_persistence.py 和
 literature_researcher.py 中的向量存储实现。
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import json
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
@@ -207,7 +209,7 @@ except ImportError:
             self._persist_directory = persist_directory
             self._embedding_model = embedding_model
             self._is_initialized = False
-            print("警告: ChromaDB未安装，使用降级版本。功能将受限。")
+            logger.info("警告: ChromaDB未安装，使用降级版本。功能将受限。")
 
         async def initialize(self) -> bool:
             self._is_initialized = False

@@ -2,6 +2,8 @@
 天问-AGI 天文数据分析模块
 AstroAnalyzer - 自动处理、分析和可视化天文数据
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import json
@@ -467,41 +469,41 @@ class AstroAnalyzer:
 # ============ 示例用法 ============
 
 def demo():
-    print("=" * 60)
-    print("天问-AGI 天文数据分析模块演示")
-    print("=" * 60)
+    logger.debug("=" * 60)
+    logger.info("天问-AGI 天文数据分析模块演示")
+    logger.debug("=" * 60)
 
     analyzer = AstroAnalyzer()
 
     # 1. 恒星亮度分析
-    print("\n⭐ 分析恒星亮度变化...")
+    logger.info("\n⭐ 分析恒星亮度变化...")
     magnitudes = [4.2, 4.1, 4.3, 4.0, 4.5, 4.2, 4.1, 4.3, 5.0, 4.2]
     timestamps = [f"2026-04-{28+i:02d} {h:02d}:00" for i, h in enumerate([20]*5 + [22]*5)]
     brightness_result = analyzer.analyze_star_brightness(magnitudes, timestamps)
-    print(f"   平均星等: {brightness_result['statistics']['mean_magnitude']}")
-    print(f"   变星判定: {brightness_result['variable_star_analysis']['is_variable_star']}")
-    print(f"   趋势: {brightness_result['trend']['direction']}")
+    logger.info(f"   平均星等: {brightness_result['statistics']['mean_magnitude']}")
+    logger.info(f"   变星判定: {brightness_result['variable_star_analysis']['is_variable_star']}")
+    logger.info(f"   趋势: {brightness_result['trend']['direction']}")
 
     # 2. 观测质量分析
-    print("\n🌤️ 分析观测质量...")
+    logger.info("\n🌤️ 分析观测质量...")
     seeing = [2.1, 1.8, 2.3, 2.0, 1.5, 2.2, 2.4, 1.9, 2.0, 2.1]
     cloud = [15, 20, 10, 25, 30, 18, 22, 12, 20, 15]
     quality_result = analyzer.analyze_observation_quality(seeing, cloud, timestamps)
-    print(f"   综合评分: {quality_result['overall_quality_score']}/100")
-    print(f"   质量等级: {quality_result['quality_level']}")
-    print(f"   建议: {quality_result['recommendation']}")
+    logger.info(f"   综合评分: {quality_result['overall_quality_score']}/100")
+    logger.info(f"   质量等级: {quality_result['quality_level']}")
+    logger.info(f"   建议: {quality_result['recommendation']}")
 
     # 3. 流星雨分析
-    print("\n☄️ 分析英仙座流星雨...")
+    logger.info("\n☄️ 分析英仙座流星雨...")
     hourly_rates = [5, 12, 25, 45, 68, 95, 82, 55, 30, 15, 8, 3]
     meteor_timestamps = [f"2026-08-12 {h:02d}:00" for h in range(20, 32, 1)[:12]]
     meteor_result = analyzer.analyze_meteor_shower(hourly_rates, meteor_timestamps, "2026-08-12 22:00")
-    print(f"   峰值强度: {meteor_result['peak_analysis']['peak_intensity']}")
-    print(f"   最高小时率: {meteor_result['peak_analysis']['max_hourly_rate']}")
-    print(f"   爆发检测: {'是' if meteor_result['outburst_detection']['detected'] else '否'}")
+    logger.info(f"   峰值强度: {meteor_result['peak_analysis']['peak_intensity']}")
+    logger.info(f"   最高小时率: {meteor_result['peak_analysis']['max_hourly_rate']}")
+    logger.info(f"   爆发检测: {'是' if meteor_result['outburst_detection']['detected'] else '否'}")
 
     # 4. 生成报告
-    print("\n" + "=" * 60)
+    logger.debug("\n" + "=" * 60)
     report = analyzer.generate_data_report(
         {
             "brightness_analysis": brightness_result,

@@ -2,6 +2,8 @@
 天问-AGI 全自动天文观测站
 AutoObservatory - 整合所有模块的全自动化工作流
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import json
@@ -139,7 +141,7 @@ class AutoObservatory:
             try:
                 handler(data)
             except Exception as e:
-                print(f"[EventHandler] Error: {e}")
+                logger.error(f"[EventHandler] Error: {e}")
 
     # ============ 生命周期管理 ============
 
@@ -149,10 +151,10 @@ class AutoObservatory:
         step.start_time = datetime.now().isoformat()
 
         try:
-            print("=" * 60)
-            print("🔭 天问-AGI 全自动天文观测站")
-            print("=" * 60)
-            print("\n初始化中...")
+            logger.debug("=" * 60)
+            logger.info("🔭 天问-AGI 全自动天文观测站")
+            logger.debug("=" * 60)
+            logger.info("\n初始化中...")
 
             # 初始化子模块
             self.collector = get_collector()
@@ -176,14 +178,14 @@ class AutoObservatory:
                 self.scheduler = ObservationScheduler(Location(**self.config["location"]))
                 self.analyzer = AstroAnalyzer()
             except ImportError as e:
-                print(f"   [警告] 部分模块导入失败: {e}")
+                logger.info(f"   [警告] 部分模块导入失败: {e}")
 
             step.status = "completed"
             step.end_time = datetime.now().isoformat()
             step.duration = (datetime.fromisoformat(step.end_time) -
                            datetime.fromisoformat(step.start_time)).total_seconds()
 
-            print(f"   ✅ 初始化完成")
+            logger.info(f"   ✅ 初始化完成")
 
             self._emit_event("step_complete", {"step": "initialize", "status": "success"})
             return True
@@ -192,7 +194,7 @@ class AutoObservatory:
             step.status = "failed"
             step.error = str(e)
             step.end_time = datetime.now().isoformat()
-            print(f"   ❌ 初始化失败: {e}")
+            logger.info(f"   ❌ 初始化失败: {e}")
             return False
 
     async def shutdown(self):
@@ -200,8 +202,8 @@ class AutoObservatory:
         if self.current_session and self.current_session.status == WorkflowStatus.OBSERVING:
             await self.stop_observation()
 
-        print("\n🔭 观测站已关闭")
-        print(f"   历史会话数: {len(self.session_history)}")
+        logger.info("\n🔭 观测站已关闭")
+        logger.info(f"   历史会话数: {len(self.session_history)}")
 
     # ============ 数据采集 ============
 
@@ -211,7 +213,7 @@ class AutoObservatory:
         step.start_time = datetime.now().isoformat()
         self._emit_event("step_start", {"step": "step_start"})
 
-        print("\n📡 采集天文数据...")
+        logger.info("\n📡 采集天文数据...")
 
         collected = {
             "timestamp": datetime.now().isoformat(),
@@ -222,7 +224,7 @@ class AutoObservatory:
         try:
             # 1. 获取NASA每日天文图片
             if self.config.get("auto_collect_nasa_data"):
-                print("   📷 获取NASA每日天文图片...")
+                logger.info("   📷 获取NASA每日天文图片...")
                 apod = await self.collector.get_apod()
                 if apod:
                     collected["data"]["apod"] = {
@@ -232,10 +234,10 @@ class AutoObservatory:
                         "date": apod.get("date")
                     }
                     collected["sources"].append("NASA APOD")
-                    print(f"      ✅ {apod.get('title', 'N/A')}")
+                    logger.info(f"      ✅ {apod.get('title', 'N/A')}")
 
             # 2. 获取即将发生的天文事件
-            print("   📅 获取天文事件...")
+            logger.info("   📅 获取天文事件...")
             events = await self.collector.get_upcoming_events(30)
             if events:
                 collected["data"]["events"] = [
@@ -243,19 +245,19 @@ class AutoObservatory:
                     for e in events[:10]
                 ]
                 collected["sources"].append("天文事件日历")
-                print(f"      ✅ 获取到 {len(events)} 个事件")
+                logger.info(f"      ✅ 获取到 {len(events)} 个事件")
 
             # 3. 获取近地小行星
-            print("   ☄️ 获取近地小行星...")
+            logger.info("   ☄️ 获取近地小行星...")
             asteroids = await self.collector.get_near_earth_asteroids(7)
             if asteroids:
                 collected["data"]["asteroids"] = asteroids[:10]
                 collected["sources"].append("Minor Planet Center")
-                print(f"      ✅ 获取到 {len(asteroids)} 个近地天体")
+                logger.info(f"      ✅ 获取到 {len(asteroids)} 个近地天体")
 
             # 4. 获取观测条件
             if self.config.get("auto_weather_check"):
-                print("   🌤️ 检查观测条件...")
+                logger.info("   🌤️ 检查观测条件...")
                 loc = self.config["location"]
                 conditions = await self.collector.get_observation_conditions(
                     loc["lat"], loc["lon"]
@@ -269,7 +271,7 @@ class AutoObservatory:
                         "seeing": conditions.seeing
                     }
                     collected["sources"].append("天气API")
-                    print(f"      ✅ 云量{conditions.cloud_cover}%, 湿度{conditions.humidity}%")
+                    logger.info(f"      ✅ 云量{conditions.cloud_cover}%, 湿度{conditions.humidity}%")
 
             step.status = "completed"
             step.end_time = datetime.now().isoformat()
@@ -277,13 +279,13 @@ class AutoObservatory:
                            datetime.fromisoformat(step.start_time)).total_seconds()
             step.result = collected
 
-            print(f"   ✅ 数据采集完成，共 {len(collected['sources'])} 个数据源")
+            logger.info(f"   ✅ 数据采集完成，共 {len(collected['sources'])} 个数据源")
 
         except Exception as e:
             step.status = "failed"
             step.error = str(e)
             step.end_time = datetime.now().isoformat()
-            print(f"   ❌ 数据采集失败: {e}")
+            logger.info(f"   ❌ 数据采集失败: {e}")
 
         self._emit_event("step_complete", {"step": "data_collection", "status": step.status})
         return collected
@@ -295,7 +297,7 @@ class AutoObservatory:
         step = WorkflowStep(name="目标分析", status="running")
         step.start_time = datetime.now().isoformat()
 
-        print("\n🔍 分析观测目标...")
+        logger.info("\n🔍 分析观测目标...")
 
         analysis = {
             "targets": [],
@@ -304,7 +306,7 @@ class AutoObservatory:
 
         try:
             for target_name in targets[:10]:  # 最多分析10个
-                print(f"   📍 分析 {target_name}...")
+                logger.info(f"   📍 分析 {target_name}...")
 
                 # 识别天体
                 result = await self.recognizer.recognize_from_name(target_name)
@@ -322,9 +324,9 @@ class AutoObservatory:
                         "is_visible_now": False  # 稍后计算
                     }
                     analysis["targets"].append(target_info)
-                    print(f"      ✅ 类型: {result.object_type}, 星等: {target_info['magnitude']}")
+                    logger.info(f"      ✅ 类型: {result.object_type}, 星等: {target_info['magnitude']}")
                 else:
-                    print(f"      ⚠️ 未识别")
+                    logger.info(f"      ⚠️ 未识别")
 
             # 生成推荐
             if analysis["targets"]:
@@ -342,7 +344,7 @@ class AutoObservatory:
         except Exception as e:
             step.status = "failed"
             step.error = str(e)
-            print(f"   ❌ 目标分析失败: {e}")
+            logger.info(f"   ❌ 目标分析失败: {e}")
 
         return analysis
 
@@ -353,7 +355,7 @@ class AutoObservatory:
         step = WorkflowStep(name="调度规划", status="running")
         step.start_time = datetime.now().isoformat()
 
-        print("\n📋 创建观测计划...")
+        logger.info("\n📋 创建观测计划...")
 
         date = date or datetime.now()
 
@@ -367,14 +369,14 @@ class AutoObservatory:
                 "windows_count": len(schedule.windows)
             }
 
-            print(f"   ✅ 计划创建成功")
-            print(f"      计划ID: {schedule.id}")
-            print(f"      推荐目标: {len(schedule.targets)}个")
+            logger.info(f"   ✅ 计划创建成功")
+            logger.info(f"      计划ID: {schedule.id}")
+            logger.info(f"      推荐目标: {len(schedule.targets)}个")
 
             if schedule.targets:
-                print("      推荐目标列表:")
+                logger.info("      推荐目标列表:")
                 for t in schedule.targets[:3]:
-                    print(f"        - {t['target']} @ {t['time']} (评分:{t['score']:.0f})")
+                    logger.info(f"        - {t['target']} @ {t['time']} (评分:{t['score']:.0f})")
 
             step.status = "completed"
             step.result = schedule_dict
@@ -384,7 +386,7 @@ class AutoObservatory:
         except Exception as e:
             step.status = "failed"
             step.error = str(e)
-            print(f"   ❌ 调度规划失败: {e}")
+            logger.info(f"   ❌ 调度规划失败: {e}")
             return {}
 
     # ============ 执行观测 ============
@@ -404,9 +406,9 @@ class AutoObservatory:
         )
 
         self._emit_event("observation_started", {"session_id": session_id})
-        print("\n" + "=" * 60)
-        print(f"🔭 开始观测会话: {session_id}")
-        print("=" * 60)
+        logger.debug("\n" + "=" * 60)
+        logger.info(f"🔭 开始观测会话: {session_id}")
+        logger.debug("=" * 60)
 
         # 完整工作流
         try:
@@ -422,7 +424,7 @@ class AutoObservatory:
             self.current_session.schedule = schedule
 
             # 4. 数据分析
-            print("\n📊 执行综合数据分析...")
+            logger.info("\n📊 执行综合数据分析...")
             if self.current_session.collected_data.get("weather"):
                 weather_data = self.current_session.collected_data["weather"]
                 seeing_data = [weather_data.get("seeing", 2.0)]
@@ -433,7 +435,7 @@ class AutoObservatory:
                     [datetime.now().isoformat()]
                 )
                 self.current_session.analysis_results["quality"] = quality_analysis
-                print(f"   观测质量: {quality_analysis['overall_quality_score']}/100")
+                logger.info(f"   观测质量: {quality_analysis['overall_quality_score']}/100")
 
             # 5. 生成报告
             report = await self.generate_report()
@@ -442,13 +444,13 @@ class AutoObservatory:
             self.current_session.status = WorkflowStatus.COMPLETED
             self.current_session.end_time = datetime.now()
 
-            print("\n" + "=" * 60)
-            print("✅ 观测会话完成")
-            print("=" * 60)
+            logger.debug("\n" + "=" * 60)
+            logger.info("✅ 观测会话完成")
+            logger.debug("=" * 60)
 
         except Exception as e:
             self.current_session.status = WorkflowStatus.FAILED
-            print(f"\n❌ 观测失败: {e}")
+            logger.info(f"\n❌ 观测失败: {e}")
             self.current_session.report = f"观测失败: {str(e)}"
 
         # 保存到历史
@@ -461,7 +463,7 @@ class AutoObservatory:
         if self.current_session:
             self.current_session.status = WorkflowStatus.PAUSED
             self.current_session.end_time = datetime.now()
-            print(f"\n⏸️ 观测已暂停: {self.current_session.id}")
+            logger.info(f"\n⏸️ 观测已暂停: {self.current_session.id}")
 
     # ============ 报告生成 ============
 
@@ -571,11 +573,11 @@ async def quick_observation(targets: List[str] = None):
     """快速观测 - 一行命令执行完整工作流"""
     observatory = AutoObservatory()
 
-    print("🚀 启动快速观测...")
+    logger.info("🚀 启动快速观测...")
 
     # 初始化
     if not await observatory.initialize():
-        print("❌ 初始化失败")
+        logger.info("❌ 初始化失败")
         return
 
     # 开始观测
@@ -593,9 +595,9 @@ async def quick_observation(targets: List[str] = None):
 
 async def demo():
     """演示全自动观测站"""
-    print("=" * 70)
-    print("🌟 天问-AGI 全自动天文观测站 - 完整演示")
-    print("=" * 70)
+    logger.debug("=" * 70)
+    logger.info("🌟 天问-AGI 全自动天文观测站 - 完整演示")
+    logger.debug("=" * 70)
 
     # 创建观测站实例
     observatory = AutoObservatory({
@@ -619,7 +621,7 @@ async def demo():
     # 初始化
     init_success = await observatory.initialize()
     if not init_success:
-        print("❌ 初始化失败，退出")
+        logger.info("❌ 初始化失败，退出")
         return
 
     # 执行完整观测流程
@@ -632,9 +634,9 @@ async def demo():
     # 关闭
     await observatory.shutdown()
 
-    print("\n📊 会话历史:")
+    logger.info("\n📊 会话历史:")
     for s in observatory.get_all_sessions():
-        print(f"  - {s['id']}: {s['status']} @ {s['start_time'][:10]}")
+        logger.info(f"  - {s['id']}: {s['status']} @ {s['start_time'][:10]}")
 
 if __name__ == "__main__":
     asyncio.run(demo())

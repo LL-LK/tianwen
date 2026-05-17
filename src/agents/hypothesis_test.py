@@ -17,6 +17,7 @@ v2.0 新增功能 (Issues #17, #20):
 
 import asyncio
 import json
+import logging
 import uuid
 import re
 import numpy as np
@@ -26,6 +27,8 @@ from enum import Enum
 from typing import Dict, List, Any, Optional, Tuple
 from scipy import stats
 from scipy.stats import bayes_mvs
+
+logger = logging.getLogger(__name__)
 
 # 导入统一数据模型
 from data_models import TestResult as UnifiedTestResult, Hypothesis
@@ -1170,7 +1173,7 @@ async def demo():
     literature_evidence = []
 
     try:
-        from observation.sky_chart import SkyViewClient
+        from observation.sky_chart_view import SkyViewClient
         client = SkyViewClient()
         result = await client.query("M42", survey="DSS")
         if result and result.get("image_data"):
@@ -1181,10 +1184,10 @@ async def demo():
                 "timestamp": datetime.now().isoformat()
             })
     except Exception as e:
-        print(f"获取观测数据失败: {e}")
+        logger.error(f"获取观测数据失败: {e}")
 
     try:
-        from agents.literature import LiteratureResearcher
+        from agents.literature_agent import LiteratureResearcher
         researcher = LiteratureResearcher()
         lit_result = await researcher.research("M42 Orion Nebula", max_papers=5)
         if lit_result and hasattr(lit_result, 'papers'):
@@ -1194,14 +1197,14 @@ async def demo():
                 for p in lit_result.papers
             ]
     except Exception as e:
-        print(f"获取文献证据失败: {e}")
+        logger.error(f"获取文献证据失败: {e}")
 
     report = await tester.test_hypothesis(hypo, observation_data, literature_evidence)
 
-    print(f"验证结果: {report.overall_result.value}")
-    print(f"置信度变化: {report.confidence_change:+.0%}")
-    print(f"建议: {report.recommendation}")
-    print("\n" + tester.generate_report([report]))
+    logger.info(f"验证结果: {report.overall_result.value}")
+    logger.info(f"置信度变化: {report.confidence_change:+.0%}")
+    logger.info(f"建议: {report.recommendation}")
+    logger.info("\n" + tester.generate_report([report]))
 
 
 if __name__ == "__main__":

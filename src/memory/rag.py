@@ -12,6 +12,8 @@ ChromaDB RAG增强模块 - 用于文献调研模块的能力提升
 Author: 天问-AGI
 Date: 2026/05/01
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import os
 import asyncio
@@ -129,7 +131,7 @@ class ResearchOutput:
                 json.dump(self.to_dict(), f, ensure_ascii=False, indent=2)
             return True
         except Exception as e:
-            print(f"保存研究结果失败: {e}")
+            logger.info(f"保存研究结果失败: {e}")
             return False
 
 
@@ -147,7 +149,7 @@ class BackupManager:
     def create_backup(self, backup_name: Optional[str] = None) -> Optional[str]:
         """创建备份"""
         if not os.path.exists(self.persist_directory):
-            print("错误: 持久化目录不存在，无法备份")
+            logger.info("错误: 持久化目录不存在，无法备份")
             return None
 
         if backup_name is None:
@@ -164,10 +166,10 @@ class BackupManager:
                 shutil.rmtree(backup_path)
             shutil.copytree(self.persist_directory, backup_path)
 
-            print(f"备份创建成功: {backup_path}")
+            logger.info(f"备份创建成功: {backup_path}")
             return backup_path
         except Exception as e:
-            print(f"备份创建失败: {e}")
+            logger.info(f"备份创建失败: {e}")
             return None
 
     def restore_backup(self, backup_name: str) -> bool:
@@ -175,7 +177,7 @@ class BackupManager:
         backup_path = os.path.join(self.backup_dir, backup_name)
 
         if not os.path.exists(backup_path):
-            print(f"错误: 备份不存在: {backup_path}")
+            logger.info(f"错误: 备份不存在: {backup_path}")
             return False
 
         try:
@@ -192,10 +194,10 @@ class BackupManager:
             shutil.rmtree(self.persist_directory)
             shutil.copytree(backup_path, self.persist_directory)
 
-            print(f"备份恢复成功: {backup_path}")
+            logger.info(f"备份恢复成功: {backup_path}")
             return True
         except Exception as e:
-            print(f"备份恢复失败: {e}")
+            logger.info(f"备份恢复失败: {e}")
             return False
 
     def list_backups(self) -> List[str]:
@@ -214,7 +216,7 @@ class BackupManager:
                 return True
             return False
         except Exception as e:
-            print(f"删除备份失败: {e}")
+            logger.info(f"删除备份失败: {e}")
             return False
 
 
@@ -243,7 +245,7 @@ class IncrementalIndexer:
             with open(self.index_file, 'w', encoding='utf-8') as f:
                 json.dump({'indexed_ids': list(self.indexed_ids)}, f)
         except Exception as e:
-            print(f"保存索引状态失败: {e}")
+            logger.info(f"保存索引状态失败: {e}")
 
     def mark_indexed(self, doc_ids: List[str]):
         """标记文档已索引"""
@@ -311,8 +313,8 @@ class ChromaVectorStore:
             bool: 初始化是否成功
         """
         if not HAS_CHROMADB:
-            print("ChromaDB未安装，RAG功能受限")
-            print("请运行: pip install chromadb")
+            logger.info("ChromaDB未安装，RAG功能受限")
+            logger.info("请运行: pip install chromadb")
             return False
 
         try:
@@ -327,11 +329,11 @@ class ChromaVectorStore:
 
             # 初始化嵌入模型
             if HAS_SENTENCE_TRANSFORMERS:
-                print(f"加载嵌入模型: {self.embedding_model_name}")
+                logger.info(f"加载嵌入模型: {self.embedding_model_name}")
                 self.embedding_function = SentenceTransformer(self.embedding_model_name)
-                print("嵌入模型加载成功")
+                logger.info("嵌入模型加载成功")
             else:
-                print("警告: sentence-transformers未安装，将使用随机向量(仅用于测试)")
+                logger.info("警告: sentence-transformers未安装，将使用随机向量(仅用于测试)")
 
             # 创建或获取集合
             self.collection = self.client.get_or_create_collection(
@@ -340,11 +342,11 @@ class ChromaVectorStore:
             )
 
             self._is_initialized = True
-            print(f"向量存储初始化成功，集合: literature_knowledge")
+            logger.info(f"向量存储初始化成功，集合: literature_knowledge")
             return True
 
         except Exception as e:
-            print(f"向量存储初始化失败: {e}")
+            logger.info(f"向量存储初始化失败: {e}")
             return False
 
     async def add_documents(
@@ -367,11 +369,11 @@ class ChromaVectorStore:
             bool: 添加是否成功
         """
         if not self.collection:
-            print("错误: 向量存储未初始化")
+            logger.info("错误: 向量存储未初始化")
             return False
 
         if len(documents) != len(metadatas) or len(documents) != len(ids):
-            print("错误: 文档数量、元数据和ID数量不匹配")
+            logger.info("错误: 文档数量、元数据和ID数量不匹配")
             return False
 
         try:
@@ -380,13 +382,13 @@ class ChromaVectorStore:
                 existing_ids = set(self.collection.get(ids=ids)['ids'])
                 new_indices = [i for i, id in enumerate(ids) if id not in existing_ids]
                 if len(new_indices) < len(ids):
-                    print(f"跳过 {len(ids) - len(new_indices)} 个已存在的文档")
+                    logger.info(f"跳过 {len(ids) - len(new_indices)} 个已存在的文档")
                     documents = [documents[i] for i in new_indices]
                     metadatas = [metadatas[i] for i in new_indices]
                     ids = [ids[i] for i in new_indices]
 
             if not documents:
-                print("所有文档已存在，无需添加")
+                logger.info("所有文档已存在，无需添加")
                 return True
 
             # 生成嵌入向量
@@ -394,7 +396,7 @@ class ChromaVectorStore:
                 embeddings = self.embedding_function.encode(documents).tolist()
             else:
                 # 如果没有嵌入模型，使用随机向量（仅用于测试）
-                print("警告: 使用随机向量替代真实嵌入")
+                logger.info("警告: 使用随机向量替代真实嵌入")
                 embeddings = [[0.0] * DEFAULT_EMBEDDING_DIM for _ in documents]
 
             # 添加到集合
@@ -405,11 +407,11 @@ class ChromaVectorStore:
                 embeddings=embeddings
             )
 
-            print(f"成功添加 {len(documents)} 个文档到向量存储")
+            logger.info(f"成功添加 {len(documents)} 个文档到向量存储")
             return True
 
         except Exception as e:
-            print(f"添加文档失败: {e}")
+            logger.info(f"添加文档失败: {e}")
             return False
 
     async def similarity_search(
@@ -430,7 +432,7 @@ class ChromaVectorStore:
             List[Dict]: 搜索结果列表
         """
         if not self.collection:
-            print("错误: 向量存储未初始化")
+            logger.info("错误: 向量存储未初始化")
             return []
 
         try:
@@ -439,7 +441,7 @@ class ChromaVectorStore:
                 query_embedding = self.embedding_function.encode([query]).tolist()[0]
             else:
                 # 如果没有嵌入模型，使用零向量
-                print("警告: 使用零向量进行搜索")
+                logger.info("警告: 使用零向量进行搜索")
                 query_embedding = [0.0] * DEFAULT_EMBEDDING_DIM
 
             # 执行查询
@@ -466,7 +468,7 @@ class ChromaVectorStore:
             return formatted_results
 
         except Exception as e:
-            print(f"相似性搜索失败: {e}")
+            logger.info(f"相似性搜索失败: {e}")
             return []
 
     async def rerank_results(
@@ -507,15 +509,15 @@ class ChromaVectorStore:
             bool: 删除是否成功
         """
         if not self.collection:
-            print("错误: 向量存储未初始化")
+            logger.info("错误: 向量存储未初始化")
             return False
 
         try:
             self.collection.delete(ids=ids)
-            print(f"成功删除 {len(ids)} 个文档")
+            logger.info(f"成功删除 {len(ids)} 个文档")
             return True
         except Exception as e:
-            print(f"删除文档失败: {e}")
+            logger.info(f"删除文档失败: {e}")
             return False
 
     async def get_collection_stats(self) -> Dict:
@@ -805,7 +807,7 @@ class DocumentLoader:
             }
 
         except Exception as e:
-            print(f"加载JSON文件失败: {e}")
+            logger.info(f"加载JSON文件失败: {e}")
             return {"documents": [], "ids": [], "metadatas": []}
 
     @staticmethod
@@ -841,7 +843,7 @@ class DocumentLoader:
             }
 
         except Exception as e:
-            print(f"加载TXT文件失败: {e}")
+            logger.info(f"加载TXT文件失败: {e}")
             return {"documents": [], "ids": [], "metadatas": []}
 
 
@@ -852,29 +854,29 @@ class DocumentLoader:
 async def run_tests():
     """运行测试以验证功能"""
     print("=" * 60)
-    print("ChromaDB RAG增强模块测试")
+    logger.info("ChromaDB RAG增强模块测试")
     print("=" * 60)
 
     # 测试1: 依赖检查
-    print("\n[测试1] 依赖项检查")
-    print(f"  ChromaDB: {'已安装' if HAS_CHROMADB else '未安装'}")
-    print(f"  sentence-transformers: {'已安装' if HAS_SENTENCE_TRANSFORMERS else '未安装'}")
+    logger.info("\n[测试1] 依赖项检查")
+    logger.info(f"  ChromaDB: {'已安装' if HAS_CHROMADB else '未安装'}")
+    logger.info(f"  sentence-transformers: {'已安装' if HAS_SENTENCE_TRANSFORMERS else '未安装'}")
 
     # 测试2: 向量存储初始化
-    print("\n[测试2] 向量存储初始化")
+    logger.info("\n[测试2] 向量存储初始化")
     vector_store = ChromaVectorStore(
         persist_directory="runtime/data/chroma_db",
         embedding_model=DEFAULT_EMBEDDING_MODEL
     )
 
     init_success = await vector_store.initialize()
-    print(f"  初始化结果: {'成功' if init_success else '失败'}")
+    logger.info(f"  初始化结果: {'成功' if init_success else '失败'}")
 
     if not init_success:
-        print("  警告: 向量存储初始化失败，某些功能将受限")
+        logger.info("  警告: 向量存储初始化失败，某些功能将受限")
 
     # 测试3: 添加文档
-    print("\n[测试3] 添加文档测试")
+    logger.info("\n[测试3] 添加文档测试")
     test_documents = [
         "深度学习在天文图像处理中的应用研究",
         "基于卷积神经网络的星系形态分类方法",
@@ -899,48 +901,48 @@ async def run_tests():
             test_metadatas,
             test_ids
         )
-        print(f"  添加结果: {'成功' if add_success else '失败'}")
+        logger.info(f"  添加结果: {'成功' if add_success else '失败'}")
     else:
-        print("  跳过: 向量存储未初始化")
+        logger.info("  跳过: 向量存储未初始化")
 
     # 测试4: 相似性搜索
-    print("\n[测试4] 相似性搜索测试")
+    logger.info("\n[测试4] 相似性搜索测试")
     if vector_store.is_initialized:
         query = "深度学习在天文中的应用"
         search_results = await vector_store.similarity_search(query, n_results=3)
-        print(f"  查询: {query}")
-        print(f"  找到 {len(search_results)} 个相关文档:")
+        logger.info(f"  查询: {query}")
+        logger.info(f"  找到 {len(search_results)} 个相关文档:")
         for i, result in enumerate(search_results, 1):
-            print(f"    {i}. [距离: {result['distance']:.4f}] {result['document'][:50]}...")
+            logger.info(f"    {i}. [距离: {result['distance']:.4f}] {result['document'][:50]}...")
     else:
-        print("  跳过: 向量存储未初始化")
+        logger.info("  跳过: 向量存储未初始化")
 
     # 测试5: RAG增强的文献调研
-    print("\n[测试5] RAG增强的文献调研测试")
+    logger.info("\n[测试5] RAG增强的文献调研测试")
     researcher = RAGEnhancedLiteratureResearcher(vector_store)
     research_result = await researcher.research_with_rag("深度学习天文学")
-    print(f"  主题: {research_result['topic']}")
-    print(f"  相关文档数: {len(research_result['relevant_documents'])}")
-    print(f"  研究空白: {research_result['research_gaps']}")
+    logger.info(f"  主题: {research_result['topic']}")
+    logger.info(f"  相关文档数: {len(research_result['relevant_documents'])}")
+    logger.info(f"  研究空白: {research_result['research_gaps']}")
 
     # 测试6: 集合统计
-    print("\n[测试6] 集合统计信息")
+    logger.info("\n[测试6] 集合统计信息")
     if vector_store.is_initialized:
         stats = await vector_store.get_collection_stats()
-        print(f"  集合名称: {stats.get('collection_name', 'unknown')}")
-        print(f"  文档数量: {stats.get('document_count', 0)}")
-        print(f"  嵌入模型: {stats.get('embedding_model', 'unknown')}")
+        logger.info(f"  集合名称: {stats.get('collection_name', 'unknown')}")
+        logger.info(f"  文档数量: {stats.get('document_count', 0)}")
+        logger.info(f"  嵌入模型: {stats.get('embedding_model', 'unknown')}")
 
     # 测试7: 文档加载器
-    print("\n[测试7] 文档加载器测试")
+    logger.info("\n[测试7] 文档加载器测试")
     loader_test_result = await DocumentLoader.load_from_txt(
         "runtime/data/sample_document.txt"
     )
-    print(f"  JSON加载测试: 完成(需要在实际文件上验证)")
-    print(f"  TXT加载测试: 完成(需要在实际文件上验证)")
+    logger.info(f"  JSON加载测试: 完成(需要在实际文件上验证)")
+    logger.info(f"  TXT加载测试: 完成(需要在实际文件上验证)")
 
-    print("\n" + "=" * 60)
-    print("测试完成")
+    logger.debug("\n" + "=" * 60)
+    logger.info("测试完成")
     print("=" * 60)
 
 
@@ -958,7 +960,7 @@ class BackupManager:
     def create_backup(self, backup_name: Optional[str] = None) -> Optional[str]:
         """创建备份"""
         if not os.path.exists(self.persist_directory):
-            print("错误: 持久化目录不存在，无法备份")
+            logger.info("错误: 持久化目录不存在，无法备份")
             return None
 
         if backup_name is None:
@@ -975,10 +977,10 @@ class BackupManager:
                 shutil.rmtree(backup_path)
             shutil.copytree(self.persist_directory, backup_path)
 
-            print(f"备份创建成功: {backup_path}")
+            logger.info(f"备份创建成功: {backup_path}")
             return backup_path
         except Exception as e:
-            print(f"备份创建失败: {e}")
+            logger.info(f"备份创建失败: {e}")
             return None
 
     def restore_backup(self, backup_name: str) -> bool:
@@ -986,7 +988,7 @@ class BackupManager:
         backup_path = os.path.join(self.backup_dir, backup_name)
 
         if not os.path.exists(backup_path):
-            print(f"错误: 备份不存在: {backup_path}")
+            logger.info(f"错误: 备份不存在: {backup_path}")
             return False
 
         try:
@@ -1003,10 +1005,10 @@ class BackupManager:
             shutil.rmtree(self.persist_directory)
             shutil.copytree(backup_path, self.persist_directory)
 
-            print(f"备份恢复成功: {backup_path}")
+            logger.info(f"备份恢复成功: {backup_path}")
             return True
         except Exception as e:
-            print(f"备份恢复失败: {e}")
+            logger.info(f"备份恢复失败: {e}")
             return False
 
     def list_backups(self) -> List[str]:
@@ -1025,7 +1027,7 @@ class BackupManager:
                 return True
             return False
         except Exception as e:
-            print(f"删除备份失败: {e}")
+            logger.info(f"删除备份失败: {e}")
             return False
 
 
@@ -1054,7 +1056,7 @@ class IncrementalIndexer:
             with open(self.index_file, 'w', encoding='utf-8') as f:
                 json.dump({'indexed_ids': list(self.indexed_ids)}, f)
         except Exception as e:
-            print(f"保存索引状态失败: {e}")
+            logger.info(f"保存索引状态失败: {e}")
 
     def mark_indexed(self, doc_ids: List[str]):
         """标记文档已索引"""

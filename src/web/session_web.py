@@ -783,37 +783,37 @@ def create_session_store(
 
 if __name__ == "__main__":
     async def test():
-        print("Testing RedisSessionStore...")
+        logger.info("Testing RedisSessionStore...")
 
         # 创建存储实例
         store = create_session_store()
 
-        print(f"Connected: {store.is_connected}")
-        print(f"Backend: {store.get_stats()}")
+        logger.info(f"Connected: {store.is_connected}")
+        logger.info(f"Backend: {store.get_stats()}")
 
         # 创建Session
         session = store.create(
             user_id="test_user",
             initial_data={"name": "Test User", "role": "admin"}
         )
-        print(f"Created session: {session.session_id}")
+        logger.info(f"Created session: {session.session_id}")
 
         # 获取Session
         loaded = store.get(session.session_id)
-        print(f"Loaded session: {loaded.data if loaded else None}")
+        logger.info(f"Loaded session: {loaded.data if loaded else None}")
 
         # 更新Session
         store.update(session.session_id, {"last_login": datetime.now().isoformat()})
         updated = store.get(session.session_id)
-        print(f"Updated data: {updated.data if updated else None}")
+        logger.info(f"Updated data: {updated.data if updated else None}")
 
         # 删除Session
         store.delete(session.session_id)
-        print(f"Exists after delete: {store.exists(session.session_id)}")
+        logger.info(f"Exists after delete: {store.exists(session.session_id)}")
 
         # 清理过期
         cleaned = store.cleanup_expired()
-        print(f"Cleaned expired: {cleaned}")
+        logger.info(f"Cleaned expired: {cleaned}")
 
     import asyncio
     asyncio.run(test())

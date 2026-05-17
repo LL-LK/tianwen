@@ -14,6 +14,8 @@ v2.0 新增功能 (Issues #17, #20):
 - 对比观测数据和文献证据
 - 更新假说状态（证实/证伪/修订）
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import json
@@ -1179,7 +1181,7 @@ async def demo():
                 "timestamp": datetime.now().isoformat()
             })
     except Exception as e:
-        print(f"获取观测数据失败: {e}")
+        logger.info(f"获取观测数据失败: {e}")
 
     try:
         from src.agents.literature import LiteratureResearcher
@@ -1192,13 +1194,13 @@ async def demo():
                 for p in lit_result.papers
             ]
     except Exception as e:
-        print(f"获取文献证据失败: {e}")
+        logger.info(f"获取文献证据失败: {e}")
 
     report = await tester.test_hypothesis(hypo, observation_data, literature_evidence)
 
-    print(f"验证结果: {report.overall_result.value}")
-    print(f"置信度变化: {report.confidence_change:+.0%}")
-    print(f"建议: {report.recommendation}")
+    logger.info(f"验证结果: {report.overall_result.value}")
+    logger.info(f"置信度变化: {report.confidence_change:+.0%}")
+    logger.info(f"建议: {report.recommendation}")
     print("\n" + tester.generate_report([report]))
 
 

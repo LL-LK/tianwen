@@ -21,6 +21,8 @@ astrometry.net 求解器封装 - FITS图像 Plate-Solving
   solver = AstrometrySolver()
   result = solver.solve("/path/to/image.fits")
 """
+import logging
+logger = logging.getLogger(__name__)
 import os
 import subprocess
 import tempfile
@@ -85,13 +87,13 @@ class AstrometrySolver:
             )
             if result.returncode == 0:
                 version = result.stdout.strip().split('\n')[0] if result.stdout else "unknown"
-                print(f"astrometry-engine 可用: {version}")
+                logger.info(f"astrometry-engine 可用: {version}")
                 return True
             return False
         except FileNotFoundError:
-            print("[INSTALL REQUIRED] astrometry-engine 未找到")
-            print("  安装命令: sudo apt-get install astrometry-net")
-            print("  或访问: https://github.com/dstndstn/astrometry.net")
+            logger.info("[INSTALL REQUIRED] astrometry-engine 未找到")
+            logger.info("  安装命令: sudo apt-get install astrometry-net")
+            logger.info("  或访问: https://github.com/dstndstn/astrometry.net")
             return False
         except (subprocess.SubprocessError):
             return False
@@ -131,7 +133,7 @@ class AstrometrySolver:
             求解结果字典，包含 WCS 参数，或 None
         """
         if not self.available:
-            print("astrometry-engine 不可用，使用 astropy.wcs 模拟")
+            logger.info("astrometry-engine 不可用，使用 astropy.wcs 模拟")
             return self._mock_solve(image_path)
         
         # 构建求解命令
@@ -178,14 +180,14 @@ class AstrometrySolver:
             if result.returncode == 0:
                 return self._parse_wcs_result()
             else:
-                print(f"求解失败: {result.stderr}")
+                logger.info(f"求解失败: {result.stderr}")
                 return self._mock_solve(image_path)
                 
         except subprocess.TimeoutExpired:
-            print(f"求解超时 ({timeout}s)")
+            logger.info(f"求解超时 ({timeout}s)")
             return None
         except Exception as e:
-            print(f"求解异常: {e}")
+            logger.info(f"求解异常: {e}")
             return None
     
     def _parse_wcs_result(self) -> Optional[Dict[str, Any]]:
@@ -221,7 +223,7 @@ class AstrometrySolver:
     def _mock_solve(self, image_path: str) -> Optional[Dict[str, Any]]:
         """当astrometry不可用时，使用astropy模拟WCS"""
         if not HAS_ASTROPY:
-            print("astropy也未安装，无法进行WCS求解")
+            logger.info("astropy也未安装，无法进行WCS求解")
             return None
             
         try:
@@ -238,10 +240,10 @@ class AstrometrySolver:
                     "wcs": wcs
                 }
             except Exception:
-                print("无法从FITS头读取WCS，且astrometry.net不可用。请安装 astrometry.net 进行板解。")
+                logger.info("无法从FITS头读取WCS，且astrometry.net不可用。请安装 astrometry.net 进行板解。")
                 return None
         except Exception as e:
-            print(f"FITS读取失败: {e}")
+            logger.info(f"FITS读取失败: {e}")
             return None
     
     def solve_from_image_data(
@@ -278,5 +280,5 @@ class AstrometrySolver:
 
 if __name__ == "__main__":
     solver = AstrometrySolver()
-    print(f"astrometry-engine 可用: {solver.available}")
-    print(f"星表索引: {len(solver._get_index_files())} 个")
+    logger.info(f"astrometry-engine 可用: {solver.available}")
+    logger.info(f"星表索引: {len(solver._get_index_files())} 个")

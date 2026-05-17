@@ -18,6 +18,9 @@ from typing import List, Dict, Optional, Any, Callable
 from enum import Enum
 import uuid
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class AgentType(Enum):
@@ -283,32 +286,32 @@ class TriAgentCoordinator:
 
 async def run_tri_agent_simulation():
     """运行三Agent模拟"""
-    print("=" * 60)
-    print("Tianwen-AGI Tri-Agent System Simulation")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("Tianwen-AGI Tri-Agent System Simulation")
+    logger.info("=" * 60)
 
     coordinator = TriAgentCoordinator()
 
-    print("\n[1] Submit research task to M1...")
+    logger.info("[1] Submit research task to M1...")
     task1 = await coordinator.submit_task("Kepler-186f exoplanet research", AgentType.DATA_MINING)
-    print(f"  Task submitted: {task1.id}")
+    logger.info(f"Task submitted: {task1.id}")
 
     await asyncio.sleep(0.1)
 
-    print("\n[2] System status:")
+    logger.info("[2] System status:")
     status = coordinator.get_system_status()
     for agent_type, agent_status in status["agents"].items():
-        print(f"  {agent_type}: {agent_status['task_count']} tasks")
+        logger.info(f"{agent_type}: {agent_status['task_count']} tasks")
 
-    print("\n[3] M1 data mining complete, submit to M2...")
+    logger.info("[3] M1 data mining complete, submit to M2...")
 
-    print("\n" + "=" * 60)
-    print("Simulation complete")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("Simulation complete")
+    logger.info("=" * 60)
 
     return coordinator.get_system_status()
 
 
 if __name__ == "__main__":
     result = asyncio.run(run_tri_agent_simulation())
-    print(f"\nFinal status: {result}")
+    logger.info(f"Final status: {result}")

@@ -23,6 +23,8 @@ ObservatoryLinker - 将假说验证结果转化为观测计划
     linker.set_real_mode(real_mode=True)
     result = await linker.execute_observation(request)
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import uuid
@@ -521,7 +523,7 @@ query id {target_name}
                 return self._parse_response(response.text, target_name)
 
         except Exception as e:
-            print(f"[SIMBAD] Query failed for {target_name}: {e}")
+            logger.info(f"[SIMBAD] Query failed for {target_name}: {e}")
 
         return None
 
@@ -562,7 +564,7 @@ query coo {ra} {dec} -unit ra deg -unit dec deg -radius {radius}s
                 return self._parse_multi_response(response.text)
 
         except Exception as e:
-            print(f"[SIMBAD] Coordinate query failed: {e}")
+            logger.info(f"[SIMBAD] Coordinate query failed: {e}")
 
         return []
 
@@ -688,7 +690,7 @@ class MpcClient:
                 return self._parse_sbdb_response(data)
 
         except Exception as e:
-            print(f"[MPC] Query failed for {target_name}: {e}")
+            logger.info(f"[MPC] Query failed for {target_name}: {e}")
 
         return None
 
@@ -730,7 +732,7 @@ class MpcClient:
                 return self._parse_neo_list(data)
 
         except Exception as e:
-            print(f"[MPC] NEO query failed: {e}")
+            logger.info(f"[MPC] NEO query failed: {e}")
 
         return []
 
@@ -761,7 +763,7 @@ class MpcClient:
                 return data.get("orbit", {})
 
         except Exception as e:
-            print(f"[MPC] Orbital elements query failed: {e}")
+            logger.info(f"[MPC] Orbital elements query failed: {e}")
 
         return None
 
@@ -785,7 +787,7 @@ class MpcClient:
             )
 
         except (KeyError, TypeError) as e:
-            print(f"[MPC] Parse error: {e}")
+            logger.error(f"[MPC] Parse error: {e}")
             return None
 
     def _parse_neo_list(self, data: Dict) -> List[MpcResult]:
@@ -1071,14 +1073,14 @@ class ObservatoryLinker:
         # 获取假说和验证状态
         hypothesis = await self._get_hypothesis(hypothesis_id)
         if not hypothesis:
-            print(f"[Linker] Hypothesis {hypothesis_id} not found")
+            logger.info(f"[Linker] Hypothesis {hypothesis_id} not found")
             return None
 
         verification_state = await self._get_verification_state(hypothesis_id)
 
         # 如果假说已确认且置信度高，可能不需要观测
         if verification_state == VerificationState.CONFIRMED and hypothesis.get("confidence", 0) > 0.9:
-            print(f"[Linker] Hypothesis {hypothesis_id} already confirmed with high confidence")
+            logger.info(f"[Linker] Hypothesis {hypothesis_id} already confirmed with high confidence")
             return None
 
         # 生成观测请求
@@ -1199,7 +1201,7 @@ class ObservatoryLinker:
                     if hypotheses:
                         return hypotheses[0]
             except Exception as e:
-                print(f"[Linker] Failed to get hypothesis: {e}")
+                logger.info(f"[Linker] Failed to get hypothesis: {e}")
 
         return None
 
@@ -1228,7 +1230,7 @@ class ObservatoryLinker:
                     return VerificationState.IN_PROGRESS
 
             except Exception as e:
-                print(f"[Linker] Failed to get verification state: {e}")
+                logger.info(f"[Linker] Failed to get verification state: {e}")
 
         return VerificationState.PENDING
 
@@ -1546,13 +1548,13 @@ async def batch_link(hypothesis_ids: List[str]) -> ObservationPlan:
 async def demo():
     """演示观测指导模块"""
     print("=" * 60)
-    print("天问-AGI 观测指导模块演示")
+    logger.info("天问-AGI 观测指导模块演示")
     print("=" * 60)
 
     linker = ObservatoryLinker()
 
     # 演示1: 模拟一个假说数据
-    print("\n[1] 模拟假说验证数据...")
+    logger.info("\n[1] 模拟假说验证数据...")
 
     # 创建模拟的假说
     hypothesis = {
@@ -1571,16 +1573,16 @@ async def demo():
     )
 
     if request:
-        print(f"   目标: {request.target.name}")
-        print(f"   目标类型: {request.target.target_type.value}")
-        print(f"   优先级: {request.priority.name}")
-        print(f"   优先级分数: {request.priority_score:.1f}")
-        print(f"   建议波段: {', '.join(request.suggested_bands)}")
-        print(f"   估计时长: {request.suggested_duration:.0f} 分钟")
-        print(f"   证据缺口: {', '.join(request.evidence_gaps) if request.evidence_gaps else '无'}")
+        logger.info(f"   目标: {request.target.name}")
+        logger.info(f"   目标类型: {request.target.target_type.value}")
+        logger.info(f"   优先级: {request.priority.name}")
+        logger.info(f"   优先级分数: {request.priority_score:.1f}")
+        logger.info(f"   建议波段: {', '.join(request.suggested_bands)}")
+        logger.info(f"   估计时长: {request.suggested_duration:.0f} 分钟")
+        logger.info(f"   证据缺口: {', '.join(request.evidence_gaps) if request.evidence_gaps else '无'}")
 
     # 演示2: 批量生成计划
-    print("\n[2] 批量生成观测计划...")
+    logger.info("\n[2] 批量生成观测计划...")
 
     hypotheses = [
         {
@@ -1600,22 +1602,22 @@ async def demo():
         if req:
             requests.append(req)
 
-    print(f"   生成了 {len(requests)} 个观测请求")
+    logger.info(f"   生成了 {len(requests)} 个观测请求")
 
     # 优先级分布
     priority_counts = defaultdict(int)
     for req in requests:
         priority_counts[req.priority.name] += 1
 
-    print("   优先级分布:")
+    logger.info("   优先级分布:")
     for priority, count in sorted(priority_counts.items()):
-        print(f"      {priority}: {count}")
+        logger.info(f"      {priority}: {count}")
 
     # 清理
     await linker.cleanup()
 
-    print("\n" + "=" * 60)
-    print("演示完成")
+    logger.debug("\n" + "=" * 60)
+    logger.info("演示完成")
     print("=" * 60)
 
 

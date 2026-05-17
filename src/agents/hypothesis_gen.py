@@ -6,9 +6,12 @@ HypothesisGenerator - 从文献和观测数据生成可验证假说
 """
 
 import json
+import logging
 import uuid
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+
+logger = logging.getLogger(__name__)
 
 # 导入统一数据模型
 from data_models import Hypothesis, HypothesisStatus
@@ -275,13 +278,13 @@ async def demo():
     generator = HypothesisGenerator()
     hypotheses = await generator.generate_from_research(state)
 
-    print(f"生成了 {len(hypotheses)} 个假说")
+    logger.info(f"生成了 {len(hypotheses)} 个假说")
     for h in hypotheses[:3]:
-        print(f"\n{h.id}: {h.statement}")
-        print(f"   置信度: {h.confidence:.0%}")
+        logger.info(f"\n{h.id}: {h.statement}")
+        logger.info(f"   置信度: {h.confidence:.0%}")
 
     # 3. 导出
-    print("\n" + generator.export_hypotheses(hypotheses, format="markdown"))
+    logger.info("\n" + generator.export_hypotheses(hypotheses, format="markdown"))
 
 
 if __name__ == "__main__":

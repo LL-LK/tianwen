@@ -21,6 +21,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from collections import defaultdict
 import warnings
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Scientific computing
 from scipy import stats, signal, interpolate
@@ -1268,7 +1271,7 @@ class DataMiner:
             系外行星列表
         """
         if not HAS_KEPLER_CLIENT:
-            print("警告: KeplerExoplanetClient不可用，返回空列表")
+            logger.warning("KeplerExoplanetClient不可用，返回空列表")
             return []
 
         try:
@@ -1280,7 +1283,7 @@ class DataMiner:
             )
             return planets
         except Exception as e:
-            print(f"获取系外行星数据失败: {e}")
+            logger.error(f"获取系外行星数据失败: {e}")
             return []
 
     async def fetch_lightcurve(
@@ -1299,7 +1302,7 @@ class DataMiner:
             (时间, 通量) tuple
         """
         if not HAS_KEPLER_CLIENT:
-            print("警告: KeplerExoplanetClient不可用，返回空数组")
+            logger.warning("KeplerExoplanetClient不可用，返回空数组")
             return np.array([]), np.array([])
 
         try:
@@ -1307,7 +1310,7 @@ class DataMiner:
             times, fluxes = await client.get_lightcurve(planet_name, mission)
             return times, fluxes
         except Exception as e:
-            print(f"获取光变曲线失败: {e}")
+            logger.error(f"获取光变曲线失败: {e}")
             return np.array([]), np.array([])
 
     async def analyze_exoplanet_system(
@@ -1729,7 +1732,7 @@ async def demo():
     report = await miner.mine(data, source_type="light_curve")
 
     # 打印摘要
-    print(miner.get_mining_summary(report))
+    logger.info(miner.get_mining_summary(report))
 
 
 if __name__ == "__main__":

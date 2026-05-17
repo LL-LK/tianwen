@@ -1243,11 +1243,11 @@ if __name__ == "__main__":
 
         # 测试获取状态
         status = await client.get_status()
-        print(f"状态: {status}")
+        logger.info(f"状态: {status}")
 
         # 测试获取位置
         location = await client.get_location()
-        print(f"位置: {location}")
+        logger.info(f"位置: {location}")
 
         # 测试转向
         target = ObservationTarget(
@@ -1258,11 +1258,11 @@ if __name__ == "__main__":
         )
 
         success = await client.goto_target(target)
-        print(f"转向结果: {success}")
+        logger.info(f"转向结果: {success}")
 
         # 获取最终状态
         final_status = await client.get_status()
-        print(f"最终状态: {final_status}")
+        logger.info(f"最终状态: {final_status}")
 
         # 安全关闭
         await client.safe_shutdown()

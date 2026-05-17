@@ -3,6 +3,8 @@
 基于 StarWhisper/NGSS PlanObservation3.py 移植
 集成 astroplan + astropy 实现专业级观测调度
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import math
 import xml.etree.ElementTree as ET
@@ -899,31 +901,31 @@ if __name__ == "__main__":
     loc = Location("兴隆站", 40.0, 116.5, 900, "Asia/Shanghai")
     sched = ObservationScheduler(loc)
 
-    print("=== StarWhisper 算法移植验证 ===")
-    print(f"astroplan可用: {HAS_ASTROPLAN}")
-    print(f"Location: {loc.name} ({loc.lat}N, {loc.lon}E)")
+    logger.info("=== StarWhisper 算法移植验证 ===")
+    logger.info(f"astroplan可用: {HAS_ASTROPLAN}")
+    logger.info(f"Location: {loc.name} ({loc.lat}N, {loc.lon}E)")
 
     if HAS_ASTROPLAN:
         astro = sched.astro
         utc_now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         ra_min, ra_max = astro.calculate_lst_and_corresponding_ra_range(utc_now)
-        print(f"LST RA范围: [{ra_min:.2f}, {ra_max:.2f}] deg")
+        logger.info(f"LST RA范围: [{ra_min:.2f}, {ra_max:.2f}] deg")
 
         observable = astro.is_target_observable_in_interval(
             {"name": "M31", "ra": 10.6847, "dec": 41.2687}, 60
         )
-        print(f"M31 可观测: {observable}")
+        logger.info(f"M31 可观测: {observable}")
 
     # 生成计划
     targets = [ANDROMEDA, ORION_NEBULA]
     sched.set_location(loc)
     schedule = sched.generate_schedule(targets)
-    print(f"\n生成计划: {schedule.id}")
-    print(f"窗口数量: {len(schedule.windows)}")
+    logger.info(f"\n生成计划: {schedule.id}")
+    logger.info(f"窗口数量: {len(schedule.windows)}")
     for w in schedule.windows:
-        print(f"  - {w.target}: alt={w.altitude:.1f}az={w.azimuth:.1f} score={w.score:.1f}")
+        logger.info(f"  - {w.target}: alt={w.altitude:.1f}az={w.azimuth:.1f} score={w.score:.1f}")
 
     # N.I.N.A. XML
     xml = sched.create_nina_sequence(ANDROMEDA, num_exposures=5)
-    print(f"\nN.I.N.A. XML 长度: {len(xml)} bytes")
+    logger.info(f"\nN.I.N.A. XML 长度: {len(xml)} bytes")
     print(xml[:500])

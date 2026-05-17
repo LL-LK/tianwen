@@ -11,6 +11,8 @@ ResearchObservatoryLinker - 将文献调研与天文观测调度集成
     linker = ResearchObservatoryLinker()
     linked_plan = await linker.link("猎户座大星云恒星形成")
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import json
@@ -71,7 +73,7 @@ class ResearchObservatoryLinker:
             ResearchObservatoryPlan - 联动计划
         """
         # 1. 文献调研
-        print(f"[联动] 开始文献调研: {research_topic}")
+        logger.info(f"[联动] 开始文献调研: {research_topic}")
         if self.researcher:
             literature_review = await self.researcher.generate_review(
                 research_topic, max_papers=30
@@ -87,7 +89,7 @@ class ResearchObservatoryLinker:
         # 3. 为每个gap生成/获取假说
         hypotheses = []
         if gaps:
-            print(f"[联动] 识别到 {len(gaps)} 个研究gap")
+            logger.info(f"[联动] 识别到 {len(gaps)} 个研究gap")
             hypotheses = await self._generate_hypotheses_for_gaps(gaps)
 
         # 4. 联动观测目标
@@ -258,7 +260,7 @@ class ResearchObservatoryLinker:
         for lo in linked_observations:
             if lo.adjusted_priority > lo.original_priority:
                 updates[lo.target] = lo.adjusted_priority
-                print(f"[调度] {lo.target}: {lo.original_priority} → {lo.adjusted_priority} (gap填补)")
+                logger.info(f"[调度] {lo.target}: {lo.original_priority} → {lo.adjusted_priority} (gap填补)")
 
         return updates
 
@@ -327,7 +329,7 @@ async def demo():
         targets=["M42", "猎户座大星云", "NGC 1977"]
     )
 
-    print("联动计划已生成!")
+    logger.info("联动计划已生成!")
     print(linker.export_plan(plan))
 
 

@@ -16,6 +16,8 @@ Date: 2026/05/03
 """
 
 from __future__ import annotations
+import logging
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Dict, Optional, Any, Tuple
@@ -327,7 +329,7 @@ def quick_create_scenario(
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("Tianwen-AGI Scenario Memory System")
+    logger.info("Tianwen-AGI Scenario Memory System")
     print("=" * 60)
 
     memory = ScenarioMemory()
@@ -339,23 +341,23 @@ if __name__ == "__main__":
         intent=IntentType.EXPLORE,
         context_data={"research_stage": "initial"}
     )
-    print(f"\n[1] Created scenario: {ctx.scenario_id}")
-    print(f"    Topic: {ctx.topic}")
-    print(f"    Emotion: {ctx.emotion.value} ({ctx.emotion_intensity})")
-    print(f"    Intent: {ctx.intent.value} ({ctx.intent_confidence})")
+    logger.info(f"\n[1] Created scenario: {ctx.scenario_id}")
+    logger.info(f"    Topic: {ctx.topic}")
+    logger.info(f"    Emotion: {ctx.emotion.value} ({ctx.emotion_intensity})")
+    logger.info(f"    Intent: {ctx.intent.value} ({ctx.intent_confidence})")
 
     # 模拟情感变化
     memory.record_emotion(ctx.scenario_id, EmotionType.EXCITED, 0.8, "Found interesting data")
-    print("\n[2] Recorded emotional change: EXCITED (0.8)")
+    logger.info("\n[2] Recorded emotional change: EXCITED (0.8)")
 
     # 更新任务状态
     memory.update_task_state(ctx.scenario_id, "running")
-    print("\n[3] Updated task state: running")
+    logger.info("\n[3] Updated task state: running")
 
     # 获取统计
     stats = memory.get_emotional_stats()
-    print(f"\n[4] Emotional stats: {stats}")
+    logger.info(f"\n[4] Emotional stats: {stats}")
 
-    print("\n" + "=" * 60)
-    print("Scenario Memory System Demo Complete")
+    logger.debug("\n" + "=" * 60)
+    logger.info("Scenario Memory System Demo Complete")
     print("=" * 60)

@@ -2,6 +2,8 @@
 Hermes-AGI Skill Testing Framework
 技能测试框架 - 验证技能输出质量
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import json
 import re
@@ -398,7 +400,7 @@ class SkillTester:
 def demo():
     """演示技能测试"""
     print("=" * 50)
-    print("Hermes-AGI Skill Testing Framework Demo")
+    logger.info("Hermes-AGI Skill Testing Framework Demo")
     print("=" * 50)
 
     tester = SkillTester()
@@ -438,32 +440,32 @@ def get_user(user_id: int):
         return outputs.get(test_case.id, "# Code output")
 
     # 测试 Frontend 技能
-    print("\n测试 Frontend 技能...")
+    logger.info("\n测试 Frontend 技能...")
     report = tester.test_skill("Frontend", mock_provider)
-    print(f"\n{report.skill_name} 测试报告:")
-    print(f"  总计: {report.total_tests}")
-    print(f"  通过: {report.passed}")
-    print(f"  失败: {report.failed}")
-    print(f"  跳过: {report.skipped}")
+    logger.info(f"\n{report.skill_name} 测试报告:")
+    logger.info(f"  总计: {report.total_tests}")
+    logger.info(f"  通过: {report.passed}")
+    logger.info(f"  失败: {report.failed}")
+    logger.info(f"  跳过: {report.skipped}")
 
     for result in report.results:
         status_icon = "✅" if result.status == TestStatus.PASSED else "❌" if result.status == TestStatus.FAILED else "⏭️"
-        print(f"  {status_icon} {result.test_id}: {result.test_name}")
+        logger.info(f"  {status_icon} {result.test_id}: {result.test_name}")
         if result.error_message:
-            print(f"     错误: {result.error_message}")
+            logger.error(f"     错误: {result.error_message}")
 
     # 测试 Backend 技能
-    print("\n测试 Backend 技能...")
+    logger.info("\n测试 Backend 技能...")
     report = tester.test_skill("Backend", mock_provider)
-    print(f"\n{report.skill_name} 测试报告:")
-    print(f"  通过率: {report.passed}/{report.total_tests}")
+    logger.info(f"\n{report.skill_name} 测试报告:")
+    logger.info(f"  通过率: {report.passed}/{report.total_tests}")
 
     # 汇总报告
     print("\n" + "=" * 50)
-    print("汇总报告:")
+    logger.info("汇总报告:")
     summary = tester.get_summary_report()
-    print(f"  总测试数: {summary.get('total_tests', 0)}")
-    print(f"  通过率: {summary.get('success_rate', 0)*100:.1f}%")
+    logger.info(f"  总测试数: {summary.get('total_tests', 0)}")
+    logger.info(f"  通过率: {summary.get('success_rate', 0)*100:.1f}%")
 
 if __name__ == "__main__":
     demo()

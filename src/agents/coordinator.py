@@ -35,6 +35,40 @@ from typing import List, Dict, Optional, Any, Callable, Set
 from enum import Enum
 import uuid
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# 向下兼容：从 coordinator/ 子包导入已迁移的类型定义
+# 2025-05-16 重构：类型和枚举迁移至 coordinator/types_enums.py
+# ============================================================
+try:
+    from coordinator.types_enums import (
+        AgentMode, AgentRole, VLAActionType, MessageType, ConflictType,
+        VLAAction, AgentCapability, AgentMessage, Conflict,
+        Script, PerformanceFeedback, SubTask, TaskDecompositionResult,
+    )
+    _COORDINATOR_SUBPACKAGE = True
+except ImportError:
+    _COORDINATOR_SUBPACKAGE = False
+
+# Extracted types for backward compatibility
+from .coordinator.types_enums import *  # noqa: E402, F403
+
+# Extracted infrastructure classes (G3) for backward compatibility
+from .coordinator.infrastructure import *  # noqa: E402, F403
+
+# Extracted G4 coordinator classes for backward compatibility
+from .coordinator_core import MultiAgentCoordinator  # noqa: E402, F403
+from .vla_coordinator import VLACoordinator  # noqa: E402, F403
+from .workflow import CollaborationWorkflow  # noqa: E402, F403
+
+# Extracted G5 task scheduling classes for backward compatibility
+from .task_scheduler import TaskDecomposer, ParallelScheduler, ParallelCoordinator  # noqa: E402, F403
+
+# Extracted G6 enhanced loop classes for backward compatibility
+from .enhanced_loop import EnhancedResearchLoop, ResearchLoopAdapter  # noqa: E402, F403
 
 
 # ============================================================================
@@ -1727,7 +1761,7 @@ class SafetyCoordinator:
     def activate_emergency_stop(self, reason: str):
         """激活紧急停止"""
         self.global_safety_state["emergency_stop"] = True
-        print(f"[SafetyCoordinator] 紧急停止激活: {reason}")
+        logger.info(f"[SafetyCoordinator] 紧急停止激活: {reason}")
 
     def add_restricted_region(self, region: Dict):
         """添加限制区域"""
@@ -2769,32 +2803,32 @@ async def run_simulation():
     3. 运行工作流
     4. 检测和解决冲突
     """
-    print("=" * 60)
-    print("天问-AGI 多Agent协作系统 模拟测试")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("天问-AGI 多Agent协作系统 模拟测试")
+    logger.info("=" * 60)
 
     # 创建协调器
     coordinator = MultiAgentCoordinator()
-    print("\n[1] 创建多Agent协调器")
+    logger.info("\n[1] 创建多Agent协调器")
 
     # 创建研究团队
-    print("\n[2] 创建研究团队")
+    logger.info("\n[2] 创建研究团队")
     team = coordinator.create_research_team("天文研究团队")
 
-    print(f"    团队成员:")
+    logger.info(f"    团队成员:")
     for role, agent in team.items():
-        print(f"    - {role}: {agent.name} (ID: {agent.id[:8]}...)")
+        logger.info(f"    - {role}: {agent.name} (ID: {agent.id[:8]}...)")
 
     # 创建冲突解决器
     conflict_resolver = ConflictResolver(coordinator)
-    print("\n[3] 初始化冲突解决器")
+    logger.info("\n[3] 初始化冲突解决器")
 
     # 创建工作流
     workflow = CollaborationWorkflow(coordinator)
-    print("\n[4] 初始化协作工作流")
+    logger.info("\n[4] 初始化协作工作流")
 
     # 分配任务
-    print("\n[5] 分配任务")
+    logger.info("\n[5] 分配任务")
     planner = team["planner"]
     task_id = await coordinator.assign_task(
         agent_id=planner.id,
@@ -2805,20 +2839,20 @@ async def run_simulation():
         },
         priority=8
     )
-    print(f"    任务分配成功: {task_id[:8]}... -> {planner.name}")
+    logger.info(f"    任务分配成功: {task_id[:8]}... -> {planner.name}")
 
     # 运行工作流
-    print("\n[6] 运行研究工作流")
+    logger.info("\n[6] 运行研究工作流")
     result = await workflow.run_research_workflow("黑洞信息悖论研究")
 
-    print(f"\n    工作流执行结果:")
-    print(f"    - 工作流ID: {result['workflow_id'][:8]}...")
-    print(f"    - 研究主题: {result['topic']}")
-    print(f"    - 完成步骤: {result['steps_completed']}/5")
-    print(f"    - 最终决策: {result['final_decision']}")
+    logger.info(f"\n    工作流执行结果:")
+    logger.info(f"    - 工作流ID: {result['workflow_id'][:8]}...")
+    logger.info(f"    - 研究主题: {result['topic']}")
+    logger.info(f"    - 完成步骤: {result['steps_completed']}/5")
+    logger.info(f"    - 最终决策: {result['final_decision']}")
 
     # 模拟冲突
-    print("\n[7] 模拟冲突场景")
+    logger.info("\n[7] 模拟冲突场景")
     researcher = team["researcher"]
     hypo_gen = team["hypothesis_generator"]
 
@@ -2830,31 +2864,30 @@ async def run_simulation():
     )
 
     if conflict:
-        print(f"    检测到冲突: {conflict.conflict_id[:8]}...")
-        print(f"    冲突类型: {conflict.conflict_type.value}")
-        print(f"    涉及Agent: {researcher.name} vs {hypo_gen.name}")
+        logger.info(f"    检测到冲突: {conflict.conflict_id[:8]}...")
+        logger.info(f"    冲突类型: {conflict.conflict_type.value}")
+        logger.info(f"    涉及Agent: {researcher.name} vs {hypo_gen.name}")
 
         # 解决冲突
         resolution = await conflict_resolver.resolve_conflict(
             conflict,
             strategy="consensus"
         )
-        print(f"    解决策略: 共识机制")
-        print(f"    解决方案: {resolution}")
+        logger.info(f"    解决策略: 共识机制")
+        logger.info(f"    解决方案: {resolution}")
     else:
-        print("    未检测到冲突 (模拟30%概率)")
+        logger.info("    未检测到冲突 (模拟30%概率)")
 
     # 输出统计信息
-    print("\n[8] 团队统计信息")
+    logger.info("\n[8] 团队统计信息")
     stats = coordinator.get_statistics()
-    print(f"    总Agent数: {stats['total_agents']}")
-    print(f"    待处理任务: {stats['pending_tasks']}")
-    print(f"    已完成任务: {stats['completed_tasks']}")
-    print(f"    消息队列: {stats['messages_in_queue']}")
-
-    print("\n" + "=" * 60)
-    print("模拟测试完成!")
-    print("=" * 60)
+    logger.info(f"    总Agent数: {stats['total_agents']}")
+    logger.info(f"    待处理任务: {stats['pending_tasks']}")
+    logger.info(f"    已完成任务: {stats['completed_tasks']}")
+    logger.info(f"    消息队列: {stats['messages_in_queue']}")
+    logger.info("\n" + "=" * 60)
+    logger.info("模拟测试完成!")
+    logger.info("=" * 60)
 
     return {
         "coordinator": coordinator,
@@ -2912,11 +2945,11 @@ class ResearchLoopAdapter:
 if __name__ == "__main__":
     import asyncio
 
-    print("天问-AGI 多Agent协作系统")
-    print("-" * 40)
+    logger.info("天问-AGI 多Agent协作系统")
+    logger.info("-" * 40)
 
     # 运行模拟测试
     result = asyncio.run(run_simulation())
 
-    print("\n" + "-" * 40)
-    print("模拟测试结果已返回")
+    logger.info("\n" + "-" * 40)
+    logger.info("模拟测试结果已返回")

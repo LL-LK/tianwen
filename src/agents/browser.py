@@ -695,7 +695,7 @@ async def quick_search(
 
 if __name__ == "__main__":
     async def test():
-        print("Testing BrowserAgent...")
+        logger.info("Testing BrowserAgent...")
 
         try:
             agent = BrowserAgent()
@@ -706,15 +706,15 @@ if __name__ == "__main__":
                 max_results_per_engine=3
             )
 
-            print(f"Total results: {results['count']['total']}")
+            logger.info(f"Total results: {results['count']['total']}")
             for engine, items in results.items():
                 if engine == "count":
                     continue
-                print(f"  {engine}: {len(items)} results")
+                logger.info(f"  {engine}: {len(items)} results")
 
             await agent.close()
 
         except Exception as e:
-            print(f"Test failed: {e}")
+            logger.error(f"Test failed: {e}")
 
     asyncio.run(test())

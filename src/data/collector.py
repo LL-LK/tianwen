@@ -2,6 +2,8 @@
 天问-AGI 天文数据收集模块
 AstroDataCollector - 集成多源天文数据API
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import json
@@ -92,7 +94,7 @@ class BaseAstroAPI:
             with urllib.request.urlopen(req, timeout=30) as response:
                 return json.loads(response.read().decode('utf-8'))
         except Exception as e:
-            print(f"[{self.name}] Fetch error: {e}")
+            logger.error(f"[{self.name}] Fetch error: {e}")
             return None
 
     async def _fetch_bytes(self, url: str) -> Optional[bytes]:
@@ -103,7 +105,7 @@ class BaseAstroAPI:
             with urllib.request.urlopen(req, timeout=60) as response:
                 return response.read()
         except Exception as e:
-            print(f"[{self.name}] Fetch error: {e}")
+            logger.error(f"[{self.name}] Fetch error: {e}")
             return None
 
 # ============ NASA APOD API ============
@@ -184,7 +186,7 @@ class SIMBADAPI(BaseAstroAPI):
                     description=obj.get('TITLE', '')
                 )
         except Exception as e:
-            print(f"[SIMBAD] Query error: {e}")
+            logger.error(f"[SIMBAD] Query error: {e}")
         return None
 
 # ============ 天文事件API ============
@@ -268,7 +270,7 @@ class WeatherAPI(BaseAstroAPI):
                     wind_speed=current.get('wind_speed_10m', 5)
                 )
         except Exception as e:
-            print(f"[Weather] Error: {e}")
+            logger.error(f"[Weather] Error: {e}")
         return None
 
     def _calculate_moon_phase(self) -> float:
@@ -429,49 +431,49 @@ class AstroDataCollector:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             else:
                 f.write(str(data))
-        print(f"[Collector] Data saved to {filepath}")
+        logger.info(f"[Collector] Data saved to {filepath}")
         return filepath
 
 # ============ 示例用法 ============
 
 async def demo():
-    print("=" * 60)
-    print("天问-AGI 天文数据收集器演示")
-    print("=" * 60)
+    logger.debug("=" * 60)
+    logger.info("天问-AGI 天文数据收集器演示")
+    logger.debug("=" * 60)
 
     collector = AstroDataCollector()
 
     # 1. 获取每日天文图片
-    print("\n📷 获取NASA每日天文图片...")
+    logger.info("\n📷 获取NASA每日天文图片...")
     apod = await collector.get_apod()
     if apod:
-        print(f"   标题: {apod.get('title', 'N/A')}")
-        print(f"   日期: {apod.get('date', 'N/A')}")
-        print(f"   类型: {apod.get('media_type', 'N/A')}")
+        logger.info(f"   标题: {apod.get('title', 'N/A')}")
+        logger.info(f"   日期: {apod.get('date', 'N/A')}")
+        logger.info(f"   类型: {apod.get('media_type', 'N/A')}")
 
     # 2. 获取即将发生的天文事件
-    print("\n📅 获取即将发生的天文事件...")
+    logger.info("\n📅 获取即将发生的天文事件...")
     events = await collector.get_upcoming_events(30)
     for event in events[:5]:
-        print(f"   • {event.name} ({event.type}) - {event.start_time[:10]}")
+        logger.info(f"   • {event.name} ({event.type}) - {event.start_time[:10]}")
 
     # 3. 获取观测条件 (北京)
-    print("\n🌤️ 获取北京观测条件...")
+    logger.info("\n🌤️ 获取北京观测条件...")
     conditions = await collector.get_observation_conditions(39.9, 116.4)
     if conditions:
-        print(f"   云量: {conditions.cloud_cover}%")
-        print(f"   湿度: {conditions.humidity}%")
-        print(f"   温度: {conditions.temperature}°C")
-        print(f"   月相: {conditions.moon_phase:.2f}")
+        logger.info(f"   云量: {conditions.cloud_cover}%")
+        logger.info(f"   湿度: {conditions.humidity}%")
+        logger.info(f"   温度: {conditions.temperature}°C")
+        logger.info(f"   月相: {conditions.moon_phase:.2f}")
 
     # 4. 获取每日天文摘要
-    print("\n📊 获取每日天文摘要...")
+    logger.info("\n📊 获取每日天文摘要...")
     summary = await collector.get_daily_astronomy_summary()
-    print(f"   日期: {summary['date']}")
-    print(f"   事件数: {len(summary['upcoming_events'])}")
+    logger.info(f"   日期: {summary['date']}")
+    logger.info(f"   事件数: {len(summary['upcoming_events'])}")
 
     # 5. 保存数据
-    print("\n💾 保存数据到文件...")
+    logger.info("\n💾 保存数据到文件...")
     collector.save_to_file(summary, f"astronomy_summary_{summary['date']}.json")
 
 if __name__ == "__main__":

@@ -15,6 +15,8 @@ SExtractor (Source Extractor) 封装 - 天文图像源检测与测光
   extractor = SExtractorWrapper()
   sources = extractor.detect("/path/to/image.fits")
 """
+import logging
+logger = logging.getLogger(__name__)
 import os
 import subprocess
 import tempfile
@@ -114,13 +116,13 @@ class SExtractorWrapper:
             )
             if result.returncode == 0:
                 version_line = result.stdout.strip().split('\n')[0] if result.stdout else "unknown"
-                print(f"SExtractor 可用: {version_line}")
+                logger.info(f"SExtractor 可用: {version_line}")
                 return True
             return False
         except FileNotFoundError:
-            print("[INSTALL REQUIRED] sextractor 未找到")
-            print("  安装命令: sudo apt-get install source-extractor")
-            print("  或访问: https://www.astromatic.net/software/sextractor/")
+            logger.info("[INSTALL REQUIRED] sextractor 未找到")
+            logger.info("  安装命令: sudo apt-get install source-extractor")
+            logger.info("  或访问: https://www.astromatic.net/software/sextractor/")
             return False
         except (subprocess.SubprocessError):
             return False
@@ -167,7 +169,7 @@ class SExtractorWrapper:
             检测到的源列表，每项为字典
         """
         if not self.available:
-            print("SExtractor 不可用，使用 astropy 模拟检测")
+            logger.info("SExtractor 不可用，使用 astropy 模拟检测")
             return self._mock_detect(image_path)
         
         # 创建临时配置
@@ -207,17 +209,17 @@ class SExtractorWrapper:
             )
             
             if result.returncode != 0:
-                print(f"SExtractor错误: {result.stderr[:500]}")
+                logger.info(f"SExtractor错误: {result.stderr[:500]}")
                 return self._mock_detect(image_path)
             
             # 读取输出星表
             return self._read_catalog(catalog_path)
             
         except subprocess.TimeoutExpired:
-            print(f"SExtractor超时 ({timeout}s)")
+            logger.info(f"SExtractor超时 ({timeout}s)")
             return None
         except Exception as e:
-            print(f"SExtractor异常: {e}")
+            logger.info(f"SExtractor异常: {e}")
             return self._mock_detect(image_path)
     
     def _read_catalog(self, catalog_path: str) -> Optional[List[Dict[str, Any]]]:
@@ -238,7 +240,7 @@ class SExtractorWrapper:
                 
             return [dict(row) for row in table]
         except Exception as e:
-            print(f"星表读取失败: {e}")
+            logger.info(f"星表读取失败: {e}")
             return self._parse_catalog_text(catalog_path)
     
     def _parse_catalog_text(self, catalog_path: str) -> List[Dict[str, Any]]:
@@ -262,7 +264,7 @@ class SExtractorWrapper:
     
     def _mock_detect(self, image_path: str) -> Optional[List[Dict[str, Any]]]:
         """当SExtractor不可用时的回退处理"""
-        print(f"SExtractor不可用，无法对 {image_path} 进行源检测。请安装 SExtractor: apt install source-extractor")
+        logger.info(f"SExtractor不可用，无法对 {image_path} 进行源检测。请安装 SExtractor: apt install source-extractor")
         return None
     
     def detect_from_array(
@@ -294,4 +296,4 @@ class SExtractorWrapper:
 
 if __name__ == "__main__":
     extractor = SExtractorWrapper()
-    print(f"SExtractor 可用: {extractor.available}")
+    logger.info(f"SExtractor 可用: {extractor.available}")

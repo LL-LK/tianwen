@@ -2,6 +2,8 @@
 Hermes-AGI Memory Persistence System
 记忆持久化系统 - 集成向量记忆到Agent主流程
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import os
 import json
@@ -31,7 +33,7 @@ class PersistentMemory:
             self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
             self.embedder_loaded = True
         except Exception as e:
-            print(f"[Memory] Failed to load embedder: {e}")
+            logger.info(f"[Memory] Failed to load embedder: {e}")
             self.embedder = None
             self.embedder_loaded = False
 
@@ -69,9 +71,9 @@ class PersistentMemory:
                         text = f"{exp['task_description']} {exp['solution']} {' '.join(exp.get('skills_used', []))}"
                         embedding = self.embedder.encode(text).tolist()
                         self.experiences_store.add(text, embedding, exp)
-                print(f"[Memory] Loaded {len(self.experiences)} experiences")
+                logger.info(f"[Memory] Loaded {len(self.experiences)} experiences")
             except Exception as e:
-                print(f"[Memory] Failed to load experiences: {e}")
+                logger.info(f"[Memory] Failed to load experiences: {e}")
 
         # 加载 patterns
         if self.patterns_file.exists():
@@ -83,18 +85,18 @@ class PersistentMemory:
                         text = f"{pat.get('type', '')} {json.dumps(pat)}"
                         embedding = self.embedder.encode(text).tolist()
                         self.patterns_store.add(text, embedding, pat)
-                print(f"[Memory] Loaded {len(self.patterns)} patterns")
+                logger.info(f"[Memory] Loaded {len(self.patterns)} patterns")
             except Exception as e:
-                print(f"[Memory] Failed to load patterns: {e}")
+                logger.info(f"[Memory] Failed to load patterns: {e}")
 
         # 加载 task history
         if self.task_history_file.exists():
             try:
                 with open(self.task_history_file, 'r', encoding='utf-8') as f:
                     self.task_history = json.load(f)
-                print(f"[Memory] Loaded {len(self.task_history)} task history records")
+                logger.info(f"[Memory] Loaded {len(self.task_history)} task history records")
             except Exception as e:
-                print(f"[Memory] Failed to load task history: {e}")
+                logger.info(f"[Memory] Failed to load task history: {e}")
 
     def _save_experiences(self):
         """保存经验"""
@@ -133,7 +135,7 @@ class PersistentMemory:
             self.experiences_store.add(text, embedding, exp_dict)
 
         self._save_experiences()
-        print(f"[Memory] Added experience: {experience.id}")
+        logger.info(f"[Memory] Added experience: {experience.id}")
 
     def record_success(self, task: str, solution: str, skills: List[str], **kwargs) -> Experience:
         """记录成功经验"""
@@ -186,7 +188,7 @@ class PersistentMemory:
             List[Dict]: 相似经验列表，包含task_description、solution、skills_used等
         """
         if not self.embedder_loaded:
-            print("[Memory] Embedder not loaded, using fallback text search")
+            logger.info("[Memory] Embedder not loaded, using fallback text search")
             return self.search_experiences(query, k=k)
 
         query_embedding = self._get_embedding(query)
@@ -370,7 +372,7 @@ class MemoryIntegratedAgent:
 
 async def demo():
     print("=" * 50)
-    print("Hermes-AGI Persistent Memory Demo")
+    logger.info("Hermes-AGI Persistent Memory Demo")
     print("=" * 50)
 
     memory = PersistentMemory(memory_dir="./demo_memory")
@@ -393,13 +395,13 @@ async def demo():
     memory.add_pattern("caching", {"strategy": "Redis cache", "ttl": "1h"})
 
     # 搜索
-    print("\n搜索相似经验: '用户认证'")
+    logger.info("\n搜索相似经验: '用户认证'")
     results = memory.search_experiences("用户认证", k=2)
     for r in results:
-        print(f"  - [{r['type']}] {r['task_description'][:50]}... (outcome: {r['outcome']})")
+        logger.info(f"  - [{r['type']}] {r['task_description'][:50]}... (outcome: {r['outcome']})")
 
     # 统计
-    print(f"\n统计: {json.dumps(memory.get_stats(), indent=2, ensure_ascii=False)}")
+    logger.info(f"\n统计: {json.dumps(memory.get_stats(), indent=2, ensure_ascii=False)}")
 
     # 清理
     if Path("./demo_memory").exists():

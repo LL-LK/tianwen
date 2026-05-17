@@ -24,6 +24,8 @@ v2.0 新增功能 (v3.6.0):
     loop = ResearchLoop()
     result = await loop.run_full_cycle("开普勒-186f")
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import json
@@ -906,18 +908,18 @@ async def demo():
 
     # 输出总结
     print("\n" + "="*60)
-    print("闭环验证结果")
+    logger.info("闭环验证结果")
     print("="*60)
-    print(f"主题: {result.topic}")
-    print(f"成功: {result.success}")
-    print(f"生成假说: {len(result.hypotheses)}")
-    print(f"执行验证: {len(result.test_reports)}")
-    print(f"发现: {result.discoveries}")
+    logger.info(f"主题: {result.topic}")
+    logger.info(f"成功: {result.success}")
+    logger.info(f"生成假说: {len(result.hypotheses)}")
+    logger.info(f"执行验证: {len(result.test_reports)}")
+    logger.info(f"发现: {result.discoveries}")
 
     summary = loop.get_cycle_summary()
-    print(f"\n总体统计:")
-    print(f"  闭环成功率: {summary['success_rate']:.0%}")
-    print(f"  钩子触发统计: {summary['hook_statistics']}")
+    logger.info(f"\n总体统计:")
+    logger.info(f"  闭环成功率: {summary['success_rate']:.0%}")
+    logger.info(f"  钩子触发统计: {summary['hook_statistics']}")
 
     return result
 

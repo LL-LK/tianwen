@@ -25,6 +25,9 @@ from datetime import datetime
 from urllib.parse import urlencode
 import urllib.request
 import urllib.error
+import logging
+
+logger = logging.getLogger(__name__)
 
 try:
     from src.runtime_logger import get_logger
@@ -2484,71 +2487,71 @@ async def research_and_export(topic: str, format: str = "markdown",
 # ============ 示例用法 ============
 
 async def demo():
-    print("=" * 70)
-    print("天问-AGI 文献调研模块 v2.1 演示 - 多数据源支持")
-    print("=" * 70)
+    logger.info("=" * 70)
+    logger.info("天问-AGI 文献调研模块 v2.1 演示 - 多数据源支持")
+    logger.info("=" * 70)
 
     # 1. 仅使用arXiv (默认)
-    print("\n[模式1] 仅使用arXiv")
+    logger.info("[模式1] 仅使用arXiv")
     researcher = LiteratureResearcher(use_arxiv=True, use_openalex=False, use_semantic_scholar=False)
 
-    print("\n🔍 调研: machine learning astronomy")
+    logger.info("调研: machine learning astronomy")
     state = await researcher.research("machine learning astronomy", max_papers=20)
 
-    print(f"\n📊 调研结果:")
-    print(f"   论文数: {state.total_results}")
-    print(f"   关键主题: {', '.join(state.key_themes[:8])}")
-    print(f"   研究空白: {len(state.research_gaps)} (高优先级: {sum(1 for g in state.research_gaps if g.priority == 'high')})")
-    print(f"   研究趋势: {state.trend_direction}")
-    print(f"   数据源: {', '.join(state.sources_used)}")
+    logger.info("调研结果:")
+    logger.info(f"论文数: {state.total_results}")
+    logger.info(f"关键主题: {', '.join(state.key_themes[:8])}")
+    logger.info(f"研究空白: {len(state.research_gaps)} (高优先级: {sum(1 for g in state.research_gaps if g.priority == 'high')})")
+    logger.info(f"研究趋势: {state.trend_direction}")
+    logger.info(f"数据源: {', '.join(state.sources_used)}")
 
     # 2. 多数据源调研
-    print("\n" + "=" * 70)
-    print("\n[模式2] 多数据源调研 (arXiv + OpenAlex)")
+    logger.info("=" * 70)
+    logger.info("[模式2] 多数据源调研 (arXiv + OpenAlex)")
     researcher_multi = LiteratureResearcher(
         use_arxiv=True,
         use_openalex=True,
         use_semantic_scholar=False
     )
 
-    print("\n🔍 调研: deep learning galaxy classification")
+    logger.info("调研: deep learning galaxy classification")
     state_multi = await researcher_multi.research("deep learning galaxy classification", max_papers=30)
 
-    print(f"\n📊 多数据源调研结果:")
-    print(f"   论文数: {state_multi.total_results}")
-    print(f"   数据源: {', '.join(state_multi.sources_used)}")
+    logger.info("多数据源调研结果:")
+    logger.info(f"论文数: {state_multi.total_results}")
+    logger.info(f"数据源: {', '.join(state_multi.sources_used)}")
 
     # 3. 生成假说
-    print("\n\n💡 生成研究假说...")
+    logger.info("生成研究假说...")
     hypotheses = await researcher.generate_hypotheses(state)
-    print(f"   生成 {len(hypotheses)} 个研究假说")
+    logger.info(f"生成 {len(hypotheses)} 个研究假说")
     for h in hypotheses[:2]:
-        print(f"   - {h.hypothesis[:60]}...")
+        logger.info(f"- {h.hypothesis[:60]}...")
 
     # 4. 观测站联动
-    print("\n\n🔭 观测站联动...")
+    logger.info("观测站联动...")
     obs_link = researcher.link_to_observatory(state)
     if obs_link.relevant_targets:
-        print(f"   关联目标: {', '.join(obs_link.relevant_targets)}")
+        logger.info(f"关联目标: {', '.join(obs_link.relevant_targets)}")
     if obs_link.data_requirements:
-        print(f"   数据需求: {', '.join(obs_link.data_requirements)}")
+        logger.info(f"数据需求: {', '.join(obs_link.data_requirements)}")
 
     # 5. 完整综述
-    print("\n\n📝 生成完整文献综述...")
+    logger.info("生成完整文献综述...")
     review = await researcher.generate_review("deep learning galaxy classification", max_papers=30)
 
-    print(f"\n{'='*70}")
-    print(f"综述标题: {review.title}")
-    print(f"参考文献: {len(review.references)} 篇")
-    print(f"研究假说: {len(review.hypotheses)} 个")
+    logger.info("=" * 70)
+    logger.info(f"综述标题: {review.title}")
+    logger.info(f"参考文献: {len(review.references)} 篇")
+    logger.info(f"研究假说: {len(review.hypotheses)} 个")
 
     # 6. 导出示例
-    print("\n\n📤 导出格式示例:")
+    logger.info("导出格式示例:")
     md = researcher.export_to_markdown(review)
-    print(f"   Markdown: {len(md)} 字符")
+    logger.info(f"Markdown: {len(md)} 字符")
 
     js = researcher.export_to_json(review)
-    print(f"   JSON: {len(js)} 字符")
+    logger.info(f"JSON: {len(js)} 字符")
 
 if __name__ == "__main__":
     asyncio.run(demo())

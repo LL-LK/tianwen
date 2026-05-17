@@ -14,6 +14,8 @@
 """
 
 from __future__ import annotations
+import logging
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
@@ -440,7 +442,7 @@ class CycleStatisticsDashboard:
 
 async def demo():
     """演示统计面板功能"""
-    print("天问-AGI 闭环成功率统计面板演示")
+    logger.info("天问-AGI 闭环成功率统计面板演示")
     print("="*60)
 
     dashboard = CycleStatisticsDashboard()

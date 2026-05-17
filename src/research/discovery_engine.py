@@ -9,6 +9,8 @@ DiscoveryTracker - 追踪假说验证结果，形成完整研究闭环
 图结构:
   (发现) -[推导]-> (假说) -[验证]-> (结果)
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import json
 import uuid
@@ -1065,10 +1067,10 @@ async def demo():
     )
 
     stats = await tracker.get_statistics()
-    print(f"统计: {stats}")
+    logger.info(f"统计: {stats}")
 
     chain = await tracker.get_completion_chain("hypo_001")
-    print(f"\n假说链条: {json.dumps(chain, indent=2, ensure_ascii=False)}")
+    logger.info(f"\n假说链条: {json.dumps(chain, indent=2, ensure_ascii=False)}")
 
 
 if __name__ == "__main__":

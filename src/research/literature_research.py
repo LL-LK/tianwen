@@ -12,6 +12,8 @@ LiteratureResearcher - 多数据源完整研究闭环实现
 - ChromaDB向量存储接口 (预留RAG增强)
 - 多种格式导出
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import json
@@ -334,10 +336,10 @@ class OpenAlexClient:
                 return json.loads(response.read().decode('utf-8'))
 
         except urllib.error.HTTPError as e:
-            print(f"[OpenAlex] HTTP Error: {e.code} - {e.reason}")
+            logger.error(f"[OpenAlex] HTTP Error: {e.code} - {e.reason}")
             return None
         except Exception as e:
-            print(f"[OpenAlex] Request error: {e}")
+            logger.error(f"[OpenAlex] Request error: {e}")
             return None
 
     async def search(self, query: str, max_results: int = None) -> List[Paper]:
@@ -372,7 +374,7 @@ class OpenAlexClient:
                 if paper:
                     papers.append(paper)
             except Exception as e:
-                print(f"[OpenAlex] Parse work error: {e}")
+                logger.error(f"[OpenAlex] Parse work error: {e}")
                 continue
 
         return papers
@@ -492,7 +494,7 @@ class OpenAlexClient:
             )
 
         except Exception as e:
-            print(f"[OpenAlex] Parse error: {e}")
+            logger.error(f"[OpenAlex] Parse error: {e}")
             return None
 
     def _reconstruct_abstract(self, inverted_index: Dict) -> str:
@@ -591,10 +593,10 @@ class SemanticScholarClient:
                 return json.loads(response.read().decode('utf-8'))
 
         except urllib.error.HTTPError as e:
-            print(f"[SemanticScholar] HTTP Error: {e.code} - {e.reason}")
+            logger.error(f"[SemanticScholar] HTTP Error: {e.code} - {e.reason}")
             return None
         except Exception as e:
-            print(f"[SemanticScholar] Request error: {e}")
+            logger.error(f"[SemanticScholar] Request error: {e}")
             return None
 
     async def search(self, query: str, max_results: int = None) -> List[Paper]:
@@ -633,7 +635,7 @@ class SemanticScholarClient:
                 if paper:
                     papers.append(paper)
             except Exception as e:
-                print(f"[SemanticScholar] Parse paper error: {e}")
+                logger.error(f"[SemanticScholar] Parse paper error: {e}")
                 continue
 
         return papers
@@ -840,7 +842,7 @@ class SemanticScholarClient:
             )
 
         except Exception as e:
-            print(f"[SemanticScholar] Parse error: {e}")
+            logger.error(f"[SemanticScholar] Parse error: {e}")
             return None
 
 
@@ -902,11 +904,11 @@ class PDFParser:
             with open(local_path, 'wb') as f:
                 f.write(pdf_data)
 
-            print(f"[PDFParser] Downloaded: {local_path}")
+            logger.info(f"[PDFParser] Downloaded: {local_path}")
             return local_path
 
         except Exception as e:
-            print(f"[PDFParser] Download error: {e}")
+            logger.error(f"[PDFParser] Download error: {e}")
             return None
 
     async def parse_pdf(self, pdf_path: str,
@@ -1185,7 +1187,7 @@ class PaperPDFAnalyzer:
                 analysis = await self.analyze_paper(paper)
                 results.append(analysis)
             except Exception as e:
-                print(f"[PaperPDFAnalyzer] Error analyzing {paper.id}: {e}")
+                logger.error(f"[PaperPDFAnalyzer] Error analyzing {paper.id}: {e}")
                 results.append({
                     "paper_id": paper.id,
                     "title": paper.title,
@@ -1362,7 +1364,7 @@ class LiteratureResearcher:
             tasks.append(self.search_semantic_scholar(query, max_results))
 
         if not tasks:
-            print("[LiteratureResearcher] No data sources enabled")
+            logger.info("[LiteratureResearcher] No data sources enabled")
             return []
 
         # 并行执行所有搜索任务
@@ -1370,7 +1372,7 @@ class LiteratureResearcher:
 
         for result in results:
             if isinstance(result, Exception):
-                print(f"[LiteratureResearcher] Search error: {result}")
+                logger.error(f"[LiteratureResearcher] Search error: {result}")
                 continue
             if isinstance(result, list):
                 all_papers.extend(result)
@@ -1378,7 +1380,7 @@ class LiteratureResearcher:
         # 去重 (基于论文ID)
         unique_papers = self._deduplicate_papers(all_papers)
 
-        print(f"[LiteratureResearcher] Found {len(all_papers)} papers, {len(unique_papers)} unique")
+        logger.info(f"[LiteratureResearcher] Found {len(all_papers)} papers, {len(unique_papers)} unique")
         return unique_papers
 
     def _deduplicate_papers(self, papers: List[Paper]) -> List[Paper]:
@@ -1431,12 +1433,12 @@ class LiteratureResearcher:
         Returns:
             ResearchState: 研究现状分析结果
         """
-        print(f"\n🔍 开始文献调研: {topic}")
-        print(f"   使用数据源: {', '.join(self.sources_used) if self.sources_used else '无'}")
+        logger.info(f"\n🔍 开始文献调研: {topic}")
+        logger.info(f"   使用数据源: {', '.join(self.sources_used) if self.sources_used else '无'}")
 
         # 1. 搜索论文 (多数据源)
         papers = await self.search_all(topic, max_results=max_papers)
-        print(f"   找到 {len(papers)} 篇相关论文 (去重后)")
+        logger.info(f"   找到 {len(papers)} 篇相关论文 (去重后)")
 
         if not papers:
             return ResearchState(
@@ -1447,27 +1449,27 @@ class LiteratureResearcher:
 
         # 2. 深度主题提取
         themes = self._extract_themes_advanced(papers)
-        print(f"   识别 {len(themes)} 个关键主题")
+        logger.info(f"   识别 {len(themes)} 个关键主题")
 
         # 3. 论文聚类
         clusters = self._cluster_papers(papers)
-        print(f"   发现 {len(clusters)} 个研究子领域")
+        logger.info(f"   发现 {len(clusters)} 个研究子领域")
 
         # 4. 分析研究空白
         gaps = self._analyze_gaps_advanced(papers, themes)
-        print(f"   发现 {len(gaps)} 个研究空白")
+        logger.info(f"   发现 {len(gaps)} 个研究空白")
 
         # 5. 统计时间线
         timeline = self._analyze_timeline(papers)
-        print(f"   时间跨度: {min(timeline.keys()) if timeline else 'N/A'} - {max(timeline.keys()) if timeline else 'N/A'}")
+        logger.info(f"   时间跨度: {min(timeline.keys()) if timeline else 'N/A'} - {max(timeline.keys()) if timeline else 'N/A'}")
 
         # 6. 识别高产作者
         top_authors = self._find_top_authors(papers)
-        print(f"   高产作者: {[a[0] for a in top_authors[:3]]}")
+        logger.info(f"   高产作者: {[a[0] for a in top_authors[:3]]}")
 
         # 7. 判断趋势
         trend = self._analyze_trend(timeline)
-        print(f"   研究趋势: {trend}")
+        logger.info(f"   研究趋势: {trend}")
 
         # 8. 生成摘要
         summary = self._generate_summary_advanced(topic, papers, themes, gaps, trend)
@@ -2187,70 +2189,70 @@ async def research_and_export(topic: str, format: str = "markdown",
 
 async def demo():
     print("=" * 70)
-    print("天问-AGI 文献调研模块 v2.1 演示 - 多数据源支持")
+    logger.info("天问-AGI 文献调研模块 v2.1 演示 - 多数据源支持")
     print("=" * 70)
 
     # 1. 仅使用arXiv (默认)
-    print("\n[模式1] 仅使用arXiv")
+    logger.info("\n[模式1] 仅使用arXiv")
     researcher = LiteratureResearcher(use_arxiv=True, use_openalex=False, use_semantic_scholar=False)
 
-    print("\n🔍 调研: machine learning astronomy")
+    logger.info("\n🔍 调研: machine learning astronomy")
     state = await researcher.research("machine learning astronomy", max_papers=20)
 
-    print("\n📊 调研结果:")
-    print(f"   论文数: {state.total_results}")
-    print(f"   关键主题: {', '.join(state.key_themes[:8])}")
-    print(f"   研究空白: {len(state.research_gaps)} (高优先级: {sum(1 for g in state.research_gaps if g.priority == 'high')})")
-    print(f"   研究趋势: {state.trend_direction}")
-    print(f"   数据源: {', '.join(state.sources_used)}")
+    logger.info("\n📊 调研结果:")
+    logger.info(f"   论文数: {state.total_results}")
+    logger.info(f"   关键主题: {', '.join(state.key_themes[:8])}")
+    logger.info(f"   研究空白: {len(state.research_gaps)} (高优先级: {sum(1 for g in state.research_gaps if g.priority == 'high')})")
+    logger.info(f"   研究趋势: {state.trend_direction}")
+    logger.info(f"   数据源: {', '.join(state.sources_used)}")
 
     # 2. 多数据源调研
     print("\n" + "=" * 70)
-    print("\n[模式2] 多数据源调研 (arXiv + OpenAlex)")
+    logger.info("\n[模式2] 多数据源调研 (arXiv + OpenAlex)")
     researcher_multi = LiteratureResearcher(
         use_arxiv=True,
         use_openalex=True,
         use_semantic_scholar=False
     )
 
-    print("\n🔍 调研: deep learning galaxy classification")
+    logger.info("\n🔍 调研: deep learning galaxy classification")
     state_multi = await researcher_multi.research("deep learning galaxy classification", max_papers=30)
 
-    print("\n📊 多数据源调研结果:")
-    print(f"   论文数: {state_multi.total_results}")
-    print(f"   数据源: {', '.join(state_multi.sources_used)}")
+    logger.info("\n📊 多数据源调研结果:")
+    logger.info(f"   论文数: {state_multi.total_results}")
+    logger.info(f"   数据源: {', '.join(state_multi.sources_used)}")
 
     # 3. 生成假说
-    print("\n\n💡 生成研究假说...")
+    logger.info("\n\n💡 生成研究假说...")
     hypotheses = await researcher.generate_hypotheses(state)
-    print(f"   生成 {len(hypotheses)} 个研究假说")
+    logger.info(f"   生成 {len(hypotheses)} 个研究假说")
     for h in hypotheses[:2]:
-        print(f"   - {h.hypothesis[:60]}...")
+        logger.info(f"   - {h.hypothesis[:60]}...")
 
     # 4. 观测站联动
-    print("\n\n🔭 观测站联动...")
+    logger.info("\n\n🔭 观测站联动...")
     obs_link = researcher.link_to_observatory(state)
     if obs_link.relevant_targets:
-        print(f"   关联目标: {', '.join(obs_link.relevant_targets)}")
+        logger.info(f"   关联目标: {', '.join(obs_link.relevant_targets)}")
     if obs_link.data_requirements:
-        print(f"   数据需求: {', '.join(obs_link.data_requirements)}")
+        logger.info(f"   数据需求: {', '.join(obs_link.data_requirements)}")
 
     # 5. 完整综述
-    print("\n\n📝 生成完整文献综述...")
+    logger.info("\n\n📝 生成完整文献综述...")
     review = await researcher.generate_review("deep learning galaxy classification", max_papers=30)
 
-    print(f"\n{'='*70}")
-    print(f"综述标题: {review.title}")
-    print(f"参考文献: {len(review.references)} 篇")
-    print(f"研究假说: {len(review.hypotheses)} 个")
+    logger.info(f"\n{'='*70}")
+    logger.info(f"综述标题: {review.title}")
+    logger.info(f"参考文献: {len(review.references)} 篇")
+    logger.info(f"研究假说: {len(review.hypotheses)} 个")
 
     # 6. 导出示例
-    print("\n\n📤 导出格式示例:")
+    logger.info("\n\n📤 导出格式示例:")
     md = researcher.export_to_markdown(review)
-    print(f"   Markdown: {len(md)} 字符")
+    logger.info(f"   Markdown: {len(md)} 字符")
 
     js = researcher.export_to_json(review)
-    print(f"   JSON: {len(js)} 字符")
+    logger.info(f"   JSON: {len(js)} 字符")
 
 if __name__ == "__main__":
     asyncio.run(demo())

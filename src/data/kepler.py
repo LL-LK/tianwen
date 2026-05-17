@@ -9,6 +9,8 @@ Kepler/TESS系外行星数据客户端
 """
 
 from __future__ import annotations
+import logging
+logger = logging.getLogger(__name__)
 
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
@@ -124,7 +126,7 @@ class KeplerExoplanetClient:
             return self._get_mock_planets(max_mass, min_radius, max_distance)
 
         except Exception as e:
-            print(f"NASA TAP查询失败: {e}")
+            logger.info(f"NASA TAP查询失败: {e}")
             # 失败时返回模拟数据而不是空列表
             return self._get_mock_planets(max_mass, min_radius, max_distance)
 
@@ -413,7 +415,7 @@ class KeplerExoplanetClient:
             return await self._get_lightcurve_mast(target, mission_lower)
 
         except Exception as e:
-            print(f"获取光变曲线失败 (TAP): {e}")
+            logger.info(f"获取光变曲线失败 (TAP): {e}")
             # 回退到MAST API
             try:
                 target = planet_name.strip()
@@ -422,7 +424,7 @@ class KeplerExoplanetClient:
                 mission_lower = mission.lower()
                 return await self._get_lightcurve_mast(target, mission_lower)
             except Exception as e2:
-                print(f"获取光变曲线失败 (MAST回退): {e2}")
+                logger.info(f"获取光变曲线失败 (MAST回退): {e2}")
                 return np.array([]), np.array([])
 
     async def _get_lightcurve_mast(
@@ -482,7 +484,7 @@ class KeplerExoplanetClient:
             return np.array([]), np.array([])
 
         except Exception as e:
-            print(f"MAST API查询失败: {e}")
+            logger.info(f"MAST API查询失败: {e}")
             return np.array([]), np.array([])
 
     async def get_stellar_params(self, star_name: str) -> Dict:
@@ -529,7 +531,7 @@ class KeplerExoplanetClient:
             return {}
 
         except Exception as e:
-            print(f"获取恒星参数失败: {e}")
+            logger.info(f"获取恒星参数失败: {e}")
             return {}
 
     async def detect_transit_signal(
@@ -579,7 +581,7 @@ class KeplerExoplanetClient:
             return signals
 
         except Exception as e:
-            print(f"凌星检测失败: {e}")
+            logger.info(f"凌星检测失败: {e}")
             return []
 
 

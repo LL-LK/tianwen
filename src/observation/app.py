@@ -3,6 +3,8 @@
 基于 StarWhisper/NGSS/src/app/app2.py ProcessPoolExecutor 架构
 实现多阶段并行处理：数据采集 → 传输 → 预处理 → 存储
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import base64
@@ -634,7 +636,7 @@ class ObservationPipeline:
 # ============ 快速测试 ============
 
 if __name__ == "__main__":
-    print("=== Observation Pipeline 测试 ===")
+    logger.info("=== Observation Pipeline 测试 ===")
 
     # 测试数据包序列化
     payload = json.dumps({"telescope_id": "telescope1", "status": "ok"}).encode()
@@ -649,12 +651,12 @@ if __name__ == "__main__":
         checksum=hashlib.sha256(payload).hexdigest()
     )
 
-    print(f"Packet ID: {packet.packet_id}")
-    print(f"Verify: {packet.verify()}")
+    logger.info(f"Packet ID: {packet.packet_id}")
+    logger.info(f"Verify: {packet.verify()}")
 
     # 序列化/反序列化
     data = packet.to_bytes()
-    print(f"Serialized: {len(data)} bytes")
+    logger.info(f"Serialized: {len(data)} bytes")
 
     # 测试流水线
     pipeline = ObservationPipeline()
@@ -666,9 +668,9 @@ if __name__ == "__main__":
         "cold_path": "/tmp/tianwen_cold"
     })
 
-    print("\n启动流水线 (10秒)...")
+    logger.info("\n启动流水线 (10秒)...")
     pipeline.run_blocking(duration_seconds=10)
 
-    print("\n流水线统计:")
+    logger.info("\n流水线统计:")
     for k, v in pipeline.get_stats().items():
-        print(f"  {k}: {v}")
+        logger.info(f"  {k}: {v}")

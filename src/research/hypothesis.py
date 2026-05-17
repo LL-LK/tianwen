@@ -4,13 +4,15 @@ HypothesisGenerator - 从文献和观测数据生成可验证假说
 
 基于 Hermes 建议的 Structured Hypothesis Format (SHF)
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import json
 import uuid
 from typing import Dict, List, Any, Optional
 
-# 导入统一数据模型
-from data.models import Hypothesis, HypothesisStatus
+# 导入统一数据模型 (从 core.types 避免循环依赖)
+from src.core.types import Hypothesis, HypothesisStatus
 
 
 class HypothesisGenerator:
@@ -307,10 +309,10 @@ async def demo():
     generator = HypothesisGenerator()
     hypotheses = await generator.generate_from_research(state)
 
-    print(f"生成了 {len(hypotheses)} 个假说")
+    logger.info(f"生成了 {len(hypotheses)} 个假说")
     for h in hypotheses[:3]:
-        print(f"\n{h.id}: {h.statement}")
-        print(f"   置信度: {h.confidence:.0%}")
+        logger.info(f"\n{h.id}: {h.statement}")
+        logger.info(f"   置信度: {h.confidence:.0%}")
 
     # 3. 导出
     print("\n" + generator.export_hypotheses(hypotheses, format="markdown"))

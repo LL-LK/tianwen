@@ -6,6 +6,8 @@
 
 参考: astronomy_algorithms.py 第863-871行的CATALOG_FILTER_PARAMS
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import urllib.request
 import urllib.error
@@ -887,36 +889,36 @@ if __name__ == '__main__':
     # 测试/演示
     manager = StarCatalogManager()
     
-    print("=" * 50)
-    print("星表管理器 (Star Catalog Manager)")
-    print("=" * 50)
-    print(f"数据目录: {manager.data_dir}")
-    print(f"数据库: {manager.db.db_path}")
-    print(f"Dec过滤阈值: {manager.dec_filter_deg}°")
-    print(f"去重容差: {manager.dup_tolerance_arcmin}'")
-    print()
+    logger.debug("=" * 50)
+    logger.info("星表管理器 (Star Catalog Manager)")
+    logger.debug("=" * 50)
+    logger.info(f"数据目录: {manager.data_dir}")
+    logger.info(f"数据库: {manager.db.db_path}")
+    logger.info(f"Dec过滤阈值: {manager.dec_filter_deg}°")
+    logger.info(f"去重容差: {manager.dup_tolerance_arcmin}'")
+    logger.debug("")
     
     # 检查状态
     ready = manager.is_catalog_ready()
-    print("星表状态:")
-    print(f"  BSC: {'已下载' if ready['bsc'] else '未下载'}")
-    print(f"  NGC/IC: {'已下载' if ready['ngcic'] else '未下载'}")
-    print()
+    logger.info("星表状态:")
+    logger.info(f"  BSC: {'已下载' if ready['bsc'] else '未下载'}")
+    logger.info(f"  NGC/IC: {'已下载' if ready['ngcic'] else '未下载'}")
+    logger.debug("")
     
     # 演示查询
     if ready['bsc']:
         stars = manager.db.query_stars(max_mag=6.0, limit=10)
-        print(f"亮星查询 (V<6): {len(stars)} 颗")
+        logger.info(f"亮星查询 (V<6): {len(stars)} 颗")
         for s in stars[:5]:
-            print(f"  {s['name']}: RA={s['ra_deg']:.2f}°, Dec={s['dec_deg']:.2f}°, V={s['mag']}")
+            logger.info(f"  {s['name']}: RA={s['ra_deg']:.2f}°, Dec={s['dec_deg']:.2f}°, V={s['mag']}")
     
     if ready['ngcic']:
         galaxies = manager.db.query_galaxies(max_mag=14.0, limit=10)
-        print(f"\n亮星系查询 (V<14): {len(galaxies)} 个")
+        logger.info(f"\n亮星系查询 (V<14): {len(galaxies)} 个")
         for g in galaxies[:5]:
-            print(f"  {g['catalog_id']}: RA={g['ra_deg']:.2f}°, Dec={g['dec_deg']:.2f}°, V={g['mag']}")
+            logger.info(f"  {g['catalog_id']}: RA={g['ra_deg']:.2f}°, Dec={g['dec_deg']:.2f}°, V={g['mag']}")
     
-    print("\n统计信息:")
+    logger.info("\n统计信息:")
     stats = manager.get_stats()
     for k, v in stats.items():
-        print(f"  {k}: {v}")
+        logger.info(f"  {k}: {v}")

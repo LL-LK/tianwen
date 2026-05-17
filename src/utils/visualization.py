@@ -2,6 +2,8 @@
 Hermes-AGI Execution Visualization Components
 执行过程可视化组件 - Web界面实时展示
 """
+import logging
+logger = logging.getLogger(__name__)
 
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
@@ -492,15 +494,15 @@ function updateTimeline(events) {
 
 def demo():
     """演示可视化"""
-    print("=" * 50)
-    print("Hermes-AGI Visualization Demo")
-    print("=" * 50)
+    logger.debug("=" * 50)
+    logger.info("Hermes-AGI Visualization Demo")
+    logger.debug("=" * 50)
 
     # 创建追踪器
     tracker = ExecutionTracker("TASK-001", "创建一个用户管理系统")
 
     # 模拟执行流程
-    print("\n1. 开始认知阶段...")
+    logger.info("\n1. 开始认知阶段...")
     tracker.start_cognitive()
     tracker.update_cognitive(30, "解析用户意图...")
     tracker.update_cognitive(60, "提取关键实体...")
@@ -510,9 +512,9 @@ def demo():
         "entities": ["User", "Management"],
         "skills": ["Backend", "Frontend", "Database"]
     })
-    print(f"   认知输出: {tracker.cognitive_output}")
+    logger.info(f"   认知输出: {tracker.cognitive_output}")
 
-    print("\n2. 开始规划阶段...")
+    logger.info("\n2. 开始规划阶段...")
     tracker.start_planning()
     from src.core.cognitive import SubTask
     subtasks = [
@@ -523,39 +525,39 @@ def demo():
         SubTaskVisual(id="T5", name="前端开发", skill="Frontend", status="pending"),
     ]
     tracker.complete_planning(subtasks, {"estimated_time": "2小时"})
-    print(f"   规划了 {len(subtasks)} 个子任务")
+    logger.info(f"   规划了 {len(subtasks)} 个子任务")
 
-    print("\n3. 开始执行阶段...")
+    logger.info("\n3. 开始执行阶段...")
     tracker.start_execution()
     tracker.update_subtask("T3", "completed", 100, "数据库设计完成")
     tracker.update_subtask("T4", "running", 50, "实现中...")
     tracker.update_subtask("T4", "completed", 100, "后端API完成")
     tracker.update_subtask("T5", "completed", 100, "前端组件完成")
     tracker.complete_execution("系统开发完成")
-    print("   执行完成")
+    logger.info("   执行完成")
 
-    print("\n4. 开始进化阶段...")
+    logger.info("\n4. 开始进化阶段...")
     tracker.start_evolution()
     tracker.complete_evolution()
-    print("   经验已记录")
+    logger.info("   经验已记录")
 
     # 获取最终状态
     state = tracker.to_dict()
-    print("\n" + "=" * 50)
-    print("执行状态:")
-    print(f"  状态: {state['status']}")
-    print(f"  总耗时: {state['total_time']}")
-    print("\n  引擎状态:")
+    logger.debug("\n" + "=" * 50)
+    logger.info("执行状态:")
+    logger.info(f"  状态: {state['status']}")
+    logger.info(f"  总耗时: {state['total_time']}")
+    logger.info("\n  引擎状态:")
     for name, info in state['engines'].items():
-        print(f"    {name}: {info['state']} ({info['progress']}%)")
+        logger.info(f"    {name}: {info['state']} ({info['progress']}%)")
 
-    print("\n  子任务:")
+    logger.info("\n  子任务:")
     for task in state['subtasks']:
-        print(f"    {task['id']} - {task['skill']}: {task['status']}")
+        logger.info(f"    {task['id']} - {task['skill']}: {task['status']}")
 
     # 生成可视化HTML
-    print("\n" + "=" * 50)
-    print("可视化HTML组件已生成，可嵌入Web界面")
+    logger.debug("\n" + "=" * 50)
+    logger.info("可视化HTML组件已生成，可嵌入Web界面")
 
 if __name__ == "__main__":
     demo()

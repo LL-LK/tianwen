@@ -14,6 +14,8 @@
 文档: docs/PRO/02-code-analysis/PRO_NINA_CODE_HELP_TIANWEN_20260503.md
 文档: docs/PRO/02-code-analysis/PRO_STARWHISPER_CODE_HELP_TIANWEN_20260503.md
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import math
 from datetime import datetime, timezone
@@ -947,39 +949,39 @@ class PaperDataSummary:
 
 if __name__ == '__main__':
     # 测试用例
-    print("=" * 60)
-    print("StarWhisper & NINA 算法测试")
-    print("=" * 60)
+    logger.debug("=" * 60)
+    logger.info("StarWhisper & NINA 算法测试")
+    logger.debug("=" * 60)
     
     # 测试 MeridianFlip
     coords = Coordinates(ra_hours=5.5, dec_degrees=45.0)
     lst = 3.0
-    print(f"\n1. MeridianFlip 测试")
-    print(f"   目标 RA={coords.ra_hours}h, Dec={coords.dec_degrees}°")
-    print(f"   LST={lst}h")
-    print(f"   到中天时间: {MeridianFlip.time_to_meridian(coords, lst):.2f} 小时")
-    print(f"   期望PierSide: {MeridianFlip.expected_pier_side(coords, lst)}")
+    logger.info(f"\n1. MeridianFlip 测试")
+    logger.info(f"   目标 RA={coords.ra_hours}h, Dec={coords.dec_degrees}°")
+    logger.info(f"   LST={lst}h")
+    logger.info(f"   到中天时间: {MeridianFlip.time_to_meridian(coords, lst):.2f} 小时")
+    logger.info(f"   期望PierSide: {MeridianFlip.expected_pier_side(coords, lst)}")
     
     # 测试 StarWhisper LST 计算
     now = datetime.now(timezone.utc)
     lat, lon = 40.393, 117.574  # 兴隆站
-    print(f"\n2. StarWhisper LST 测试")
+    logger.info(f"\n2. StarWhisper LST 测试")
     lst, ra_range, period = StarWhisperAlgorithms.calculate_lst_and_corresponding_ra_range(
         now, lat, lon
     )
-    print(f"   时间: {now}")
-    print(f"   站点: lat={lat}°, lon={lon}°")
-    print(f"   LST: {lst:.4f} 小时")
-    print(f"   RA范围: {ra_range[0]:.2f} - {ra_range[1]:.2f}")
-    print(f"   时段: {period}")
+    logger.info(f"   时间: {now}")
+    logger.info(f"   站点: lat={lat}°, lon={lon}°")
+    logger.info(f"   LST: {lst:.4f} 小时")
+    logger.info(f"   RA范围: {ra_range[0]:.2f} - {ra_range[1]:.2f}")
+    logger.info(f"   时段: {period}")
     
     # 测试 NINA XML 生成
-    print(f"\n3. NINA XML 生成测试")
+    logger.info(f"\n3. NINA XML 生成测试")
     xml = StarWhisperAlgorithms.generate_nina_capture_sequence_xml(
         "M31", 0.712, 41.269, exposure_seconds=120, total_exposures=20
     )
     print(xml[:500] + "...")
     
-    print("\n" + "=" * 60)
-    print("测试完成!")
-    print("=" * 60)
+    logger.debug("\n" + "=" * 60)
+    logger.info("测试完成!")
+    logger.debug("=" * 60)

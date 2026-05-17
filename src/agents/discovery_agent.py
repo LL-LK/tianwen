@@ -11,6 +11,7 @@ DiscoveryTracker - 追踪假说验证结果，形成完整研究闭环
 """
 
 import json
+import logging
 import uuid
 import time
 from datetime import datetime
@@ -18,6 +19,8 @@ from typing import Dict, List, Any, Optional, Literal, Tuple
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class Neo4jConnectionError(Exception):
@@ -1067,10 +1070,10 @@ async def demo():
     )
 
     stats = await tracker.get_statistics()
-    print(f"统计: {stats}")
+    logger.info(f"统计: {stats}")
 
     chain = await tracker.get_completion_chain("hypo_001")
-    print(f"\n假说链条: {json.dumps(chain, indent=2, ensure_ascii=False)}")
+    logger.info(f"\n假说链条: {json.dumps(chain, indent=2, ensure_ascii=False)}")
 
 
 if __name__ == "__main__":

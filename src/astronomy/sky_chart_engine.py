@@ -10,6 +10,8 @@ RealtimeSkyChart - 通过 NASA SkyView API 获取真实天文图像
 
 Author: Tianwen-AGI
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import base64
@@ -187,13 +189,13 @@ class NASA_SkyView_API:
                     data = json.load(f)
                 result = SkyChartResult(**data)
                 result.cached = True
-                print(f"[SkyView] Cache hit: {request.target} ({request.survey.value})")
+                logger.info(f"[SkyView] Cache hit: {request.target} ({request.survey.value})")
                 return result
             except Exception as e:
-                print(f"[SkyView] Cache read error: {e}")
+                logger.error(f"[SkyView] Cache read error: {e}")
 
         # 构建API请求
-        print(f"[SkyView] Fetching: {request.target} RA={ra:.4f} Dec={dec:.4f} Survey={request.survey.value}")
+        logger.info(f"[SkyView] Fetching: {request.target} RA={ra:.4f} Dec={dec:.4f} Survey={request.survey.value}")
 
         # Step 1: 创建扫描任务
         survey_str = request.survey.value if isinstance(request.survey, SkySurvey) else request.survey
@@ -229,7 +231,7 @@ class NASA_SkyView_API:
 
         except Exception as e:
             # NASA SkyView 不可用，使用离线星图
-            print(f"[SkyView] NASA API unavailable ({e}), using offline star chart")
+            logger.info(f"[SkyView] NASA API unavailable ({e}), using offline star chart")
             image_base64, width, height, sources = self._generate_offline_starfield(
                 ra, dec, request.size, request.pixels, survey_str
             )
@@ -256,7 +258,7 @@ class NASA_SkyView_API:
             with open(cached_path, 'w') as f:
                 json.dump(result.__dict__, f)
         except Exception as e:
-            print(f"[SkyView] Cache write error: {e}")
+            logger.error(f"[SkyView] Cache write error: {e}")
 
         return result
     
@@ -294,7 +296,7 @@ class NASA_SkyView_API:
             return None
             
         except Exception as e:
-            print(f"[SkyView] Submit error: {e}")
+            logger.error(f"[SkyView] Submit error: {e}")
             return None
     
     async def _wait_for_completion(self, task_id: str, timeout: int = 120) -> Optional[str]:
@@ -312,14 +314,14 @@ class NASA_SkyView_API:
                 if status.get("status") == "completed":
                     return status.get("png")
                 elif status.get("status") == "error":
-                    print(f"[SkyView] Task error: {status.get('error')}")
+                    logger.error(f"[SkyView] Task error: {status.get('error')}")
                     return None
                 
                 # 等待后重试
                 await asyncio.sleep(5)
                 
             except Exception as e:
-                print(f"[SkyView] Status check error: {e}")
+                logger.error(f"[SkyView] Status check error: {e}")
                 await asyncio.sleep(5)
         
         return None
@@ -354,7 +356,7 @@ class NASA_SkyView_API:
             return image_base64, width, height
             
         except Exception as e:
-            print(f"[SkyView] Download error: {e}")
+            logger.error(f"[SkyView] Download error: {e}")
             raise
     
     def _detect_sources_simple(self, ra: float, dec: float, fov_arcmin: float, 
@@ -556,7 +558,7 @@ async def get_realtime_skychart(
         
     Example:
         result = await get_realtime_skychart("M31", size=20.0)
-        print(f"检测到 {len(result.catalog_sources)} 个天体")
+        logger.info(f"检测到 {len(result.catalog_sources)} 个天体")
         # 将图像发送到前端:
         # <img src="data:image/png;base64,{{ result.image_base64 }}">
     """
@@ -600,7 +602,7 @@ async def batch_get_skycharts(
     output = {}
     for target, result in zip(targets, results):
         if isinstance(result, Exception):
-            print(f"[SkyView] Error fetching {target}: {result}")
+            logger.error(f"[SkyView] Error fetching {target}: {result}")
         else:
             output[target] = result
     
@@ -612,32 +614,32 @@ async def batch_get_skycharts(
 if __name__ == "__main__":
     async def test():
         print("=" * 50)
-        print("Testing NASA SkyView Realtime Sky Chart")
+        logger.info("Testing NASA SkyView Realtime Sky Chart")
         print("=" * 50)
         
         # 测试单个目标
-        print("\n[Test 1] M31 (仙女座星系)")
+        logger.info("\n[Test 1] M31 (仙女座星系)")
         result = await get_realtime_skychart("M31", size=30.0)
-        print(f"  RA: {result.ra:.4f}, Dec: {result.dec:.4f}")
-        print(f"  Survey: {result.survey}")
-        print(f"  Image: {len(result.image_base64)} chars (Base64)")
-        print(f"  Sources found: {len(result.catalog_sources)}")
+        logger.info(f"  RA: {result.ra:.4f}, Dec: {result.dec:.4f}")
+        logger.info(f"  Survey: {result.survey}")
+        logger.info(f"  Image: {len(result.image_base64)} chars (Base64)")
+        logger.info(f"  Sources found: {len(result.catalog_sources)}")
         for src in result.catalog_sources[:5]:
-            print(f"    - {src['name']} ({src['catalog_id']}) mag={src['mag']}")
+            logger.info(f"    - {src['name']} ({src['catalog_id']}) mag={src['mag']}")
         
         # 测试坐标解析
-        print("\n[Test 2] Parsing coordinates")
+        logger.info("\n[Test 2] Parsing coordinates")
         coords = parse_coordinates("M42")
-        print(f"  M42 -> RA={coords[0]:.4f}, Dec={coords[1]:.4f}")
+        logger.info(f"  M42 -> RA={coords[0]:.4f}, Dec={coords[1]:.4f}")
         
         # 测试批量
-        print("\n[Test 3] Batch fetch")
+        logger.info("\n[Test 3] Batch fetch")
         targets = ["M42", "M51", "M81", "M101"]
         batch = await batch_get_skycharts(targets, size=20.0)
         for name, res in batch.items():
-            print(f"  {name}: {len(res.catalog_sources)} sources, cached={res.cached}")
+            logger.info(f"  {name}: {len(res.catalog_sources)} sources, cached={res.cached}")
         
         print("\n" + "=" * 50)
-        print("All tests completed!")
+        logger.info("All tests completed!")
         
     asyncio.run(test())

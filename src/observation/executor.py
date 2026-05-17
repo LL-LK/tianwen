@@ -693,25 +693,25 @@ class ObservationExecutor:
 async def demo():
     """演示观测执行器的使用"""
     print("=" * 60)
-    print("观测执行器演示")
+    logger.info("观测执行器演示")
     print("=" * 60)
 
     # 创建执行器实例
     executor = ObservationExecutor("tcp://localhost:5555")
 
     # 连接
-    print("\n1. 连接望远镜控制服务器...")
+    logger.info("\n1. 连接望远镜控制服务器...")
     connected = await executor.connect()
-    print(f"   连接结果: {'成功' if connected else '失败'}")
+    logger.info(f"   连接结果: {'成功' if connected else '失败'}")
 
     # 获取状态
-    print("\n2. 获取望远镜当前状态...")
+    logger.info("\n2. 获取望远镜当前状态...")
     state = await executor.get_state()
-    print(f"   状态: {state.status.value}")
-    print(f"   位置: RA={state.current_ra:.2f}, Dec={state.current_dec:.2f}")
+    logger.info(f"   状态: {state.status.value}")
+    logger.info(f"   位置: RA={state.current_ra:.2f}, Dec={state.current_dec:.2f}")
 
     # 创建观测计划
-    print("\n3. 创建观测计划...")
+    logger.info("\n3. 创建观测计划...")
     plan = [
         ObservationInstruction(
             command=ObservationCommand.SLEW_TO_TARGET,
@@ -729,18 +729,18 @@ async def demo():
             filter_name="R"
         ),
     ]
-    print(f"   计划包含 {len(plan)} 条指令")
+    logger.info(f"   计划包含 {len(plan)} 条指令")
 
     # 执行观测计划
-    print("\n4. 执行观测计划...")
+    logger.info("\n4. 执行观测计划...")
     result = await executor.execute_observation_plan(plan)
-    print(f"   总指令数: {result.total_instructions}")
-    print(f"   成功: {result.successful}")
-    print(f"   失败: {result.failed}")
-    print(f"   成功率: {result.success_rate:.1%}")
+    logger.info(f"   总指令数: {result.total_instructions}")
+    logger.info(f"   成功: {result.successful}")
+    logger.info(f"   失败: {result.failed}")
+    logger.info(f"   成功率: {result.success_rate:.1%}")
 
     # 添加到队列并处理
-    print("\n5. 测试队列管理...")
+    logger.info("\n5. 测试队列管理...")
     executor.add_to_queue(
         ObservationInstruction(
             command=ObservationCommand.TRACK_TARGET,
@@ -748,18 +748,18 @@ async def demo():
             target_dec=45.0
         )
     )
-    print(f"   队列大小: {executor.get_queue_size()}")
+    logger.info(f"   队列大小: {executor.get_queue_size()}")
 
     queue_result = await executor.process_queue()
-    print(f"   队列执行完成: {queue_result.successful}/{queue_result.total_instructions} 成功")
+    logger.info(f"   队列执行完成: {queue_result.successful}/{queue_result.total_instructions} 成功")
 
     # 断开连接
-    print("\n6. 断开连接...")
+    logger.info("\n6. 断开连接...")
     await executor.disconnect()
-    print("   已断开")
+    logger.info("   已断开")
 
-    print("\n" + "=" * 60)
-    print("演示完成")
+    logger.debug("\n" + "=" * 60)
+    logger.info("演示完成")
     print("=" * 60)
 
 

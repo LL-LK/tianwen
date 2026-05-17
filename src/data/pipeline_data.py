@@ -17,6 +17,8 @@ Author: 天问-AGI
 """
 
 from __future__ import annotations
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import json
@@ -880,7 +882,7 @@ class PipelineOrchestrator:
                         records.append(record)
                     return records
         except Exception as e:
-            print(f"Error reading file {file_path}: {e}")
+            logger.error(f"Error reading file {file_path}: {e}")
 
         return []
 
@@ -1058,9 +1060,9 @@ async def run_data_pipeline(
 
 async def test_pipeline():
     """测试管道执行"""
-    print("=" * 60)
-    print("数据管道测试")
-    print("=" * 60)
+    logger.debug("=" * 60)
+    logger.info("数据管道测试")
+    logger.debug("=" * 60)
 
     # 创建测试数据
     test_data = []
@@ -1083,7 +1085,7 @@ async def test_pipeline():
             record["values"]["humidity"] = 200  # 异常值
         test_data.append(record)
 
-    print(f"生成测试数据: {len(test_data)} 条记录")
+    logger.info(f"生成测试数据: {len(test_data)} 条记录")
 
     # 创建管道配置
     config = PipelineConfig(
@@ -1100,28 +1102,28 @@ async def test_pipeline():
     report = await orchestrator.run_pipeline(test_data)
 
     # 输出结果
-    print("\n" + "=" * 60)
-    print("管道执行结果")
-    print("=" * 60)
-    print(f"状态: {report.status}")
-    print(f"完成阶段: {report.stages_completed}")
-    print(f"处理时间: {report.processing_time:.3f}秒")
-    print(f"数据质量: {report.data_quality.value}")
-    print(f"清洗后记录数: {len(report.cleaned_data) if report.cleaned_data else 0}")
+    logger.debug("\n" + "=" * 60)
+    logger.info("管道执行结果")
+    logger.debug("=" * 60)
+    logger.info(f"状态: {report.status}")
+    logger.info(f"完成阶段: {report.stages_completed}")
+    logger.info(f"处理时间: {report.processing_time:.3f}秒")
+    logger.info(f"数据质量: {report.data_quality.value}")
+    logger.info(f"清洗后记录数: {len(report.cleaned_data) if report.cleaned_data else 0}")
 
-    print("\n报告内容:")
-    print("-" * 40)
+    logger.info("\n报告内容:")
+    logger.debug("-" * 40)
     if report.report_content:
-        print(report.report_content[:1000])
+        logger.debug(report.report_content[:1000])
 
     return report
 
 
 async def test_with_missing_data():
     """测试缺失数据处理"""
-    print("\n" + "=" * 60)
-    print("测试缺失数据处理")
-    print("=" * 60)
+    logger.debug("\n" + "=" * 60)
+    logger.info("测试缺失数据处理")
+    logger.debug("=" * 60)
 
     # 创建包含大量缺失值的数据
     test_data = []
@@ -1142,20 +1144,20 @@ async def test_with_missing_data():
     cleaner = DataCleaner(config)
     result = await cleaner.clean(test_data)
 
-    print(f"原始记录: {len(test_data)}")
-    print(f"清洗后: {len(result.cleaned_data)}")
-    print(f"质量分数: {result.quality_score:.2%}")
-    print(f"发现的问题: {result.issues_found}")
+    logger.info(f"原始记录: {len(test_data)}")
+    logger.info(f"清洗后: {len(result.cleaned_data)}")
+    logger.info(f"质量分数: {result.quality_score:.2%}")
+    logger.info(f"发现的问题: {result.issues_found}")
 
     return result
 
 
 if __name__ == "__main__":
-    print("天问-AGI 数据管道模块")
-    print("=" * 60)
+    logger.info("天问-AGI 数据管道模块")
+    logger.debug("=" * 60)
 
     # 运行测试
     asyncio.run(test_pipeline())
     asyncio.run(test_with_missing_data())
 
-    print("\n测试完成!")
+    logger.info("\n测试完成!")

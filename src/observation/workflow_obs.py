@@ -15,6 +15,8 @@ embodied_observation_workflow.py - 具身观测工作流
 """
 
 from __future__ import annotations
+import logging
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
@@ -127,7 +129,7 @@ class EmbodiedObservationWorkflow:
             from astro_pipeline import AstroPipeline
             self.astro_pipeline = AstroPipeline()
         except ImportError as e:
-            print(f"[警告] AstroPipeline导入失败: {e}")
+            logger.info(f"[警告] AstroPipeline导入失败: {e}")
             self.astro_pipeline = None
 
         # 初始化telescope_client
@@ -136,10 +138,10 @@ class EmbodiedObservationWorkflow:
             self.telescope_client = SeestarMCPClient()
             await self.telescope_client.connect()
         except ImportError as e:
-            print(f"[警告] SeestarMCPClient导入失败: {e}")
+            logger.info(f"[警告] SeestarMCPClient导入失败: {e}")
             self.telescope_client = None
         except Exception as e:
-            print(f"[警告] 望远镜连接失败: {e}")
+            logger.info(f"[警告] 望远镜连接失败: {e}")
             self.telescope_client = None
 
         # 初始化scheduler
@@ -147,7 +149,7 @@ class EmbodiedObservationWorkflow:
             from enhanced_observation_scheduler import EnhancedObservationScheduler
             self.scheduler = EnhancedObservationScheduler()
         except ImportError as e:
-            print(f"[警告] EnhancedObservationScheduler导入失败: {e}")
+            logger.info(f"[警告] EnhancedObservationScheduler导入失败: {e}")
             self.scheduler = None
 
         # 初始化stats_dashboard
@@ -155,7 +157,7 @@ class EmbodiedObservationWorkflow:
             from src.web.dashboard import CycleStatisticsDashboard
             self.stats_dashboard = CycleStatisticsDashboard()
         except ImportError as e:
-            print(f"[警告] CycleStatisticsDashboard导入失败: {e}")
+            logger.info(f"[警告] CycleStatisticsDashboard导入失败: {e}")
             self.stats_dashboard = None
 
     async def run_full_observation_cycle(
@@ -587,7 +589,7 @@ class EmbodiedObservationWorkflow:
             try:
                 await self.telescope_client.safe_shutdown()
             except Exception as e:
-                print(f"[警告] 望远镜安全关闭失败: {e}")
+                logger.info(f"[警告] 望远镜安全关闭失败: {e}")
         self.is_running = False
 
     def get_workflow_status(self) -> Dict[str, Any]:

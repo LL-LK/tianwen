@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any, Callable, AsyncIterator
 from enum import Enum
 import logging
+logger = logging.getLogger(__name__)
 
 # 依赖检查
 try:
@@ -598,7 +599,7 @@ class RealtimeDataProcessor:
 
 async def demo():
     """演示实时数据处理"""
-    print("天问-AGI 实时数据流处理演示")
+    logger.info("天问-AGI 实时数据流处理演示")
     print("="*60)
 
     # 创建处理器
@@ -620,11 +621,11 @@ async def demo():
 
     # 模拟处理
     result = await processor.detector.detect_transient(alert)
-    print(f"检测结果: {result}")
+    logger.info(f"检测结果: {result}")
 
     # 触发观测
     request_id = await processor.trigger.trigger_observation(alert)
-    print(f"观测请求ID: {request_id}")
+    logger.info(f"观测请求ID: {request_id}")
 
     return processor
 

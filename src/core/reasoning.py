@@ -23,6 +23,8 @@ ReasoningEngine - 多模型推理能力集成
     # 强制使用Ollama
     result = await engine.think("问题", force_model="ollama")
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import json
@@ -1136,51 +1138,51 @@ async def analyze_research_state(state: Any) -> Dict:
 async def demo():
     """演示推理引擎用法"""
     print("=" * 60)
-    print("天问-AGI 推理引擎演示")
+    logger.info("天问-AGI 推理引擎演示")
     print("=" * 60)
 
     # 创建引擎
     engine = ReasoningEngine()
 
     # 配置模型
-    print("\n[1] 配置模型...")
+    logger.info("\n[1] 配置模型...")
     try:
         # 优先使用本地Ollama (无需网络，低延迟)
         await engine.configure(
             ollama_config=ModelConfig.ollama("llama2", "http://localhost:11434"),
             qwen_config=ModelConfig.qwen_local("http://localhost:8000"),
         )
-        print("  ✅ Ollama配置成功 (llama2)")
+        logger.info("  ✅ Ollama配置成功 (llama2)")
     except Exception as e:
-        print(f"  ⚠️ 模型配置失败: {e}")
+        logger.info(f"  ⚠️ 模型配置失败: {e}")
 
-    print(f"\n[2] 引擎状态: {engine.get_status()}")
+    logger.info(f"\n[2] 引擎状态: {engine.get_status()}")
 
     # 简单问题 - 优先使用Ollama
-    print("\n[3] 测试简单问题 (LOW复杂度)...")
+    logger.info("\n[3] 测试简单问题 (LOW复杂度)...")
     result = await engine.think("太阳系有几个行星？", complexity="low")
-    print(f"  问题: 太阳系有几个行星？")
-    print(f"  答案: {result.content[:100]}...")
-    print(f"  模型: {result.model_used}, 复杂度: {result.complexity}")
+    logger.info(f"  问题: 太阳系有几个行星？")
+    logger.info(f"  答案: {result.content[:100]}...")
+    logger.info(f"  模型: {result.model_used}, 复杂度: {result.complexity}")
 
     # 复杂推理
-    print("\n[4] 测试复杂推理 (HIGH复杂度)...")
+    logger.info("\n[4] 测试复杂推理 (HIGH复杂度)...")
     result = await engine.think(
         "分析人工智能对天文学研究的潜在影响，包括机遇和挑战",
         complexity="high"
     )
-    print(f"  问题: 分析AI对天文学的影响")
-    print(f"  思维链: {result.thinking_process[:100] if result.thinking_process else 'N/A'}...")
-    print(f"  模型: {result.model_used}")
+    logger.info(f"  问题: 分析AI对天文学的影响")
+    logger.info(f"  思维链: {result.thinking_process[:100] if result.thinking_process else 'N/A'}...")
+    logger.info(f"  模型: {result.model_used}")
 
     # 列出Ollama可用模型
-    print("\n[5] Ollama可用模型...")
+    logger.info("\n[5] Ollama可用模型...")
     models = OllamaAdapter.list_models("http://localhost:11434")
     for m in models:
-        print(f"  - {m.get('name', 'unknown')}")
+        logger.info(f"  - {m.get('name', 'unknown')}")
 
-    print("\n" + "=" * 60)
-    print("演示完成")
+    logger.debug("\n" + "=" * 60)
+    logger.info("演示完成")
     print("=" * 60)
 
 

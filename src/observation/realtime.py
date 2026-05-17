@@ -25,6 +25,8 @@ Phase 4: 成像采集 (Imaging)
 
 Author: Tianwen-AGI
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import json
@@ -100,7 +102,7 @@ def _import_dependencies():
         SkyChartAPI = NASA_SkyView_API
         return True
     except ImportError:
-        print("[RealtimeWorkflow] realtime_sky_chart not available")
+        logger.info("[RealtimeWorkflow] realtime_sky_chart not available")
         return False
 
 
@@ -110,7 +112,7 @@ def _import_telescope_simulator():
         from telescope_simulator import TelescopeSimulator, calculate_observation_window
         return TelescopeSimulator, calculate_observation_window
     except ImportError:
-        print("[RealtimeWorkflow] telescope_simulator not available")
+        logger.info("[RealtimeWorkflow] telescope_simulator not available")
         return None, None
 
 
@@ -169,88 +171,88 @@ class RealtimeObservationWorkflow:
             execution_time_seconds=0.0
         )
         
-        print("=" * 60)
-        print(f"实时观测工作流启动: {target}")
-        print(f"配置: survey={survey}, FOV={fov_arcmin}', exp={exposure}s x {frames}帧")
-        print("=" * 60)
+        logger.debug("=" * 60)
+        logger.info(f"实时观测工作流启动: {target}")
+        logger.info(f"配置: survey={survey}, FOV={fov_arcmin}', exp={exposure}s x {frames}帧")
+        logger.debug("=" * 60)
         
         # Phase 1: 目标规划
-        print("\n[Phase 1] 目标规划")
+        logger.info("\n[Phase 1] 目标规划")
         try:
             target_info = await self._planning_phase(target)
             result.target = target_info
             result.phases_completed.append(ObservationPhase.PLANNING)
-            print(f"  目标: {target_info.catalog_name} ({target_info.object_type})")
-            print(f"  坐标: RA={target_info.ra:.4f}, Dec={target_info.dec:.4f}")
-            print(f"  坐标(格式化): {target_info.ra_hms}, {target_info.dec_dms}")
-            print(f"  视星等: mag={target_info.magnitude}")
+            logger.info(f"  目标: {target_info.catalog_name} ({target_info.object_type})")
+            logger.info(f"  坐标: RA={target_info.ra:.4f}, Dec={target_info.dec:.4f}")
+            logger.info(f"  坐标(格式化): {target_info.ra_hms}, {target_info.dec_dms}")
+            logger.info(f"  视星等: mag={target_info.magnitude}")
             
             # 计算观测窗口
             if self._calc_window:
                 window = self._calc_window(target_info.ra, target_info.dec)
-                print(f"  当前高度: {window['current_altitude']:.1f}°")
-                print(f"  可见性: {'良好' if window['is_visible'] else '不可见'}")
+                logger.info(f"  当前高度: {window['current_altitude']:.1f}°")
+                logger.info(f"  可见性: {'良好' if window['is_visible'] else '不可见'}")
         except Exception as e:
             result.error_message = f"规划阶段失败: {e}"
             result.phases_completed.append(ObservationPhase.FAILED)
             return result
         
         # Phase 2: 获取真实星图
-        print("\n[Phase 2] 获取NASA SkyView真实星图")
+        logger.info("\n[Phase 2] 获取NASA SkyView真实星图")
         try:
             skychart = await self._skychart_phase(target, survey, fov_arcmin)
             result.skychart_data = skychart
             result.phases_completed.append(ObservationPhase.SKYCHART)
-            print(f"  获取成功: {survey}")
-            print(f"  图像尺寸: {skychart.get('width', 0)}x{skychart.get('height', 0)}")
-            print(f"  视场: {skychart.get('fov_deg', 0):.2f}°")
+            logger.info(f"  获取成功: {survey}")
+            logger.info(f"  图像尺寸: {skychart.get('width', 0)}x{skychart.get('height', 0)}")
+            logger.info(f"  视场: {skychart.get('fov_deg', 0):.2f}°")
             
             sources = skychart.get('catalog_sources', [])
-            print(f"  检测到 {len(sources)} 个天体")
+            logger.info(f"  检测到 {len(sources)} 个天体")
             for src in sources[:5]:
-                print(f"    - {src['name']} ({src['catalog_id']}) mag={src['mag']}")
+                logger.info(f"    - {src['name']} ({src['catalog_id']}) mag={src['mag']}")
                 
         except Exception as e:
-            print(f"  星图获取失败: {e}")
+            logger.info(f"  星图获取失败: {e}")
             result.error_message = f"星图获取失败: {e}"
             # 星图失败不终止工作流，继续望远镜阶段
         
         # Phase 3: 望远镜控制
-        print("\n[Phase 3] 望远镜控制")
+        logger.info("\n[Phase 3] 望远镜控制")
         try:
             if self.telescope:
                 telescope_state = await self._telescope_phase(target, result.target)
                 result.telescope_state = telescope_state
                 result.phases_completed.append(ObservationPhase.TELESCOPE)
-                print(f"  望远镜状态: {telescope_state.get('status', 'unknown')}")
-                print(f"  当前坐标: RA={telescope_state.get('ra', 0):.4f}, Dec={telescope_state.get('dec', 0):.4f}")
+                logger.info(f"  望远镜状态: {telescope_state.get('status', 'unknown')}")
+                logger.info(f"  当前坐标: RA={telescope_state.get('ra', 0):.4f}, Dec={telescope_state.get('dec', 0):.4f}")
             else:
-                print("  望远镜模拟器不可用，跳过")
+                logger.info("  望远镜模拟器不可用，跳过")
         except Exception as e:
-            print(f"  望远镜控制失败: {e}")
+            logger.info(f"  望远镜控制失败: {e}")
             # 望远镜失败不终止
         
         # Phase 4: 成像采集
-        print("\n[Phase 4] 成像采集")
+        logger.info("\n[Phase 4] 成像采集")
         try:
             if self.telescope:
                 imaging = await self._imaging_phase(exposure, frames, target)
                 result.imaging_result = imaging
                 result.phases_completed.append(ObservationPhase.IMAGING)
-                print(f"  成像结果: {'成功' if imaging.get('success') else '失败'}")
-                print(f"  保存路径: {imaging.get('file_path', 'N/A')}")
+                logger.info(f"  成像结果: {'成功' if imaging.get('success') else '失败'}")
+                logger.info(f"  保存路径: {imaging.get('file_path', 'N/A')}")
             else:
-                print("  望远镜不可用，跳过成像")
+                logger.info("  望远镜不可用，跳过成像")
         except Exception as e:
-            print(f"  成像失败: {e}")
+            logger.info(f"  成像失败: {e}")
         
         result.phases_completed.append(ObservationPhase.COMPLETE)
         result.success = True
         result.execution_time_seconds = (datetime.now() - start_time).total_seconds()
         
-        print("\n" + "=" * 60)
-        print(f"观测完成! 耗时: {result.execution_time_seconds:.1f}秒")
-        print("=" * 60)
+        logger.debug("\n" + "=" * 60)
+        logger.info(f"观测完成! 耗时: {result.execution_time_seconds:.1f}秒")
+        logger.debug("=" * 60)
         
         return result
     
@@ -380,7 +382,7 @@ class RealtimeObservationWorkflow:
         if self.telescope:
             await self.telescope.park()
             await self.telescope.disconnect()
-        print("[RealtimeWorkflow] 已关闭")
+        logger.info("[RealtimeWorkflow] 已关闭")
 
 
 # ============ 批量观测 ============
@@ -408,11 +410,11 @@ async def batch_observation(
     workflow = RealtimeObservationWorkflow()
     results = {}
     
-    print(f"\n开始批量观测: {len(targets)} 个目标")
-    print("-" * 40)
+    logger.info(f"\n开始批量观测: {len(targets)} 个目标")
+    logger.debug("-" * 40)
     
     for i, target in enumerate(targets):
-        print(f"\n[{i+1}/{len(targets)}] 观测 {target}")
+        logger.info(f"\n[{i+1}/{len(targets)}] 观测 {target}")
         
         try:
             result = await workflow.run(
@@ -424,7 +426,7 @@ async def batch_observation(
             )
             results[target] = result
         except Exception as e:
-            print(f"  观测失败: {e}")
+            logger.info(f"  观测失败: {e}")
             results[target] = ObservationResult(
                 target=ObservationTarget(name=target, ra=0, dec=0),
                 phases_completed=[ObservationPhase.FAILED],
@@ -434,16 +436,16 @@ async def batch_observation(
         
         # 目标间休息
         if i < len(targets) - 1:
-            print(f"  休息5秒...")
+            logger.info(f"  休息5秒...")
             await asyncio.sleep(5)
     
     await workflow.shutdown()
     
     # 汇总
     success_count = sum(1 for r in results.values() if r.success)
-    print("\n" + "=" * 60)
-    print(f"批量观测完成: {success_count}/{len(targets)} 成功")
-    print("=" * 60)
+    logger.debug("\n" + "=" * 60)
+    logger.info(f"批量观测完成: {success_count}/{len(targets)} 成功")
+    logger.debug("=" * 60)
     
     return results
 
@@ -467,7 +469,7 @@ async def demo():
     workflow = RealtimeObservationWorkflow()
     
     # 单目标观测
-    print("\n>>> 单目标观测演示: M31 (仙女座星系)")
+    logger.info("\n>>> 单目标观测演示: M31 (仙女座星系)")
     result = await workflow.run(
         target="M31",
         survey="DSS2/color",
@@ -476,20 +478,20 @@ async def demo():
         frames=3
     )
     
-    print("\n>>> 结果摘要:")
-    print(f"  成功: {result.success}")
-    print(f"  完成阶段: {[p.value for p in result.phases_completed]}")
-    print(f"  目标: {result.target.catalog_name}")
-    print(f"  坐标: {result.target.ra_hms}, {result.target.dec_dms}")
+    logger.info("\n>>> 结果摘要:")
+    logger.info(f"  成功: {result.success}")
+    logger.info(f"  完成阶段: {[p.value for p in result.phases_completed]}")
+    logger.info(f"  目标: {result.target.catalog_name}")
+    logger.info(f"  坐标: {result.target.ra_hms}, {result.target.dec_dms}")
     
     if result.skychart_data:
-        print(f"  星图: {result.skychart_data.get('sources_count', 0)} 个天体被检测")
+        logger.info(f"  星图: {result.skychart_data.get('sources_count', 0)} 个天体被检测")
     
     if result.telescope_state:
-        print(f"  望远镜: {result.telescope_state.get('status', 'N/A')}")
+        logger.info(f"  望远镜: {result.telescope_state.get('status', 'N/A')}")
     
     if result.imaging_result:
-        print(f"  成像: {'成功' if result.imaging_result.get('success') else '失败'}")
+        logger.info(f"  成像: {'成功' if result.imaging_result.get('success') else '失败'}")
     
     await workflow.shutdown()
 

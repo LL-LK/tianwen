@@ -13,6 +13,8 @@ Date: 2026/05/03
 """
 
 from __future__ import annotations
+import logging
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any, Tuple, Set
@@ -331,36 +333,36 @@ async def run_dream_analysis() -> List[DreamPattern]:
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("Tianwen-AGI Dream Engine")
+    logger.info("Tianwen-AGI Dream Engine")
     print("=" * 60)
 
     async def demo():
         engine = DreamEngine()
 
-        print("\n[1] Starting dream session...")
+        logger.info("\n[1] Starting dream session...")
         session = await engine.start_dream_session()
-        print(f"    Session started: {session.session_id}")
+        logger.info(f"    Session started: {session.session_id}")
 
-        print("\n[2] Running background pattern discovery...")
+        logger.info("\n[2] Running background pattern discovery...")
         patterns = await engine.process_background()
-        print(f"    Discovered {len(patterns)} patterns")
+        logger.info(f"    Discovered {len(patterns)} patterns")
 
         for p in patterns:
-            print(f"\n    Pattern: {p.pattern_id}")
-            print(f"    Type: {p.pattern_type}")
-            print(f"    Description: {p.description}")
-            print(f"    Confidence: {p.confidence}")
+            logger.info(f"\n    Pattern: {p.pattern_id}")
+            logger.info(f"    Type: {p.pattern_type}")
+            logger.info(f"    Description: {p.description}")
+            logger.info(f"    Confidence: {p.confidence}")
             if p.predicted_outcome:
-                print(f"    Prediction: {p.predicted_outcome}")
+                logger.info(f"    Prediction: {p.predicted_outcome}")
 
-        print("\n[3] Engine status:")
+        logger.info("\n[3] Engine status:")
         status = engine.get_status()
-        print(f"    State: {status['state']}")
-        print(f"    Total sessions: {status['total_sessions']}")
-        print(f"    Total patterns: {status['total_patterns_discovered']}")
+        logger.info(f"    State: {status['state']}")
+        logger.info(f"    Total sessions: {status['total_sessions']}")
+        logger.info(f"    Total patterns: {status['total_patterns_discovered']}")
 
-        print("\n" + "=" * 60)
-        print("Dream Engine Demo Complete")
+        logger.debug("\n" + "=" * 60)
+        logger.info("Dream Engine Demo Complete")
         print("=" * 60)
 
     asyncio.run(demo())

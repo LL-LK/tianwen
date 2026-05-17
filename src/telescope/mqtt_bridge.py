@@ -3,6 +3,8 @@
 基于 StarWhisper/NGSS/src/module/UdpConnect.py MQTTPublisher 架构
 实现与物理望远镜的 MQTT 通信协议
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import base64
@@ -553,16 +555,16 @@ class TelescopeBridge:
 # ============ 快速测试 ============
 
 if __name__ == "__main__":
-    print("=== MQTT Telescope Bridge 测试 ===")
-    print(f"paho-mqtt 可用: {HAS_MQTT}")
+    logger.info("=== MQTT Telescope Bridge 测试 ===")
+    logger.info(f"paho-mqtt 可用: {HAS_MQTT}")
 
     # 话题注册测试
     registry = TopicRegistry()
     topic = registry.get_topic("nina_action", "xinglong", "telescope1")
-    print(f"话题查询 (xinglong/telescope1/nina): {topic}")
+    logger.info(f"话题查询 (xinglong/telescope1/nina): {topic}")
 
     topic = registry.get_topic("ftp_transfer", "ali", "telescope5")
-    print(f"话题查询 (ali/telescope5/ftp): {topic}")
+    logger.info(f"话题查询 (ali/telescope5/ftp): {topic}")
 
     # 网桥模拟模式测试
     bridge = TelescopeBridge(mode="simulation")
@@ -580,13 +582,13 @@ if __name__ == "__main__":
     xml = nina_gen.create_capture_sequence_xml(target, loc, num_exposures=3)
 
     result = bridge.send_schedule("xinglong", "telescope1", xml)
-    print(f"Schedule发送: {'成功' if result else '失败'}")
+    logger.info(f"Schedule发送: {'成功' if result else '失败'}")
 
     # 指向指令
     mid = bridge.send_slew_command("xinglong", "telescope1", 10.6847, 41.2687)
-    print(f"Slew指令 mid={mid}")
+    logger.info(f"Slew指令 mid={mid}")
 
     state = bridge.get_state()
-    print(f"望远镜状态: {state}")
+    logger.info(f"望远镜状态: {state}")
 
     bridge.disconnect()

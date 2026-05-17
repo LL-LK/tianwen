@@ -10,6 +10,8 @@ Author: 天问-AGI
 """
 
 from __future__ import annotations
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import base64
@@ -561,12 +563,12 @@ class AstroPipeline:
             try:
                 import torch
                 self.stage2_classifier.model = torch.load(resnet_path, map_location='cpu')
-                print(f"ResNet-50权重加载成功: {resnet_path}")
+                logger.info(f"ResNet-50权重加载成功: {resnet_path}")
             except Exception as e:
-                print(f"ResNet-50权重加载失败，使用模拟模式: {e}")
+                logger.info(f"ResNet-50权重加载失败，使用模拟模式: {e}")
                 self.stage2_classifier.model = None
         else:
-            print(f"ResNet-50权重文件不存在: {resnet_path}")
+            logger.info(f"ResNet-50权重文件不存在: {resnet_path}")
             self.stage2_classifier.model = None
 
         # 尝试加载YOLOv11s
@@ -574,12 +576,12 @@ class AstroPipeline:
             try:
                 from ultralytics import YOLO
                 self.stage3_detector.model = YOLO(yolo_path)
-                print(f"YOLOv11s权重加载成功: {yolo_path}")
+                logger.info(f"YOLOv11s权重加载成功: {yolo_path}")
             except Exception as e:
-                print(f"YOLOv11s权重加载失败，使用模拟模式: {e}")
+                logger.info(f"YOLOv11s权重加载失败，使用模拟模式: {e}")
                 self.stage3_detector.model = None
         else:
-            print(f"YOLOv11s权重文件不存在: {yolo_path}")
+            logger.info(f"YOLOv11s权重文件不存在: {yolo_path}")
             self.stage3_detector.model = None
 
     async def initialize(self):
@@ -676,7 +678,7 @@ class AstroPipeline:
                     # BGR转RGB
                     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         except Exception as e:
-            print(f"Error loading image from {path}: {e}")
+            logger.error(f"Error loading image from {path}: {e}")
 
         return None
 
@@ -690,7 +692,7 @@ class AstroPipeline:
             image_data = base64.b64decode(b64_str)
             return self._decode_bytes_image(image_data)
         except Exception as e:
-            print(f"Error decoding base64 image: {e}")
+            logger.error(f"Error decoding base64 image: {e}")
             return None
 
     def _decode_bytes_image(self, image_data: bytes) -> Optional[np.ndarray]:
@@ -705,7 +707,7 @@ class AstroPipeline:
                 if img is not None:
                     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         except Exception as e:
-            print(f"Error decoding image bytes: {e}")
+            logger.error(f"Error decoding image bytes: {e}")
 
         return None
 
@@ -809,9 +811,9 @@ async def test_with_mock_data():
     - 随机分布的点源 (模拟STAR)
     - 一些模糊的延展区域 (模拟GALAXY/NEBULA)
     """
-    print("=" * 60)
-    print("天体检测管道测试 - 模拟数据")
-    print("=" * 60)
+    logger.debug("=" * 60)
+    logger.info("天体检测管道测试 - 模拟数据")
+    logger.debug("=" * 60)
 
     # 创建模拟图像
     h, w = 512, 512
@@ -854,71 +856,71 @@ async def test_with_mock_data():
                     if 0 <= iy < h and 0 <= ix < w:
                         image_data[iy, ix] += intensity
 
-    print(f"\n模拟图像大小: {w}x{h}")
-    print(f"图像值范围: [{image_data.min():.1f}, {image_data.max():.1f}]")
+    logger.info(f"\n模拟图像大小: {w}x{h}")
+    logger.info(f"图像值范围: [{image_data.min():.1f}, {image_data.max():.1f}]")
 
     # 创建管道并处理
     pipeline = AstroPipeline()
 
-    print("\n开始处理...")
+    logger.info("\n开始处理...")
     start_time = datetime.now()
 
     # Stage I 检测
     stage1_sources = await pipeline.stage1_detector.detect(image_data)
-    print(f"\n[Stage I] 检测到 {len(stage1_sources)} 个点源")
+    logger.info(f"\n[Stage I] 检测到 {len(stage1_sources)} 个点源")
 
     # Stage II 分类
     stage2_classified = await pipeline.stage2_classifier.classify_sources(
         image_data, stage1_sources
     )
-    print("[Stage II] 分类完成")
+    logger.info("[Stage II] 分类完成")
 
     # Stage III 检测
     stage3_detections = await pipeline.stage3_detector.detect(image_data)
-    print(f"[Stage III] 检测到 {len(stage3_detections)} 个扩展目标")
+    logger.info(f"[Stage III] 检测到 {len(stage3_detections)} 个扩展目标")
 
     # 构建结果
     result = pipeline._build_result(stage2_classified, stage3_detections)
 
     elapsed = (datetime.now() - start_time).total_seconds()
-    print(f"\n处理耗时: {elapsed:.3f}秒")
+    logger.info(f"\n处理耗时: {elapsed:.3f}秒")
 
     # 打印结果摘要
-    print("\n" + "=" * 60)
-    print("处理结果摘要")
-    print("=" * 60)
+    logger.debug("\n=" * 60)
+    logger.info("处理结果摘要")
+    logger.debug("=" * 60)
 
     summary = result["summary"]
-    print(f"总源数量: {summary['total_sources']}")
-    print(f"  - 恒星 (STAR): {summary['stars']}")
-    print(f"  - 星系 (GALAXY): {summary['galaxies']}")
-    print(f"  - 类星体 (QSO): {summary['qsos']}")
-    print(f"扩展目标: {summary['extended_objects']}")
+    logger.info(f"总源数量: {summary['total_sources']}")
+    logger.info(f"  - 恒星 (STAR): {summary['stars']}")
+    logger.info(f"  - 星系 (GALAXY): {summary['galaxies']}")
+    logger.info(f"  - 类星体 (QSO): {summary['qsos']}")
+    logger.info(f"扩展目标: {summary['extended_objects']}")
 
-    print("\n分类源列表:")
+    logger.info("\n分类源列表:")
     for i, src in enumerate(result["sources"][:5], 1):  # 只显示前5个
-        print(f"  {i}. x={src['x']:.1f}, y={src['y']:.1f}, "
+        logger.info(f"  {i}. x={src['x']:.1f}, y={src['y']:.1f}, "
               f"flux={src['flux']:.0f}, type={src['type']}")
 
     if result["detections"]:
-        print("\n扩展目标检测:")
+        logger.info("\n扩展目标检测:")
         for i, det in enumerate(result["detections"], 1):
-            print(f"  {i}. {det['class']} @ {det['bbox']} "
+            logger.info(f"  {i}. {det['class']} @ {det['bbox']} "
                   f"(conf={det['confidence']:.2f})")
 
-    print("\n" + "=" * 60)
-    print("完整JSON输出:")
-    print("=" * 60)
-    print(json.dumps(result, indent=2))
+    logger.debug("\n=" * 60)
+    logger.info("完整JSON输出:")
+    logger.debug("=" * 60)
+    logger.debug(json.dumps(result, indent=2))
 
     return result
 
 
 async def test_with_base64():
     """测试Base64输入格式"""
-    print("\n" + "=" * 60)
-    print("测试Base64输入格式")
-    print("=" * 60)
+    logger.debug("\n=" * 60)
+    logger.info("测试Base64输入格式")
+    logger.debug("=" * 60)
 
     # 创建一个小的测试图像
     test_img = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
@@ -936,14 +938,14 @@ async def test_with_base64():
         img_pil.save(buffer, format='PNG')
         b64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
-    print(f"Base64字符串长度: {len(b64_str)}")
+    logger.info(f"Base64字符串长度: {len(b64_str)}")
 
     # 处理
     pipeline = AstroPipeline()
     result = await pipeline.process(b64_str)
 
-    print(f"处理结果: 检测到 {result['summary']['total_sources']} 个源")
-    print(json.dumps(result, indent=2))
+    logger.info(f"处理结果: 检测到 {result['summary']['total_sources']} 个源")
+    logger.debug(json.dumps(result, indent=2))
 
     return result
 
@@ -951,14 +953,14 @@ async def test_with_base64():
 # ============ 主入口 ============
 
 if __name__ == "__main__":
-    print("天体检测管道 - 测试运行")
-    print("=" * 60)
+    logger.info("天体检测管道 - 测试运行")
+    logger.debug("=" * 60)
 
     # 检查依赖
-    print("\n依赖检查:")
-    print(f"  numpy: {HAS_ASTROLIBS or '模拟模式'}")
-    print(f"  astropy/photutils: {HAS_ASTROLIBS}")
-    print(f"  cv2: {HAS_CV2}")
+    logger.info("\n依赖检查:")
+    logger.info(f"  numpy: {HAS_ASTROLIBS or '模拟模式'}")
+    logger.info(f"  astropy/photutils: {HAS_ASTROLIBS}")
+    logger.info(f"  cv2: {HAS_CV2}")
 
     # 运行测试
     asyncio.run(test_with_mock_data())
@@ -967,4 +969,4 @@ if __name__ == "__main__":
     if HAS_CV2:
         asyncio.run(test_with_base64())
 
-    print("\n测试完成!")
+    logger.info("\n测试完成!")

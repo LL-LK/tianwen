@@ -2,6 +2,8 @@
 天问-AGI 星体识别系统
 StarRecognizer - 基于多模态分析的星体自动识别与分类
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import json
@@ -457,48 +459,48 @@ class StarRecognizer:
 
 async def demo():
     print("=" * 60)
-    print("天问-AGI 星体识别系统演示")
+    logger.info("天问-AGI 星体识别系统演示")
     print("=" * 60)
 
     recognizer = StarRecognizer()
 
     # 1. 按名称识别
-    print("\n🔍 按名称识别...")
+    logger.info("\n🔍 按名称识别...")
     result = await recognizer.recognize_from_name("猎户座大星云")
-    print(f"   名称: {result.object_name}")
-    print(f"   类型: {result.object_type}")
-    print(f"   置信度: {result.confidence*100:.1f}%")
-    print(f"   赤经: {result.features.get('ra', 'N/A')}")
-    print(f"   赤纬: {result.features.get('dec', 'N/A')}")
+    logger.info(f"   名称: {result.object_name}")
+    logger.info(f"   类型: {result.object_type}")
+    logger.info(f"   置信度: {result.confidence*100:.1f}%")
+    logger.info(f"   赤经: {result.features.get('ra', 'N/A')}")
+    logger.info(f"   赤纬: {result.features.get('dec', 'N/A')}")
 
     # 2. 按位置识别
-    print("\n📍 按位置识别 (赤经83.8°, 赤纬-5.4°)...")
+    logger.info("\n📍 按位置识别 (赤经83.8°, 赤纬-5.4°)...")
     result = await recognizer.recognize_from_position(83.8, -5.4)
-    print(f"   识别: {result.object_name}")
-    print(f"   类型: {result.object_type}")
-    print(f"   置信度: {result.confidence*100:.1f}%")
+    logger.info(f"   识别: {result.object_name}")
+    logger.info(f"   类型: {result.object_type}")
+    logger.info(f"   置信度: {result.confidence*100:.1f}%")
     if result.alternatives:
-        print("   附近天体:")
+        logger.info("   附近天体:")
         for alt in result.alternatives[:3]:
-            print(f"     - {alt['name']} (距离: {alt['distance']:.2f}°)")
+            logger.info(f"     - {alt['name']} (距离: {alt['distance']:.2f}°)")
 
     # 3. 分析图像（模拟）
-    print("\n🖼️ 分析天文图像...")
+    logger.info("\n🖼️ 分析天文图像...")
     analysis = await recognizer.analyze_image(None)
-    print(f"   检测到 {len(analysis.detected_objects)} 个天体")
-    print(f"   主要颜色: {', '.join(analysis.dominant_colors)}")
-    print(f"   包含恒星: {'是' if analysis.has_stars else '否'}")
-    print(f"   包含星云: {'是' if analysis.has_nebula else '否'}")
+    logger.info(f"   检测到 {len(analysis.detected_objects)} 个天体")
+    logger.info(f"   主要颜色: {', '.join(analysis.dominant_colors)}")
+    logger.info(f"   包含恒星: {'是' if analysis.has_stars else '否'}")
+    logger.info(f"   包含星云: {'是' if analysis.has_nebula else '否'}")
 
     # 4. 识别著名恒星
-    print("\n⭐ 识别著名恒星...")
+    logger.info("\n⭐ 识别著名恒星...")
     for star_name in ["织女星", "天狼星", "大角星"]:
         result = await recognizer.recognize_from_name(star_name)
         if result.confidence > 0:
-            print(f"   {result.object_name}: 视星等 {result.features.get('magnitude', 'N/A')}")
+            logger.info(f"   {result.object_name}: 视星等 {result.features.get('magnitude', 'N/A')}")
 
     # 5. 生成报告
-    print("\n📋 生成识别报告...")
+    logger.info("\n📋 生成识别报告...")
     results = [
         await recognizer.recognize_from_name("猎户座大星云"),
         await recognizer.recognize_from_name("M45"),

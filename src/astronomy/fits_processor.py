@@ -3,6 +3,8 @@
 基于 astropy.io.fits 实现天文图像标准化处理
 支持：FITS读取、星图叠加、测光、坐标校正（WCS）
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import io
 import os
@@ -480,11 +482,11 @@ class FITSProcessor:
 # ============ 快速测试 ============
 
 if __name__ == "__main__":
-    print("=== FITS Processor 测试 ===")
-    print(f"astropy 可用: {HAS_ASTROPY}")
+    logger.info("=== FITS Processor 测试 ===")
+    logger.info(f"astropy 可用: {HAS_ASTROPY}")
 
     if not HAS_ASTROPY:
-        print("astropy未安装，跳过测试")
+        logger.info("astropy未安装，跳过测试")
         exit(0)
 
     proc = FITSProcessor()
@@ -503,16 +505,16 @@ if __name__ == "__main__":
 
     # 统计
     stats = proc.statistics(data)
-    print(f"图像统计: mean={stats.mean:.1f}, std={stats.std:.1f}, bg_rms={stats.bg_rms:.1f}")
-    print(f"星像数估算: {stats.star_count}")
+    logger.info(f"图像统计: mean={stats.mean:.1f}, std={stats.std:.1f}, bg_rms={stats.bg_rms:.1f}")
+    logger.info(f"星像数估算: {stats.star_count}")
 
     # 星像检测
     stars = proc.detect_stars_simple(data)
-    print(f"检测到 {len(stars)} 个星像")
+    logger.info(f"检测到 {len(stars)} 个星像")
 
     # 测试渲染
     rgb = proc.render_to_rgb(data, stretch="log", black_point=1, white_point=99)
-    print(f"RGB渲染: {rgb.shape}, dtype={rgb.dtype}")
+    logger.info(f"RGB渲染: {rgb.shape}, dtype={rgb.dtype}")
 
     # 测试FITS头
     from datetime import datetime
@@ -530,8 +532,8 @@ if __name__ == "__main__":
         pixel_scale=5.0, binning=1, temperature=-10
     )
 
-    print(f"\nFITS头解析测试:")
-    print(f"  目标: {test_header.object_name} RA={test_header.ra:.4f} Dec={test_header.dec:.4f}")
-    print(f"  曝光: {test_header.exposure}s, 滤镜: {test_header.filter_name}")
-    print(f"  位置: {test_header.lat}N {test_header.lon}E {test_header.elevation}m")
-    print(f"  像素尺度: {test_header.pixel_scale} arcsec/pixel")
+    logger.info(f"\nFITS头解析测试:")
+    logger.info(f"  目标: {test_header.object_name} RA={test_header.ra:.4f} Dec={test_header.dec:.4f}")
+    logger.info(f"  曝光: {test_header.exposure}s, 滤镜: {test_header.filter_name}")
+    logger.info(f"  位置: {test_header.lat}N {test_header.lon}E {test_header.elevation}m")
+    logger.info(f"  像素尺度: {test_header.pixel_scale} arcsec/pixel")

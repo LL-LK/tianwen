@@ -9,6 +9,8 @@ DataMiner - 自动从天文数据中发现模式、提取特征、检测异常
 - 异常检测：基于统计和ML的异常识别
 - 与 hypothesis_tester 集成进行自动化假说验证
 """
+import logging
+logger = logging.getLogger(__name__)
 
 import asyncio
 import uuid
@@ -1173,7 +1175,7 @@ class DataMiner:
 
         # 2. 如果有 hypothesis_tester，测试生成的假说
         if self.hypothesis_tester and mining_report.hypotheses_generated:
-            from src.research.hypothesis import Hypothesis, HypothesisStatus
+            from src.core.types import Hypothesis, HypothesisStatus
 
             test_reports = []
             for hypo_data in mining_report.hypotheses_generated[:3]:  # 限制测试数量
@@ -1257,7 +1259,7 @@ class DataMiner:
             系外行星列表
         """
         if not HAS_KEPLER_CLIENT:
-            print("警告: KeplerExoplanetClient不可用，返回空列表")
+            logger.info("警告: KeplerExoplanetClient不可用，返回空列表")
             return []
 
         try:
@@ -1269,7 +1271,7 @@ class DataMiner:
             )
             return planets
         except Exception as e:
-            print(f"获取系外行星数据失败: {e}")
+            logger.info(f"获取系外行星数据失败: {e}")
             return []
 
     async def fetch_lightcurve(
@@ -1288,7 +1290,7 @@ class DataMiner:
             (时间, 通量) tuple
         """
         if not HAS_KEPLER_CLIENT:
-            print("警告: KeplerExoplanetClient不可用，返回空数组")
+            logger.info("警告: KeplerExoplanetClient不可用，返回空数组")
             return np.array([]), np.array([])
 
         try:
@@ -1296,7 +1298,7 @@ class DataMiner:
             times, fluxes = await client.get_lightcurve(planet_name, mission)
             return times, fluxes
         except Exception as e:
-            print(f"获取光变曲线失败: {e}")
+            logger.info(f"获取光变曲线失败: {e}")
             return np.array([]), np.array([])
 
     async def analyze_exoplanet_system(
