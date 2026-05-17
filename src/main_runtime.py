@@ -567,11 +567,9 @@ async def main():
                 if not user_input:
                     continue
 
-                logger.debug("")  # blank line before output
                 result = await agent.process(user_input)
                 print(result.output)
                 logger.info(f"\n健康分数: {agent.get_health_score():.2f}")
-                print()
 
             except KeyboardInterrupt:
                 logger.info("\n再见!")

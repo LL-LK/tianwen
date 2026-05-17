@@ -9,6 +9,9 @@ from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ============ 工具定义 ============
 
