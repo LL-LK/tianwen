@@ -980,7 +980,7 @@ if __name__ == '__main__':
     xml = StarWhisperAlgorithms.generate_nina_capture_sequence_xml(
         "M31", 0.712, 41.269, exposure_seconds=120, total_exposures=20
     )
-    print(xml[:500] + "...")
+    logger.debug("xml[:500]: %s", xml[:500])
     
     logger.debug("\n" + "=" * 60)
     logger.info("测试完成!")

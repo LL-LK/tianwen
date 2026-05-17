@@ -2188,9 +2188,9 @@ async def research_and_export(topic: str, format: str = "markdown",
 # ============ 示例用法 ============
 
 async def demo():
-    print("=" * 70)
+    logger.debug("=" * 70)
     logger.info("天问-AGI 文献调研模块 v2.1 演示 - 多数据源支持")
-    print("=" * 70)
+    logger.debug("=" * 70)
 
     # 1. 仅使用arXiv (默认)
     logger.info("\n[模式1] 仅使用arXiv")
@@ -2207,7 +2207,7 @@ async def demo():
     logger.info(f"   数据源: {', '.join(state.sources_used)}")
 
     # 2. 多数据源调研
-    print("\n" + "=" * 70)
+    logger.debug("=" * 70)
     logger.info("\n[模式2] 多数据源调研 (arXiv + OpenAlex)")
     researcher_multi = LiteratureResearcher(
         use_arxiv=True,

@@ -683,9 +683,7 @@ class MCPEnabledAgent:
 
 async def demo():
     """演示MCP"""
-    print("=" * 50)
-    logger.info("Hermes-AGI MCP Demo")
-    print("=" * 50)
+    logger.debug("=" * 50)
 
     server = MCPServer()
 

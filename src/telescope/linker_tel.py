@@ -1547,9 +1547,9 @@ async def batch_link(hypothesis_ids: List[str]) -> ObservationPlan:
 
 async def demo():
     """演示观测指导模块"""
-    print("=" * 60)
+    logger.debug("=" * 60)
     logger.info("天问-AGI 观测指导模块演示")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
     linker = ObservatoryLinker()
 
@@ -1618,7 +1618,7 @@ async def demo():
 
     logger.debug("\n" + "=" * 60)
     logger.info("演示完成")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
 
 if __name__ == "__main__":

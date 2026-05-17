@@ -907,7 +907,7 @@ async def demo():
     )
 
     # 输出总结
-    print("\n" + "="*60)
+    logger.debug("="*60)
     logger.info("闭环验证结果")
     print("="*60)
     logger.info(f"主题: {result.topic}")

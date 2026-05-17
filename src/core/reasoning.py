@@ -1137,9 +1137,9 @@ async def analyze_research_state(state: Any) -> Dict:
 
 async def demo():
     """演示推理引擎用法"""
-    print("=" * 60)
+    logger.debug("=" * 60)
     logger.info("天问-AGI 推理引擎演示")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
     # 创建引擎
     engine = ReasoningEngine()
@@ -1183,7 +1183,7 @@ async def demo():
 
     logger.debug("\n" + "=" * 60)
     logger.info("演示完成")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
 
 if __name__ == "__main__":

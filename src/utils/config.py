@@ -224,16 +224,16 @@ def print_config_summary():
     config = get_config()
     config_type = type(config).__name__
 
-    print("=" * 50)
+    logger.debug("=" * 50)
     logger.info(f"天问-AGI 配置 ({config_type})")
-    print("=" * 50)
+    logger.debug("=" * 50)
     logger.info(f"Neo4j URI: {config.neo4j_uri or '内存模式'}")
     logger.info(f"ChromaDB: {config.chroma_persist_dir or '内存模式'}")
     logger.info(f"日志级别: {config.log_level}")
-    print("=" * 50)
+    logger.debug("=" * 50)
 
 
 if __name__ == "__main__":
     print_config_summary()
     logger.info("\n生成Docker Compose配置:")
-    print(DockerComposeConfig.DOCKER_COMPOSE[:500] + "...")
+    logger.debug(DockerComposeConfig.DOCKER_COMPOSE[:500] + "...")

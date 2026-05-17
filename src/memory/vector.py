@@ -575,9 +575,9 @@ def create_enhanced_memory(memory_dir: str = "./paper_memory") -> EnhancedVector
 
 async def demo_enhanced():
     """演示增强型向量记忆"""
-    print("=" * 60)
+    logger.debug("=" * 60)
     logger.info("EnhancedVectorMemory RAG Demo")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
     # 创建增强型向量记忆
     memory = EnhancedVectorMemory(memory_dir="./demo_paper_memory")
@@ -656,7 +656,7 @@ async def demo_integration():
     """演示与LiteratureResearcher集成"""
     logger.debug("\n" + "=" * 60)
     logger.info("Integration with LiteratureResearcher Demo")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
     # 这个演示展示了如何将两个模块结合使用
     from literature_researcher import LiteratureResearcher, Paper as LRPaper

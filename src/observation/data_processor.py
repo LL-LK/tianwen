@@ -600,7 +600,7 @@ class RealtimeDataProcessor:
 async def demo():
     """演示实时数据处理"""
     logger.info("天问-AGI 实时数据流处理演示")
-    print("="*60)
+    logger.debug("="*60)
 
     # 创建处理器
     processor = RealtimeDataProcessor()

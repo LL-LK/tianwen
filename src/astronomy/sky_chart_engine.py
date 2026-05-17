@@ -613,9 +613,9 @@ async def batch_get_skycharts(
 
 if __name__ == "__main__":
     async def test():
-        print("=" * 50)
+        logger.debug("=" * 50)
         logger.info("Testing NASA SkyView Realtime Sky Chart")
-        print("=" * 50)
+        logger.debug("=" * 50)
         
         # 测试单个目标
         logger.info("\n[Test 1] M31 (仙女座星系)")
@@ -639,7 +639,7 @@ if __name__ == "__main__":
         for name, res in batch.items():
             logger.info(f"  {name}: {len(res.catalog_sources)} sources, cached={res.cached}")
         
-        print("\n" + "=" * 50)
+        logger.debug("=" * 50)
         logger.info("All tests completed!")
         
     asyncio.run(test())

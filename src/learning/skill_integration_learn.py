@@ -362,9 +362,9 @@ def create_chain_executor(skill_dir: str = "./skills") -> SkillChainExecutor:
 
 async def demo():
     """演示技能链执行"""
-    print("=" * 50)
+    logger.debug("=" * 50)
     logger.info("Hermes-AGI Skill Chain Demo")
-    print("=" * 50)
+    logger.debug("=" * 50)
 
     chain = create_chain_executor()
 

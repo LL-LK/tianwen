@@ -853,9 +853,9 @@ class DocumentLoader:
 
 async def run_tests():
     """运行测试以验证功能"""
-    print("=" * 60)
+    logger.debug("=" * 60)
     logger.info("ChromaDB RAG增强模块测试")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
     # 测试1: 依赖检查
     logger.info("\n[测试1] 依赖项检查")
@@ -943,7 +943,7 @@ async def run_tests():
 
     logger.debug("\n" + "=" * 60)
     logger.info("测试完成")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
 
 # ============================================================================

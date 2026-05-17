@@ -328,9 +328,9 @@ def quick_create_scenario(
 
 
 if __name__ == "__main__":
-    print("=" * 60)
+    logger.debug("=" * 60)
     logger.info("Tianwen-AGI Scenario Memory System")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
     memory = ScenarioMemory()
 
@@ -360,4 +360,4 @@ if __name__ == "__main__":
 
     logger.debug("\n" + "=" * 60)
     logger.info("Scenario Memory System Demo Complete")
-    print("=" * 60)
+    logger.debug("=" * 60)

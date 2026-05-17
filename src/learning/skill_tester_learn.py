@@ -399,9 +399,9 @@ class SkillTester:
 
 def demo():
     """演示技能测试"""
-    print("=" * 50)
+    logger.debug("=" * 50)
     logger.info("Hermes-AGI Skill Testing Framework Demo")
-    print("=" * 50)
+    logger.debug("=" * 50)
 
     tester = SkillTester()
 
@@ -461,7 +461,7 @@ def get_user(user_id: int):
     logger.info(f"  通过率: {report.passed}/{report.total_tests}")
 
     # 汇总报告
-    print("\n" + "=" * 50)
+    logger.debug("=" * 50)
     logger.info("汇总报告:")
     summary = tester.get_summary_report()
     logger.info(f"  总测试数: {summary.get('total_tests', 0)}")

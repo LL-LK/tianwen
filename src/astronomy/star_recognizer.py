@@ -458,9 +458,9 @@ class StarRecognizer:
 # ============ 示例用法 ============
 
 async def demo():
-    print("=" * 60)
+    logger.debug("=" * 60)
     logger.info("天问-AGI 星体识别系统演示")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
     recognizer = StarRecognizer()
 
@@ -506,7 +506,7 @@ async def demo():
         await recognizer.recognize_from_name("M45"),
     ]
     report = recognizer.generate_recognition_report(results)
-    print(report)
+    logger.debug(report)
 
 if __name__ == "__main__":
     asyncio.run(demo())

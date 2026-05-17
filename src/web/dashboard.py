@@ -443,7 +443,7 @@ class CycleStatisticsDashboard:
 async def demo():
     """演示统计面板功能"""
     logger.info("天问-AGI 闭环成功率统计面板演示")
-    print("="*60)
+    logger.debug("="*60)
 
     dashboard = CycleStatisticsDashboard()
 

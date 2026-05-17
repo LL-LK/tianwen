@@ -371,9 +371,9 @@ class MemoryIntegratedAgent:
 # ============ 示例用法 ============
 
 async def demo():
-    print("=" * 50)
+    logger.debug("=" * 50)
     logger.info("Hermes-AGI Persistent Memory Demo")
-    print("=" * 50)
+    logger.debug("=" * 50)
 
     memory = PersistentMemory(memory_dir="./demo_memory")
 

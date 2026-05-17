@@ -928,4 +928,4 @@ if __name__ == "__main__":
     # N.I.N.A. XML
     xml = sched.create_nina_sequence(ANDROMEDA, num_exposures=5)
     logger.info(f"\nN.I.N.A. XML 长度: {len(xml)} bytes")
-    print(xml[:500])
+    logger.debug("xml[:500]: %s", xml[:500])

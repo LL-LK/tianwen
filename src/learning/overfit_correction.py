@@ -624,9 +624,9 @@ class SelfEvolutionWithOverfitCorrection:
 
 def demo():
     """演示过拟合自我纠正系统"""
-    print("=" * 60)
+    logger.debug("=" * 60)
     logger.info("Hermes-AGI Overfitting Self-Correction Demo")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
     # 创建增强版自我进化系统
     evolution = SelfEvolutionWithOverfitCorrection(memory_dir="./demo_memory")
@@ -694,7 +694,7 @@ def demo():
 
     logger.debug("\n" + "=" * 60)
     logger.info("Demo Complete")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
 
 if __name__ == "__main__":

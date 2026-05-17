@@ -332,9 +332,9 @@ async def run_dream_analysis() -> List[DreamPattern]:
 
 
 if __name__ == "__main__":
-    print("=" * 60)
+    logger.debug("=" * 60)
     logger.info("Tianwen-AGI Dream Engine")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
     async def demo():
         engine = DreamEngine()
@@ -363,6 +363,6 @@ if __name__ == "__main__":
 
         logger.debug("\n" + "=" * 60)
         logger.info("Dream Engine Demo Complete")
-        print("=" * 60)
+        logger.debug("=" * 60)
 
     asyncio.run(demo())

@@ -692,9 +692,9 @@ class ObservationExecutor:
 
 async def demo():
     """演示观测执行器的使用"""
-    print("=" * 60)
+    logger.debug("=" * 60)
     logger.info("观测执行器演示")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
     # 创建执行器实例
     executor = ObservationExecutor("tcp://localhost:5555")
@@ -760,7 +760,7 @@ async def demo():
 
     logger.debug("\n" + "=" * 60)
     logger.info("演示完成")
-    print("=" * 60)
+    logger.debug("=" * 60)
 
 
 if __name__ == "__main__":
