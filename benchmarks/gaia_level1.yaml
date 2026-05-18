@@ -1,0 +1,87 @@
+# GAIA Benchmark Level 1
+# Basic astronomical queries and catalog operations (<5 steps)
+
+name: "gaia_level1"
+version: "1.0.0"
+description: "GAIA Level 1 benchmark - Basic astronomical queries"
+
+output_format: "jsonl"
+output_dir: "./results"
+parallel: true
+max_workers: 4
+
+evaluator:
+  grading_type: "automatic"
+  metrics:
+    - "accuracy"
+    - "exact_match"
+  tolerance: 0.0
+  timeout: 120
+  verbose: true
+
+tasks:
+  - task_id: "gaia_l1_001"
+    name: "Query Nearby Stars"
+    category: "catalog_query"
+    description: "Query GAIA catalog for stars within specified distance"
+    difficulty: "level_1"
+    max_steps: 3
+    time_limit: 30
+    tools: ["catalog_query"]
+    grading_type: "automatic"
+    prompt_template: |
+      Find all stars within 10 parsecs using the GAIA catalog.
+
+  - task_id: "gaia_l1_002"
+    name: "Stellar Parallax Lookup"
+    category: "catalog_query"
+    description: "Look up parallax data for specific star"
+    difficulty: "level_1"
+    max_steps: 3
+    time_limit: 30
+    tools: ["catalog_query"]
+    grading_type: "automatic"
+    prompt_template: |
+      What is the parallax and distance of Sirius A?
+
+  - task_id: "gaia_l1_003"
+    name: "Bright Star Identification"
+    category: "astronomy_observation"
+    description: "Identify brightest stars in a region"
+    difficulty: "level_1"
+    max_steps: 4
+    time_limit: 45
+    tools: ["catalog_query", "sky_chart"]
+    grading_type: "automatic"
+    prompt_template: |
+      List the 10 brightest stars visible from latitude 40°N.
+
+  - task_id: "gaia_l1_004"
+    name: "Star Color Calculation"
+    category: "astronomy_analysis"
+    description: "Calculate color index from magnitudes"
+    difficulty: "level_1"
+    max_steps: 3
+    time_limit: 30
+    tools: ["calculator"]
+    grading_type: "automatic"
+    prompt_template: |
+      Calculate the B-V color index for a star with apparent magnitude 
+      B=5.2 and V=4.3.
+
+  - task_id: "gaia_l1_005"
+    name: "Solar System Object Location"
+    category: "astronomy_observation"
+    description: "Find current position of planet"
+    difficulty: "level_1"
+    max_steps: 4
+    time_limit: 45
+    tools: ["ephemeris"]
+    grading_type: "automatic"
+    prompt_template: |
+      What is the current RA/Dec of Mars as seen from Earth?
+
+metadata:
+  level: 1
+  difficulty_description: "<5 steps - Basic queries"
+  reference: "GAIA Benchmark Framework"

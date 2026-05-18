@@ -173,7 +173,8 @@ class TestGraders:
             task_type="magnitude"
         )
         # Score = 1.0 - 0.15/0.2 = 0.25
-        assert result.details["error"] == pytest.approx(0.15, rel=0.01)
+        assert "magnitude_error" in result.details
+        assert result.details["magnitude_error"] == pytest.approx(0.15, rel=0.01)
 
 
 class TestMetricsCompute:

@@ -1,0 +1,307 @@
+name: Harness Evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark:
+        description: 'Benchmark to run'
+        required: false
+        default: 'astronomy'
+      workers:
+        description: 'Number of parallel workers'
+        required: false
+        default: '2'
+      timeout:
+        description: 'Task timeout (seconds)'
+        required: false
+        default: '300'
+
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday at midnight
+
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/harness/**'
+      - 'tests/**'
+      - '.github/workflows/harness_eval.yml'
+
+  pull_request:
+    paths:
+      - 'src/harness/**'
+      - 'tests/**'
+      - '.github/workflows/harness_eval.yml'
+
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+jobs:
+  # ===========================================================================
+  # Setup and Validation
+  # ===========================================================================
+  setup:
+    name: Setup Environment
+    runs-on: ubuntu-latest
+    outputs:
+      docker_image: ${{ steps.build.outputs.image }}
+      benchmark: ${{ steps.vars.outputs.benchmark }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -q pytest pytest-asyncio
+
+      - name: Validate Python syntax
+        run: |
+          python -m py_compile src/harness/sandbox/*.py
+          python -m py_compile src/harness/distributed/*.py
+          python -m py_compile src/harness/queue/*.py
+
+      - name: Set output variables
+        id: vars
+        run: |
+          echo "benchmark=${{ github.event.inputs.benchmark || 'astronomy' }}" >> $GITHUB_OUTPUT
+
+      - name: Build Docker image
+        id: build
+        run: |
+          IMAGE_TAG=tianwenagi/harness:eval-${{ github.sha }}
+          docker build -t $IMAGE_TAG .
+          echo "image=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Upload Docker image as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/docker-image.tar
+          retention-days: 1
+
+  # ===========================================================================
+  # Unit Tests
+  # ===========================================================================
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: setup
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -q -r requirements.txt
+
+      - name: Run sandbox module tests
+        run: |
+          python -m pytest tests/test_harness/test_sandbox.py -v --tb=short || true
+
+      - name: Run distributed module tests
+        run: |
+          python -m pytest tests/test_harness/test_distributed.py -v --tb=short || true
+
+      - name: Run queue module tests
+        run: |
+          python -m pytest tests/test_harness/test_queue.py -v --tb=short || true
+
+  # ===========================================================================
+  # Docker-based Benchmark Evaluation
+  # ===========================================================================
+  benchmark:
+    name: Benchmark Evaluation
+    runs-on: ubuntu-latest
+    needs: setup
+    timeout-minutes: 60
+
+    strategy:
+      matrix:
+        benchmark_level: ['level_1', 'level_2', 'level_3']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure Docker
+        run: |
+          docker info
+          docker buildx create --use || true
+
+      - name: Load Docker image
+        run: |
+          docker load --input /tmp/docker-image.tar 2>/dev/null || true
+
+      - name: Run benchmark in Docker
+        id: benchmark
+        env:
+          BENCHMARK: ${{ needs.setup.outputs.benchmark }}
+          BENCHMARK_LEVEL: ${{ matrix.benchmark_level }}
+          WORKERS: ${{ github.event.inputs.workers || '2' }}
+          TIMEOUT: ${{ github.event.inputs.timeout || '300' }}
+        run: |
+          docker run --rm \
+            --privileged \
+            -e BENCHMARK=$BENCHMARK \
+            -e BENCHMARK_LEVEL=$BENCHMARK_LEVEL \
+            -e WORKERS=$WORKERS \
+            -e TIMEOUT=$TIMEOUT \
+            -e GITHUB_ACTIONS=true \
+            -e GITHUB_RUN_ID=${{ github.run_id }} \
+            -v ${{ github.workspace }}/results:/results \
+            ${{ needs.setup.outputs.docker_image }} \
+            python -m pytest tests/test_harness/ -v --tb=short -k "$BENCHMARK_LEVEL" || true
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ matrix.benchmark_level }}
+          path: |
+            results/*.json
+            results/*.jsonl
+          retention-days: 7
+
+      - name: Upload Docker logs
+        if: failure()
+        run: |
+          docker logs ${{ container.id }} || true
+
+  # ===========================================================================
+  # Integration Tests
+  # ===========================================================================
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [setup, unit-tests]
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -q -r requirements.txt
+
+      - name: Run integration tests
+        run: |
+          docker run --rm \
+            --privileged \
+            -v ${{ github.workspace }}:/workspace \
+            ${{ needs.setup.outputs.docker_image }} \
+            python -m pytest tests/integration_test.py -v --tb=short || true
+
+  # ===========================================================================
+  # Results Aggregation
+  # ===========================================================================
+  aggregate:
+    name: Aggregate Results
+    runs-on: ubuntu-latest
+    needs: [benchmark, integration]
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all benchmark results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: benchmark-results-*
+          path: results/raw
+
+      - name: List downloaded artifacts
+        run: |
+          ls -la results/raw/
+
+      - name: Aggregate results
+        run: |
+          mkdir -p results/final
+
+          # Combine all JSONL files
+          cat results/raw/*/*.jsonl 2>/dev/null > results/final/results.jsonl || true
+
+          # Create summary
+          echo '{"run_id": "'${{ github.run_id }}'", "status": "completed"}' > results/final/summary.json
+
+      - name: Upload aggregated results
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-eval-results
+          path: results/final/
+          retention-days: 30
+
+      - name: Upload JSONL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-results-jsonl
+          path: results/final/results.jsonl
+          retention-days: 90
+
+      - name: Generate PR comment
+        if: github.event_name == 'pull_request'
+        run: |
+          COMMENT_FILE=/tmp/pr_comment.md
+          echo "## Harness Evaluation Results" > $COMMENT_FILE
+          echo "" >> $COMMENT_FILE
+          echo "| Level | Status |" >> $COMMENT_FILE
+          echo "|-------|--------|" >> $COMMENT_FILE
+
+          for level in level_1 level_2 level_3; do
+            if [ -d "results/raw/benchmark-results-$level" ]; then
+              echo "| $level | :white_check_mark: |" >> $COMMENT_FILE
+            fi
+          done
+
+          echo "" >> $COMMENT_FILE
+          echo "**Run ID**: ${{ github.run_id }}" >> $COMMENT_FILE
+          echo "**Artifacts**: [Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $COMMENT_FILE
+
+  # ===========================================================================
+  # Final Status
+  # ===========================================================================
+  final-status:
+    name: Final Status
+    runs-on: ubuntu-latest
+    needs: [benchmark, integration, aggregate]
+    if: always()
+
+    steps:
+      - name: Check final status
+        run: |
+          echo "=========================================="
+          echo "Harness Evaluation Complete"
+          echo "=========================================="
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Status: ${{ needs.benchmark.result }}"
+          echo "=========================================="

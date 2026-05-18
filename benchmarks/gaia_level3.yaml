@@ -1,0 +1,140 @@
+# GAIA Benchmark Level 3
+# Advanced astronomical discovery tasks (>10 steps)
+
+name: "gaia_level3"
+version: "1.0.0"
+description: "GAIA Level 3 benchmark - Advanced astronomical discovery"
+
+output_format: "jsonl"
+output_dir: "./results"
+parallel: true
+max_workers: 4
+
+evaluator:
+  grading_type: "automatic"
+  metrics:
+    - "accuracy"
+    - "scientific_validity"
+    - "domain_accuracy"
+    - "novelty_detection"
+  tolerance: 0.1
+  timeout: 600
+  verbose: true
+
+tasks:
+  - task_id: "gaia_l3_001"
+    name: "Stream Detection"
+    category: "astronomy_discovery"
+    description: "Detect stellar stream in kinematic data"
+    difficulty: "level_3"
+    max_steps: 15
+    time_limit: 300
+    tools: ["data_analysis", "statistics", "visualization", "catalog_query"]
+    grading_type: "automatic"
+    prompt_template: |
+      Using GAIA DR3 data for 100,000 stars, identify stellar streams 
+      by analyzing proper motion and position correlations. Characterize 
+      any detected streams (kinematic signatures, progenitor candidates).
+
+  - task_id: "gaia_l3_002"
+    name: "Exoplanet Detection"
+    category: "astronomy_discovery"
+    description: "Detect exoplanet from astrometric wobble"
+    difficulty: "level_3"
+    max_steps: 15
+    time_limit: 400
+    tools: ["orbital_calculation", "data_analysis", "statistics", "simulation"]
+    grading_type: "automatic"
+    prompt_template: |
+      Analyze 5 years of astrometric data for a nearby star to detect 
+      astrometric signatures of orbiting planets. Characterize any detected 
+      planets including mass lower limits and orbital parameters.
+
+  - task_id: "gaia_l3_003"
+    name: "Galaxy Merger History"
+    category: "astronomy_discovery"
+    description: "Reconstruct galaxy merger history"
+    difficulty: "level_3"
+    max_steps: 20
+    time_limit: 500
+    tools: ["data_analysis", "simulation", "stellar_evolution", "visualization"]
+    grading_type: "automatic"
+    prompt_template: |
+      Using chemodynamical data for stars in M31, reconstruct the merger 
+      history of this galaxy. Identify accretion events and their approximate 
+      timing based on age-metallicity relationships.
+
+  - task_id: "gaia_l3_004"
+    name: "Gravitational Lensing Detection"
+    category: "astronomy_discovery"
+    description: "Identify candidates for gravitational lensing"
+    difficulty: "level_3"
+    max_steps: 15
+    time_limit: 400
+    tools: ["data_analysis", "photometry", "catalog_query", "simulation"]
+    grading_type: "automatic"
+    prompt_template: |
+      Search the GAIA database for gravitational lensing candidates by 
+      identifying star pairs with similar colors but significant proper 
+      motion differences suggesting lensing of a background source.
+
+  - task_id: "gaia_l3_005"
+    name: "Hypervelocity Star Origin"
+    category: "astronomy_discovery"
+    description: "Trace origin of hypervelocity star"
+    difficulty: "level_3"
+    max_steps: 15
+    time_limit: 400
+    tools: ["orbital_calculation", "data_analysis", "simulation"]
+    grading_type: "automatic"
+    prompt_template: |
+      A hypervelocity star (HVS) has been discovered with trajectory data.
+      Backtrace its path through the galaxy to determine if it was ejected 
+      from the galactic center or a globular cluster.
+
+  - task_id: "gaia_l3_006"
+    name: "Dark Matter Substructure"
+    category: "astronomy_discovery"
+    description: "Detect dark matter substructure through stellar perturbations"
+    difficulty: "level_3"
+    max_steps: 18
+    time_limit: 500
+    tools: ["data_analysis", "statistics", "simulation", "visualization"]
+    grading_type: "automatic"
+    prompt_template: |
+      Using precise stellar positions and proper motions, search for 
+      evidence of dark matter substructure in the galactic halo by 
+      identifying density perturbations or stream perturbations.
+
+  - task_id: "gaia_l3_007"
+    name: "Transient Event Correlation"
+    category: "astronomy_discovery"
+    description: "Correlate multi-messenger astronomical events"
+    difficulty: "level_3"
+    max_steps: 20
+    time_limit: 600
+    tools: ["catalog_query", "data_analysis", "alert_system", "observation_planning"]
+    grading_type: "automatic"
+    prompt_template: |
+      A gravitational wave alert has been received. Using GAIA stellar catalogs
+      and real-time survey data, identify the most promising electromagnetic 
+      counterpart candidates and prioritize observation targets.
+
+  - task_id: "gaia_l3_008"
+    name: "Stellar Population Transitions"
+    category: "astronomy_discovery"
+    description: "Identify stars in evolutionary transition phases"
+    difficulty: "level_3"
+    max_steps: 15
+    time_limit: 400
+    tools: ["photometry", "spectroscopy", "stellar_evolution", "data_analysis"]
+    grading_type: "automatic"
+    prompt_template: |
+      Search the database for stars in short-lived evolutionary phases 
+      such as blue hook stars, R Coronae Borealis candidates, or stars 
+      transitioning from main sequence to giant branch.
+
+metadata:
+  level: 3
+  difficulty_description: ">10 steps - Advanced discovery"
+  reference: "GAIA Benchmark Framework"

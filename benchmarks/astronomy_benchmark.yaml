@@ -1,0 +1,151 @@
+# TianwenAGI Astronomy Benchmark Configuration
+# 天文领域综合评测基准
+
+name: "astronomy_benchmark"
+version: "1.0.0"
+description: "Comprehensive astronomy domain benchmark covering observation, analysis, and discovery tasks"
+
+output_format: "jsonl"  # StarWhisperED compatible
+output_dir: "./results"
+parallel: true
+max_workers: 4
+
+evaluator:
+  grading_type: "automatic"
+  metrics:
+    - "accuracy"
+    - "scientific_validity"
+    - "domain_accuracy"
+  tolerance: 0.05
+  timeout: 300
+  verbose: true
+  save_intermediate: true
+
+tasks:
+  # Level 1 - Basic astronomical queries (<5 steps)
+  - task_id: "astro_001"
+    name: "Star Catalog Query"
+    category: "catalog_query"
+    description: "Query stellar catalog to identify stars with specific spectral characteristics"
+    difficulty: "level_1"
+    max_steps: 5
+    time_limit: 60
+    tools: ["catalog_query", "web_search"]
+    grading_type: "automatic"
+    prompt_template: |
+      Query the stellar catalog to find all G-type main sequence stars 
+      within 50 light years from Earth. Return their names and distances.
+
+  - task_id: "astro_002"
+    name: "Constellation Recognition"
+    category: "astronomy_observation"
+    description: "Identify constellations visible in current night sky"
+    difficulty: "level_1"
+    max_steps: 5
+    time_limit: 60
+    tools: ["sky_chart", "observation"]
+    grading_type: "automatic"
+    prompt_template: |
+      Based on the current date and observer location (latitude: 40°N, longitude: 74°W),
+      list all constellations that should be visible in the night sky after 9 PM.
+
+  - task_id: "astro_003"
+    name: "Planet Position Calculation"
+    category: "astronomy_analysis"
+    description: "Calculate current positions of planets in solar system"
+    difficulty: "level_1"
+    max_steps: 5
+    time_limit: 60
+    tools: ["ephemeris", "calculator"]
+    grading_type: "automatic"
+    prompt_template: |
+      Calculate the current ecliptic longitude and distance from Earth 
+      for Mars and Jupiter.
+
+  # Level 2 - Intermediate analysis tasks (5-10 steps)
+  - task_id: "astro_004"
+    name: "Exoplanet Transit Analysis"
+    category: "astronomy_analysis"
+    description: "Analyze light curve data to detect exoplanet transits"
+    difficulty: "level_2"
+    max_steps: 8
+    time_limit: 180
+    tools: ["light_curve", "statistics", "visualization"]
+    grading_type: "automatic"
+    prompt_template: |
+      Analyze the provided light curve data to identify potential exoplanet 
+      transit signals. Determine the orbital period and estimate the planet radius.
+
+  - task_id: "astro_005"
+    name: "Supernova Classification"
+    category: "transient_detection"
+    description: "Classify supernova type from spectroscopic data"
+    difficulty: "level_2"
+    max_steps: 10
+    time_limit: 180
+    tools: ["spectroscopy", "catalog_query", "comparison"]
+    grading_type: "automatic"
+    prompt_template: |
+      Given spectroscopic data from a recent transient event, classify 
+      the supernova type and estimate its distance.
+
+  - task_id: "astro_006"
+    name: "Galactic Structure Mapping"
+    category: "astronomy_analysis"
+    description: "Map spiral arm structure using star count data"
+    difficulty: "level_2"
+    max_steps: 10
+    time_limit: 300
+    tools: ["data_analysis", "visualization", "catalog_query"]
+    grading_type: "automatic"
+    prompt_template: |
+      Using the provided star count data, map the spiral arm structure 
+      of the galaxy and estimate the distance to the Orion Arm.
+
+  # Level 3 - Advanced discovery tasks (>10 steps)
+  - task_id: "astro_007"
+    name: "Gravitational Wave Counterpart Search"
+    category: "astronomy_discovery"
+    description: "Search for electromagnetic counterpart of gravitational wave event"
+    difficulty: "level_3"
+    max_steps: 15
+    time_limit: 600
+    tools: ["catalog_query", "observation_planning", "data_analysis", "alert_system"]
+    grading_type: "automatic"
+    prompt_template: |
+      A gravitational wave event (GW230615) has been detected. 
+      Design an observation strategy to search for the electromagnetic counterpart,
+      identify priority targets, and schedule observations.
+
+  - task_id: "astro_008"
+    name: "Asteroid Impact Risk Assessment"
+    category: "astronomy_discovery"
+    description: "Assess impact risk of newly discovered near-Earth asteroid"
+    difficulty: "level_3"
+    max_steps: 12
+    time_limit: 600
+    tools: ["orbital_calculation", "data_analysis", "simulation"]
+    grading_type: "automatic"
+    prompt_template: |
+      A new near-Earth asteroid (2023 MX) has been discovered with orbital 
+      parameters. Calculate its Earth impact probability over the next 100 years
+      and identify close approach dates.
+
+  - task_id: "astro_009"
+    name: "Stellar Population Analysis"
+    category: "astronomy_analysis"
+    description: "Analyze stellar population to determine galaxy formation history"
+    difficulty: "level_3"
+    max_steps: 15
+    time_limit: 600
+    tools: ["spectroscopy", "photometry", "stellar_evolution", "data_analysis"]
+    grading_type: "automatic"
+    prompt_template: |
+      Analyze the photometric and spectroscopic data of 1000 stars in a globular 
+      cluster to determine its age, metallicity distribution, and formation history.
+
+metadata:
+  created: "2026-01-01"
+  authors: ["TianwenAGI Team"]
+  institution: "Tianwen Astronomical Research Institute"
+  domain: "astronomy"

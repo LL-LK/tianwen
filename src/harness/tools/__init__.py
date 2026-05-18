@@ -26,6 +26,8 @@ class ToolCategory(Enum):
     DATA_PROCESSING = "data_processing"  # 数据处理
     CODE_EXECUTION = "code_execution"   # 代码执行
     FILE_SYSTEM = "file_system"        # 文件系统
+    ASTRONOMY_QUERY = "astronomy_query"  # 天文数据库查询
+    TIME_DOMAIN = "time_domain"        # 时域天文
     CUSTOM = "custom"                   # 自定义
 
 
@@ -268,3 +270,34 @@ def get_tool_integration() -> MCPToolIntegration:
     for name, tool in default_tools.items():
         integration.register_tool(name, tool)
     return integration
+
+
+# Import astronomy tools
+from harness.tools.astronomy import (
+    SIMBADTool,
+    VizieRTool,
+    AstroplanTool,
+    get_astronomy_tools,
+    execute_astronomy_tool,
+)
+
+__all__ = [
+    # Base classes
+    "ToolCategory",
+    "ToolMetadata",
+    "BaseTool",
+    "MCPToolIntegration",
+    # Default tools
+    "WebSearchTool",
+    "GitHubSearchTool",
+    "AstronomyCatalogTool",
+    "FileSystemTool",
+    "default_tools",
+    "get_tool_integration",
+    # Astronomy tools
+    "SIMBADTool",
+    "VizieRTool",
+    "AstroplanTool",
+    "get_astronomy_tools",
+    "execute_astronomy_tool",
+]

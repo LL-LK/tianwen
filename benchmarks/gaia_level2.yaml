@@ -1,0 +1,132 @@
+# GAIA Benchmark Level 2
+# Intermediate astronomical analysis tasks (5-10 steps)
+
+name: "gaia_level2"
+version: "1.0.0"
+description: "GAIA Level 2 benchmark - Intermediate astronomical analysis"
+
+output_format: "jsonl"
+output_dir: "./results"
+parallel: true
+max_workers: 4
+
+evaluator:
+  grading_type: "automatic"
+  metrics:
+    - "accuracy"
+    - "scientific_validity"
+    - "f1_score"
+  tolerance: 0.05
+  timeout: 180
+  verbose: true
+
+tasks:
+  - task_id: "gaia_l2_001"
+    name: "Stellar Kinematics Analysis"
+    category: "astronomy_analysis"
+    description: "Analyze proper motion and radial velocity data"
+    difficulty: "level_2"
+    max_steps: 8
+    time_limit: 120
+    tools: ["catalog_query", "data_analysis", "visualization"]
+    grading_type: "automatic"
+    prompt_template: |
+      Analyze the kinematic properties of stars in the solar neighborhood 
+      using GAIA DR3 data. Calculate the U,V,W velocity components and 
+      identify if any stars belong to known moving groups.
+
+  - task_id: "gaia_l2_002"
+    name: "Binary Star System Analysis"
+    category: "astronomy_analysis"
+    description: "Determine orbital parameters of binary system"
+    difficulty: "level_2"
+    max_steps: 10
+    time_limit: 180
+    tools: ["orbital_calculation", "data_analysis"]
+    grading_type: "automatic"
+    prompt_template: |
+      Using the provided astrometric data for a binary star system, 
+      determine the orbital period, semi-major axis, and total mass of the system.
+
+  - task_id: "gaia_l2_003"
+    name: "Galaxy Density Mapping"
+    category: "astronomy_analysis"
+    description: "Map stellar density distribution"
+    difficulty: "level_2"
+    max_steps: 8
+    time_limit: 150
+    tools: ["data_analysis", "visualization"]
+    grading_type: "automatic"
+    prompt_template: |
+      Using star count data from GAIA, create a stellar density map 
+      of the solar neighborhood and identify overdense regions.
+
+  - task_id: "gaia_l2_004"
+    name: "Metallicity Distribution"
+    category: "astronomy_analysis"
+    description: "Analyze metallicity gradient in stellar population"
+    difficulty: "level_2"
+    max_steps: 10
+    time_limit: 180
+    tools: ["spectroscopy", "data_analysis", "statistics"]
+    grading_type: "automatic"
+    prompt_template: |
+      Analyze the metallicity distribution of 500 stars and determine 
+      if there is a significant metallicity gradient with distance from the galactic center.
+
+  - task_id: "gaia_l2_005"
+    name: "Variable Star Classification"
+    category: "astronomy_analysis"
+    description: "Classify variable stars from light curve"
+    difficulty: "level_2"
+    max_steps: 10
+    time_limit: 180
+    tools: ["light_curve", "statistics", "catalog_query"]
+    grading_type: "automatic"
+    prompt_template: |
+      Given photometric time-series data, classify the variable star type
+      and estimate the pulsation period for a Mira variable candidate.
+
+  - task_id: "gaia_l2_006"
+    name: "Open Cluster Analysis"
+    category: "astronomy_analysis"
+    description: "Determine properties of open cluster"
+    difficulty: "level_2"
+    max_steps: 10
+    time_limit: 180
+    tools: ["catalog_query", "data_analysis", "stellar_evolution"]
+    grading_type: "automatic"
+    prompt_template: |
+      Identify members of the Hyades open cluster from GAIA data,
+      determine the cluster age and distance, and compare with literature values.
+
+  - task_id: "gaia_l2_007"
+    name: "Astrometric Precision Analysis"
+    category: "astronomy_analysis"
+    description: "Evaluate astrometric solution quality"
+    difficulty: "level_2"
+    max_steps: 8
+    time_limit: 120
+    tools: ["data_analysis", "statistics"]
+    grading_type: "automatic"
+    prompt_template: |
+      Evaluate the quality of GAIA astrometric solutions for a sample of 
+      quasars by checking for excessive proper motion or parallax errors.
+
+  - task_id: "gaia_l2_008"
+    name: "White Dwarf Sequence"
+    category: "astronomy_analysis"
+    description: "Identify and characterize white dwarf stars"
+    difficulty: "level_2"
+    max_steps: 10
+    time_limit: 180
+    tools: ["photometry", "data_analysis", "stellar_evolution"]
+    grading_type: "automatic"
+    prompt_template: |
+      Using color-magnitude diagram data, identify the white dwarf sequence
+      and estimate the cooling age of the oldest white dwarfs in the sample.
+
+metadata:
+  level: 2
+  difficulty_description: "5-10 steps - Intermediate analysis"
+  reference: "GAIA Benchmark Framework"
