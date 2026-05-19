@@ -116,49 +116,113 @@
 ---
 
 ## 🏗 系统架构
+## 🏗 系统架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Web 前端 (index.html)                     │
-│  观测总控台 │ 实时星图 │ 数据面板 │ 研究闭环 │ 告警中心        │
-│  望远镜控制 │ 智能对话 │ 系统日志 │ 说明书                    │
-└──────────┬──────────────────────────────────┬───────────────┘
-           │         HTTP/REST + WebSocket     │
-           ▼                                   ▼
-┌──────────────────────────────────────────────────────────────┐
-│                   Quart API Server (server.py)                │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────┐  │
-│  │ CORS     │ │ Rate     │ │ API Key  │ │ WebSocket     │  │
-│  │ Middleware│ │ Limiter  │ │ Auth     │ │ Manager       │  │
-│  └──────────┘ └──────────┘ └──────────┘ └───────────────┘  │
-└──────────┬───────────────────────────────────────────────────┘
-           │
-           ▼
-┌──────────────────────────────────────────────────────────────┐
-│                   HermesAGI Runtime (main.py)                 │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌───────────┐ │
-│  │ Cognitive  │ │ Planning   │ │ Execution  │ │ Evolution │ │
-│  │ Engine     │ │ Engine     │ │ Engine     │ │ System    │ │
-│  └────────────┘ └────────────┘ └────────────┘ └───────────┘ │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐               │
-│  │ Retry      │ │ Health     │ │ Error      │               │
-│  │ Engine     │ │ Monitor    │ │ Classifier │               │
-│  └────────────┘ └────────────┘ └────────────┘               │
-└──────────┬───────────────────────────────────────────────────┘
-           │
-           ▼
-┌──────────────────────────────────────────────────────────────┐
-│                      外部服务集成                              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────┐  │
-│  │ MiniMax  │ │ Qwen/    │ │ NASA     │ │ ChromaDB      │  │
-│  │ LLM API  │ │ OpenAI   │ │ SkyView  │ │ Vector Store  │  │
-│  └──────────┘ └──────────┘ └──────────┘ └───────────────┘  │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                    │
-│  │ Redis    │ │ Neo4j    │ │ Sentence │                    │
-│  │ Session  │ │ Graph DB │ │Transform │                    │
-│  └──────────┘ └──────────┘ └──────────┘                    │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Web 前端 (index.html)                              │
+│  观测总控台 │ 实时星图 │ 数据面板 │ 研究闭环 │ 告警中心 │ 望远镜控制            │
+│  智能对话 │ 文献搜索 │ 事实校验 │ 工作流 │ 系统日志 │ 说明书                │
+│  🧬 Harness │ 📐 Benchmark │ 🛠️ 技能库 │ 🌟 天文协议                          │
+└────────────────────────────┬────────────────────────────────────────────────┘
+                             │         HTTP/REST + WebSocket
+                             ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        Quart API Server (server.py)                          │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────┐ ┌───────────────┐  │
+│  │ CORS     │ │ Rate     │ │ API Key  │ │ WebSocket     │ │ Workflow     │  │
+│  │ Middleware│ │ Limiter  │ │ Auth     │ │ Manager       │ │ Engine       │  │
+│  └──────────┘ └──────────┘ └──────────┘ └───────────────┘ └───────────────┘  │
+└────────────────────────────┬────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        HermesAGI Runtime (main.py)                          │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌───────────┐ ┌────────────┐  │
+│  │ Cognitive  │ │ Planning   │ │ Execution  │ │ Evolution │ │ Retry      │  │
+│  │ Engine     │ │ Engine     │ │ Engine     │ │ System    │ │ Engine     │  │
+│  └────────────┘ └────────────┘ └────────────┘ └───────────┘ └────────────┘  │
+└────────────────────────────┬────────────────────────────────────────────────┘
+                             │
+    ┌────────────────────────┴────────────────────────────────────────────────┐
+    │                         TianwenAGI Harness                              │
+    │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────────┐     │
+    │  │ Phase 1     │ │ Phase 2     │ │ Phase 3     │ │ Phase 4         │     │
+    │  │ PGE Loop    │ │ Skills      │ │ Benchmark   │ │ FITS/Astronomy  │     │
+    │  │ (Plan-      │ │ Registry    │ │ /CI         │ │ Protocols       │     │
+    │  │  Generate-  │ │             │ │             │ │                 │     │
+    │  │  Evaluate)  │ │             │ │             │ │                 │     │
+    │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────────┘     │
+    │  ┌─────────────────────────────────────────────────────────────────┐      │
+    │  │ Sandbox/Distributed Execution                                   │      │
+    │  └─────────────────────────────────────────────────────────────────┘      │
+    └───────────────────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           外部服务集成                                       │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────┐ ┌───────────────┐  │
+│  │ MiniMax  │ │ Qwen/    │ │ NASA     │ │ ChromaDB      │ │ GitHub        │  │
+│  │ LLM API  │ │ OpenAI   │ │ SkyView  │ │ Vector Store  │ │ Actions       │  │
+│  └──────────┘ └──────────┘ └──────────┘ └───────────────┘ └───────────────┘  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────────┐                    │
+│  │ Redis    │ │ Neo4j    │ │ Sentence │ │ FITS Files   │                    │
+│  │ Session  │ │ Graph DB │ │ Transform│ │ Time-Domain  │                    │
+│  └──────────┘ └──────────┘ └──────────┘ └───────────────┘                    │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 🔄 4-Phase 执行模型
+
+### Phase 1: PGE Loop (规划-生成-评估)
+
+```
+    ┌──────────────────────────────────────────────────────────────┐
+    │                      PGE Loop 闭环                            │
+    │  ┌────────┐    ┌────────┐    ┌────────┐    ┌────────┐        │
+    │  │ PLAN   │───▶│GENERATE│───▶│EVALUATE│───▶│ITERATE │        │
+    │  │ 规划   │    │ 生成   │    │ 评估   │    │ 迭代   │        │
+    │  └────────┘    └────────┘    └────────┘    └────────┘        │
+    │       ▲                                               │       │
+    │       └───────────────────────────────────────────────┘       │
+    └──────────────────────────────────────────────────────────────┘
+```
+
+| 组件 | 职责 | 文件 |
+|------|------|------|
+| Planner | 任务分解与规划 | `harness/pge/planner.py` |
+| Generator | 响应生成与策略 | `harness/pge/generator.py` |
+| Evaluator | 结果评估与打分 | `harness/pge/evaluator.py` |
+| Loop | 迭代控制与收敛 | `harness/pge/loop.py` |
+
+### Phase 2: Skills (技能系统)
+
+| 技能类别 | 数量 | 示例 |
+|---------|------|------|
+| 天文技能 | 5+ | SpectralAnalysisProtocol, FITSProcessor, TimeDomainAnalysis |
+| Agent技能 | 10+ | CoordinatingAgent, DiscoveryAgent, HypothesisGenAgent |
+| 评测技能 | 5+ | ExactMatchGrader, AstronomyGrader, ClassificationMetrics |
+| 工具技能 | 10+ | MCPTools, GitHubSearch, WebSearch, CatalogQuery |
+
+### Phase 3: Benchmark/CI (自动化评测)
+
+| 功能 | 说明 |
+|------|------|
+| Benchmark配置 | YAML格式任务定义，支持Level 1/2/3难度分级 |
+| CI集成 | GitHub Actions自动化测试与部署 |
+| 评测指标 | accuracy, scientific_validity, domain_accuracy |
+| 并发执行 | 4+并发Agent，8+并发任务 |
+
+### Phase 4: FITS/Astronomy (天文协议)
+
+| 协议 | 功能 |
+|------|------|
+| FITS Protocol | 图像处理、WCS坐标变换、二进制表处理 |
+| Time-Domain Protocol | 光变曲线分析、周期发现、瞬变检测 |
+| Photometry Protocol | 孔径测光、PSF测光、流量校准 |
+| Coordinate Protocol | ICRS/银经坐标系转换、地平坐标计算 |
 
 ---
 
@@ -237,7 +301,7 @@ docker-compose --profile optional up -d
 
 ## 🖥 Web 界面
 
-天问-AGI 提供 9 个功能面板，通过顶部标签页切换：
+天问-AGI 提供 13 个功能面板，通过顶部标签页切换：
 
 | 面板 | 快捷键 | 功能描述 |
 |------|--------|----------|
@@ -248,8 +312,13 @@ docker-compose --profile optional up -d
 | 🔔 **告警中心** | `5` | 系统告警列表，支持按类型筛选和已读标记 |
 | 🔭 **望远镜控制** | `6` | GOTO 指向、跟踪控制、成像参数、星表浏览、观测窗口计算 |
 | 💬 **智能对话** | `7` | LLM 驱动的 AI 助手，支持多轮对话 |
+| ⚡ **工作流** | - | 可视化工作流编辑器，支持拖拽式 DAG 设计 |
 | 📋 **系统日志** | `8` | 实时日志流，按级别筛选 |
 | 📖 **说明书** | `9` | 系统功能说明和使用指南 |
+| 🧬 **Harness** | - | 评测框架仪表盘，展示 PGE Loop、组件注册表 |
+| 📐 **Benchmark** | - | 评测任务管理，支持 YAML 配置加载与执行 |
+| 🛠️ **技能库** | - | Skill Registry 浏览器，展示所有可用技能 |
+| 🌟 **天文协议** | - | FITS/Time-Domain/Astronomy 协议详情与 CI/CD 状态 |
 
 **全局快捷键**: `R` 刷新数据 · `T` 连通性检测 · `1-9` 切换面板
 
@@ -509,6 +578,40 @@ tianwen-agi/
 │   │   ├── scheduler.py        # 望远镜调度
 │   │   ├── mqtt_bridge.py      # MQTT 桥接
 │   │   └── linker.py           # 设备连接器
+│   ├── harness/               # TianwenAGI Harness 评测框架
+│   │   ├── pge/               # PGE Loop (Plan-Generate-Evaluate)
+│   │   │   ├── planner.py     # 任务规划器
+│   │   │   ├── generator.py   # 响应生成器
+│   │   │   ├── evaluator.py   # 结果评估器
+│   │   │   └── loop.py       # 迭代控制器
+│   │   ├── benchmark/          # Benchmark 配置与执行
+│   │   │   ├── runner.py      # 评测运行器
+│   │   │   ├── loader.py      # YAML 配置加载
+│   │   │   └── config.py      # 评测配置
+│   │   ├── skills/            # 技能注册表
+│   │   │   ├── registry.py    # 技能注册
+│   │   │   ├── base.py        # 技能基类
+│   │   │   └── astronomy_skills.py # 天文专用技能
+│   │   ├── protocols/         # 天文协议
+│   │   │   ├── base.py       # 协议基类
+│   │   │   ├── astronomy.py   # 天文通用协议
+│   │   │   ├── fits.py        # FITS 协议处理
+│   │   │   └── timedomain.py  # 时域分析协议
+│   │   ├── ci/                # CI/CD 集成
+│   │   │   ├── runner.py      # CI 运行器
+│   │   │   ├── github_actions.py # GitHub Actions
+│   │   │   └── config.py      # CI 配置
+│   │   ├── evaluation/        # 评测系统
+│   │   │   ├── metrics.py     # 评测指标
+│   │   │   └── graders/       # 可插拔评分器
+│   │   │       ├── base.py   # 评分器基类
+│   │   │       ├── exact_match.py
+│   │   │       ├── partial_match.py
+│   │   │       └── astronomy.py
+│   │   ├── distributed/       # 分布式执行
+│   │   ├── sandbox/          # 沙箱执行
+│   │   ├── registry.py       # 组件注册表
+│   │   └── runner.py         # 多Agent执行引擎
 │   ├── research/               # 研究闭环
 │   │   ├── hypothesis.py       # 假说模型
 │   │   ├── hypothesis_tester.py # 假说检验器
@@ -595,6 +698,126 @@ docker pull ghcr.io/ll-lk/tianwen-agi:latest
 # 或指定版本
 docker pull ghcr.io/ll-lk/tianwen-agi:main
 docker pull ghcr.io/ll-lk/tianwen-agi:v2.3.0
+```
+
+---
+
+## 📐 Benchmark 配置
+
+### 评测任务分级
+
+| Level | 步数 | 示例任务 |
+|-------|------|---------|
+| **Level 1** | <5步 | 基础天文问答、星表查询 |
+| **Level 2** | 5-10步 | 观测计划、数据分析、假说检验 |
+| **Level 3** | >10步 | 论文复现、多源数据综合、引力波对应体搜索 |
+
+### Benchmark YAML 配置示例
+
+```yaml
+# 天文综合评测基准 (astronomy_benchmark.yaml)
+name: "astronomy_benchmark"
+version: "1.0.0"
+output_format: "jsonl"  # StarWhisperED 兼容格式
+output_dir: "./results"
+parallel: true
+max_workers: 4
+
+evaluator:
+  grading_type: "automatic"
+  metrics:
+    - "accuracy"
+    - "scientific_validity"
+    - "domain_accuracy"
+  tolerance: 0.05
+  timeout: 300
+
+tasks:
+  # Level 1 - 基础天文查询
+  - task_id: "astro_001"
+    name: "Star Catalog Query"
+    category: "catalog_query"
+    difficulty: "level_1"
+    max_steps: 5
+    tools: ["catalog_query", "web_search"]
+    prompt_template: |
+      Query the stellar catalog to find all G-type main sequence stars 
+      within 50 light years from Earth.
+
+  # Level 2 - 观测计划
+  - task_id: "astro_004"
+    name: "Exoplanet Transit Analysis"
+    category: "astronomy_analysis"
+    difficulty: "level_2"
+    max_steps: 8
+    tools: ["light_curve", "statistics", "visualization"]
+    prompt_template: |
+      Analyze the provided light curve data to identify potential exoplanet 
+      transit signals.
+
+  # Level 3 - 高级发现
+  - task_id: "astro_007"
+    name: "Gravitational Wave Counterpart Search"
+    category: "astronomy_discovery"
+    difficulty: "level_3"
+    max_steps: 15
+    tools: ["catalog_query", "observation_planning", "data_analysis"]
+    prompt_template: |
+      A gravitational wave event (GW230615) has been detected.
+      Design an observation strategy to search for the electromagnetic counterpart.
+```
+
+### GAIA Level 配置示例
+
+```yaml
+# GAIA Level 1 (gaia_level1.yaml)
+name: "gaia_level1"
+version: "1.0.0"
+description: "GAIA Benchmark Level 1 - 基础天文任务"
+
+tasks:
+  - task_id: "gaia_l1_001"
+    name: "Object Classification"
+    difficulty: "level_1"
+    max_steps: 3
+    grading_type: "exact_match"
+    tools: ["catalog_query"]
+
+  - task_id: "gaia_l1_002"
+    name: "Coordinate Query"
+    difficulty: "level_1"
+    max_steps: 2
+    grading_type: "exact_match"
+    tools: ["ephemeris"]
+```
+
+### 评分器配置
+
+```python
+# 使用 Python API 运行评测
+from harness import HarnessRunner, RunConfig
+from harness.evaluation.graders import ExactMatchGrader, AstronomyGrader
+from harness.evaluation.metrics import ClassificationMetrics
+
+# 配置 Runner
+runner = HarnessRunner(RunConfig(
+    max_concurrent_agents=4,
+    enable_mcp=True,
+    enable_skill=True
+))
+
+# 注册评分器
+runner._evaluators["exact"] = ExactMatchGrader()
+runner._evaluators["astronomy"] = AstronomyGrader(config={"redshift_tolerance": 0.01})
+
+# 加载评测任务
+from harness.benchmark.loader import BenchmarkLoader
+loader = BenchmarkLoader("benchmarks/astronomy_benchmark.yaml")
+tasks = loader.load_tasks()
+
+# 运行评测
+result = await runner.run(tasks, agent_configs)
+print(f"Accuracy: {result.metrics['accuracy']}")
 ```
 
 ---

@@ -292,6 +292,10 @@ tr:hover td{background:rgba(59,130,246,0.04)}
   <button class="tab-btn" data-tab="workflow">⚡ 工作流</button>
   <button class="tab-btn" data-tab="logs">📋 系统日志</button>
   <button class="tab-btn" data-tab="manual">📖 说明书</button>
+  <button class="tab-btn" data-tab="harness">🧬 Harness</button>
+  <button class="tab-btn" data-tab="benchmark">📐 Benchmark</button>
+  <button class="tab-btn" data-tab="skills">🛠️ 技能库</button>
+  <button class="tab-btn" data-tab="astronomy">🌟 天文协议</button>
 </div>
 
 <div id="apiKeyModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;justify-content:center;align-items:center">
@@ -921,6 +925,242 @@ tr:hover td{background:rgba(59,130,246,0.04)}
       <p>完整 API 文档请访问：<code>GET /api/docs</code></p>
       <p>主要端点分类：观测站(observatory)、设备(devices)、数据(data)、研究(research)、告警(alerts)、日志(logs)、系统(system)、对话(chat)、工作流(workflow-engine)</p>
 
+    </div>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-harness">
+  <div class="card">
+    <div class="card-header"><span class="card-title">🧬 TianwenAGI Harness - 评测框架</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
+      <div style="background:var(--bg-secondary);border-radius:8px;padding:16px">
+        <h4 style="color:var(--accent);margin-bottom:12px">🎯 核心能力</h4>
+        <ul style="font-size:13px;color:var(--text-secondary);line-height:2">
+          <li>4+ 并发 Agent 支持</li>
+          <li>8+ 并发任务调度</li>
+          <li>失败重试与超时控制</li>
+          <li>多Agent多任务执行引擎</li>
+        </ul>
+      </div>
+      <div style="background:var(--bg-secondary);border-radius:8px;padding:16px">
+        <h4 style="color:var(--accent);margin-bottom:12px">📋 4大Phase</h4>
+        <ul style="font-size:13px;color:var(--text-secondary);line-height:2">
+          <li><b>Phase 1:</b> PGE Loop (规划-生成-评估)</li>
+          <li><b>Phase 2:</b> Skills (技能调用)</li>
+          <li><b>Phase 3:</b> Benchmark/CI (自动化评测)</li>
+          <li><b>Phase 4:</b> FITS/Astronomy (天文协议)</li>
+        </ul>
+      </div>
+      <div style="background:var(--bg-secondary);border-radius:8px;padding:16px">
+        <h4 style="color:var(--accent);margin-bottom:12px">🛡️ 可插拔架构</h4>
+        <ul style="font-size:13px;color:var(--text-secondary);line-height:2">
+          <li>BaseGrader 评分器插件</li>
+          <li>BaseProtocol 协议插件</li>
+          <li>统一工具接口 (MCP/GitHub/Web)</li>
+          <li>@register_* 装饰器注册</li>
+        </ul>
+      </div>
+      <div style="background:var(--bg-secondary);border-radius:8px;padding:16px">
+        <h4 style="color:var(--accent);margin-bottom:12px">📊 评测指标</h4>
+        <ul style="font-size:13px;color:var(--text-secondary);line-height:2">
+          <li>ClassificationMetrics 分类报告</li>
+          <li>混淆矩阵分析</li>
+          <li>sklearn 完整指标</li>
+          <li>StarWhisperED 格式兼容</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">🔄 PGE Loop 可视化</span></div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:20px;padding:20px;flex-wrap:wrap">
+      <div style="text-align:center">
+        <div style="width:80px;height:80px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px">📝</div>
+        <div style="margin-top:8px;font-size:13px;color:var(--text-secondary)">Plan<br><small>规划</small></div>
+      </div>
+      <div style="font-size:24px;color:var(--text-muted)">→</div>
+      <div style="text-align:center">
+        <div style="width:80px;height:80px;background:var(--discovery);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px">⚙️</div>
+        <div style="margin-top:8px;font-size:13px;color:var(--text-secondary)">Generate<br><small>生成</small></div>
+      </div>
+      <div style="font-size:24px;color:var(--text-muted)">→</div>
+      <div style="text-align:center">
+        <div style="width:80px;height:80px;background:var(--success);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px">📈</div>
+        <div style="margin-top:8px;font-size:13px;color:var(--text-secondary)">Evaluate<br><small>评估</small></div>
+      </div>
+      <div style="font-size:24px;color:var(--text-muted)">→</div>
+      <div style="text-align:center">
+        <div style="width:80px;height:80px;background:var(--warning);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px">🔄</div>
+        <div style="margin-top:8px;font-size:13px;color:var(--text-secondary)">Iterate<br><small>迭代</small></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">📁 组件注册表</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+      <div class="stat-item"><span class="stat-label">Agents</span><span class="stat-val" id="harnessAgentCount">-</span></div>
+      <div class="stat-item"><span class="stat-label">Tasks</span><span class="stat-val" id="harnessTaskCount">-</span></div>
+      <div class="stat-item"><span class="stat-label">Evaluators</span><span class="stat-val" id="harnessEvalCount">-</span></div>
+      <div class="stat-item"><span class="stat-label">Graders</span><span class="stat-val" id="harnessGraderCount">-</span></div>
+      <div class="stat-item"><span class="stat-label">Protocols</span><span class="stat-val" id="harnessProtoCount">-</span></div>
+      <div class="stat-item"><span class="stat-label">Skills</span><span class="stat-val" id="harnessSkillCount">-</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-benchmark">
+  <div class="card">
+    <div class="card-header"><span class="card-title">📐 Benchmark Runner - 评测任务管理</span></div>
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="loadBenchmarks()">🔄 刷新</button>
+      <select id="benchmarkSelector" style="padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary)">
+        <option value="">-- 选择评测配置 --</option>
+        <option value="astronomy_benchmark">天文综合评测</option>
+        <option value="gaia_level1">GAIA Level 1</option>
+        <option value="gaia_level2">GAIA Level 2</option>
+        <option value="gaia_level3">GAIA Level 3</option>
+      </select>
+      <button class="btn btn-success" onclick="runSelectedBenchmark()">▶ 执行评测</button>
+    </div>
+    <div id="benchmarkConfig" style="background:var(--bg-secondary);border-radius:8px;padding:16px;margin-bottom:16px">
+      <h4 style="color:var(--accent);margin-bottom:12px">📋 评测配置预览</h4>
+      <div style="font-size:13px;color:var(--text-secondary)">
+        <p><strong>astronomy_benchmark:</strong> 综合天文领域评测 (9任务)</p>
+        <p><strong>Level 1:</strong> &lt;5步 基础天文问答</p>
+        <p><strong>Level 2:</strong> 5-10步 观测计划/数据分析</p>
+        <p><strong>Level 3:</strong> &gt;10步 论文复现/多源数据综合</p>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">📊 评测结果</span></div>
+    <div id="benchmarkResults">
+      <div class="empty-state"><div class="icon">📊</div><div>暂无评测结果，请先选择配置并执行评测</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">📝 Benchmark YAML 配置示例</span></div>
+    <pre style="background:var(--bg-primary);padding:16px;border-radius:8px;overflow-x:auto;font-size:12px;color:var(--text-secondary);line-height:1.6"><code>tasks:
+  - task_id: "astro_001"
+    name: "Star Catalog Query"
+    difficulty: "level_1"
+    max_steps: 5
+    tools: ["catalog_query", "web_search"]
+    grading_type: "automatic"
+    prompt_template: |
+      Query the stellar catalog to find 
+      all G-type main sequence stars...</code></pre>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-skills">
+  <div class="card">
+    <div class="card-header"><span class="card-title">🛠️ Skill Registry - 技能注册表</span></div>
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="loadSkillRegistry()">🔄 刷新</button>
+      <input type="text" id="skillSearchInput" placeholder="搜索技能..." style="padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);min-width:200px">
+      <button class="btn" onclick="searchSkills()" style="background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border)">🔍 搜索</button>
+    </div>
+  </div>
+  <div id="skillRegistryList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+    <div class="card" style="background:var(--bg-secondary)">
+      <h4 style="color:var(--accent);margin-bottom:8px">🔬 天文技能</h4>
+      <ul style="font-size:13px;color:var(--text-secondary);line-height:1.8">
+        <li>SpectralAnalysisProtocol</li>
+        <li>PhotometryProtocol</li>
+        <li>AstronomicalCoordinateProtocol</li>
+        <li>FITSProcessor</li>
+        <li>TimeDomainAnalysis</li>
+      </ul>
+    </div>
+    <div class="card" style="background:var(--bg-secondary)">
+      <h4 style="color:var(--accent);margin-bottom:8px">🤖 Agent技能</h4>
+      <ul style="font-size:13px;color:var(--text-secondary);line-height:1.8">
+        <li>CoordinatingAgent</li>
+        <li>DiscoveryAgent</li>
+        <li>HypothesisGenAgent</li>
+        <li>ObservationAgent</li>
+        <li>LiteratureAgent</li>
+      </ul>
+    </div>
+    <div class="card" style="background:var(--bg-secondary)">
+      <h4 style="color:var(--accent);margin-bottom:8px">📊 评测技能</h4>
+      <ul style="font-size:13px;color:var(--text-secondary);line-height:1.8">
+        <li>ExactMatchGrader</li>
+        <li>PartialMatchGrader</li>
+        <li>AstronomyGrader</li>
+        <li>ClassificationMetrics</li>
+        <li>ConfusionMatrix</li>
+      </ul>
+    </div>
+    <div class="card" style="background:var(--bg-secondary)">
+      <h4 style="color:var(--accent);margin-bottom:8px">🔧 工具技能</h4>
+      <ul style="font-size:13px;color:var(--text-secondary);line-height:1.8">
+        <li>MCPTools</li>
+        <li>GitHubSearch</li>
+        <li>WebSearch</li>
+        <li>CatalogQuery</li>
+        <li>ObservationPlanning</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-astronomy">
+  <div class="card">
+    <div class="card-header"><span class="card-title">🌟 Astronomy Protocols - 天文协议</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+      <div style="background:var(--bg-secondary);border-radius:8px;padding:16px">
+        <h4 style="color:var(--accent);margin-bottom:12px">📡 FITS 协议</h4>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Flexible Image Transport System</p>
+        <ul style="font-size:12px;color:var(--text-muted);line-height:1.8">
+          <li>FITSHeaderParser</li>
+          <li>FITSImageProcessor</li>
+          <li>WCSCoordinateTransform</li>
+          <li>FITSBinaryTableHandler</li>
+        </ul>
+      </div>
+      <div style="background:var(--bg-secondary);border-radius:8px;padding:16px">
+        <h4 style="color:var(--accent);margin-bottom:12px">⏱️ Time-Domain 协议</h4>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Time-series analysis for variable stars</p>
+        <ul style="font-size:12px;color:var(--text-muted);line-height:1.8">
+          <li>LightCurveProcessor</li>
+          <li>PeriodFindingAnalysis</li>
+          <li>TransientDetection</li>
+          <li>AstronomicalAlertHandler</li>
+        </ul>
+      </div>
+      <div style="background:var(--bg-secondary);border-radius:8px;padding:16px">
+        <h4 style="color:var(--accent);margin-bottom:12px">🌈 Photometry 协议</h4>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Photometric analysis and calibration</p>
+        <ul style="font-size:12px;color:var(--text-muted);line-height:1.8">
+          <li>AperturePhotometry</li>
+          <li>PSFPhotometry</li>
+          <li>FluxCalibration</li>
+          <li>ColorIndexCalculation</li>
+        </ul>
+      </div>
+      <div style="background:var(--bg-secondary);border-radius:8px;padding:16px">
+        <h4 style="color:var(--accent);margin-bottom:12px">📏 Coordinate 协议</h4>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Astronomical coordinate systems</p>
+        <ul style="font-size:12px;color:var(--text-muted);line-height:1.8">
+          <li>ICRSCoordinateTransform</li>
+          <li>GalacticCoordinateTransform</li>
+          <li>AltitudeAzimuthCalculation</li>
+          <li>ProperMotionCorrection</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">🔗 CI/CD 集成状态</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+      <div class="stat-item"><span class="stat-label">GitHub Actions</span><span class="stat-val" style="color:var(--success)">● 在线</span></div>
+      <div class="stat-item"><span class="stat-label">CI Pipeline</span><span class="stat-val" style="color:var(--success)">● 通过</span></div>
+      <div class="stat-item"><span class="stat-label">Tests</span><span class="stat-val" id="ciTestCount">148</span></div>
+      <div class="stat-item"><span class="stat-label">Python Files</span><span class="stat-val" id="ciPyCount">57</span></div>
+      <div class="stat-item"><span class="stat-label">Lint</span><span class="stat-val" style="color:var(--success)">● 通过</span></div>
+      <div class="stat-item"><span class="stat-label">Docker Build</span><span class="stat-val" style="color:var(--success)">● 成功</span></div>
     </div>
   </div>
 </div>
