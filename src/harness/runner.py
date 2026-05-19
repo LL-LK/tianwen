@@ -31,6 +31,7 @@ class RunConfig:
     max_concurrent_tasks: int = 8       # 最大并发任务数
     agent_timeout: int = 300           # Agent执行超时(秒)
     task_timeout: int = 600            # 任务执行超时(秒)
+    timeout_seconds: int = 600          # 全局超时秒数
     retry_on_failure: bool = True       # 失败重试
     max_retries: int = 2              # 最大重试次数
     save_results: bool = True           # 保存结果
@@ -46,18 +47,20 @@ class RunConfig:
 @dataclass
 class RunResult:
     """运行结果"""
-    run_id: str
-    config: RunConfig
-    start_time: str
+    run_id: str = ""
+    config: Optional[RunConfig] = None
+    start_time: str = ""
     end_time: Optional[str] = None
     total_tasks: int = 0
     completed_tasks: int = 0
     failed_tasks: int = 0
+    pass_rate: float = 0.0
+    execution_time: float = 0.0
+    total_execution_time: float = 0.0
     task_results: List[TaskResult] = field(default_factory=list)
     evaluation_results: List[EvaluationResult] = field(default_factory=list)
     agent_metrics: Dict[str, Any] = field(default_factory=dict)
     overall_score: float = 0.0
-    total_execution_time: float = 0.0
     success: bool = False
     error: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)

@@ -233,7 +233,7 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 .offline-banner{display:none;align-items:center;gap:8px;padding:8px 16px;background:rgba(239,68,68,0.15);border-bottom:1px solid rgba(239,68,68,0.3);font-size:12px;color:var(--danger);text-align:center;justify-content:center}
 .offline-banner.show{display:flex}
 .backend-banner{display:none;align-items:center;gap:8px;padding:8px 16px;background:rgba(245,158,11,0.15);border-bottom:1px solid rgba(245,158,11,0.3);font-size:12px;color:var(--warning);text-align:center;justify-content:center}
-.backend-banner.error{display:flex;background:rgba(239,68,68,0.15);border-bottom:1px solid rgba(239,68,68,0.3);color:var(--danger)}
+body.light .kbd-hint kbd{background:var(--bg-card)}
 
 @media(max-width:768px){
   .grid-2,.grid-3,.grid-2-1,.grid-1-2{grid-template-columns:1fr}
@@ -247,6 +247,9 @@ tr:hover td{background:rgba(59,130,246,0.04)}
   .target-progress{margin-left:0;width:100%;text-align:left;margin-top:8px}
 }
 </style>
+<!-- Benchmark Dashboard Enhancement -->
+<link rel="stylesheet" href="/css/benchmark.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -1009,8 +1012,44 @@ tr:hover td{background:rgba(59,130,246,0.04)}
 </div>
 
 <div class="tab-panel" id="panel-benchmark">
-  <div class="card">
-    <div class="card-header"><span class="card-title">📐 Benchmark Runner - 评测任务管理</span></div>
+  <!-- Summary Stats -->
+  <div class="bm-grid" style="margin-bottom:16px">
+    <div class="bm-stat-card">
+      <div class="num" id="bmTotalTasks">--</div>
+      <div class="lbl">总任务数</div>
+    </div>
+    <div class="bm-stat-card success">
+      <div class="num" id="bmCompleted">--</div>
+      <div class="lbl">已完成</div>
+    </div>
+    <div class="bm-stat-card danger">
+      <div class="num" id="bmFailed">--</div>
+      <div class="lbl">失败</div>
+    </div>
+    <div class="bm-stat-card">
+      <div class="num" id="bmOverallScore">--</div>
+      <div class="lbl">综合评分</div>
+    </div>
+    <div class="bm-stat-card info">
+      <div class="num" id="bmAvgDuration">--s</div>
+      <div class="lbl">平均耗时</div>
+    </div>
+    <div class="bm-stat-card success">
+      <div class="num" id="bmSuccessRate">--%</div>
+      <div class="lbl">成功率</div>
+    </div>
+  </div>
+
+  <!-- Control Bar -->
+  <div class="bm-card">
+    <div class="bm-card-header">
+      <span class="bm-card-title"><span class="icon">📐</span>Benchmark Runner - 评测任务管理</span>
+      <div class="bm-export-btns">
+        <button class="bm-btn bm-btn-primary" onclick="bmLoadDemo()">📊 加载示例数据</button>
+        <button class="bm-btn bm-btn-success" onclick="bmExportJSON(bmCurrentData)">📥 JSON</button>
+        <button class="bm-btn bm-btn-success" onclick="bmExportCSV(bmCurrentData)">📥 CSV</button>
+      </div>
+    </div>
     <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="loadBenchmarks()">🔄 刷新</button>
       <select id="benchmarkSelector" style="padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary)">
@@ -1032,14 +1071,130 @@ tr:hover td{background:rgba(59,130,246,0.04)}
       </div>
     </div>
   </div>
-  <div class="card">
-    <div class="card-header"><span class="card-title">📊 评测结果</span></div>
-    <div id="benchmarkResults">
-      <div class="empty-state"><div class="icon">📊</div><div>暂无评测结果，请先选择配置并执行评测</div></div>
+
+  <!-- Charts Row 1 -->
+  <div class="grid-2">
+    <div class="bm-card">
+      <div class="bm-card-header">
+        <span class="bm-card-title"><span class="icon">🎯</span>综合能力雷达图</span>
+      </div>
+      <div class="bm-chart-container" style="height:250px">
+        <canvas id="bmRadarChart"></canvas>
+      </div>
+    </div>
+    <div class="bm-card">
+      <div class="bm-card-header">
+        <span class="bm-card-title"><span class="icon">📈</span>执行趋势</span>
+      </div>
+      <div class="bm-chart-container" style="height:250px">
+        <canvas id="bmLineChart"></canvas>
+      </div>
     </div>
   </div>
-  <div class="card">
-    <div class="card-header"><span class="card-title">📝 Benchmark YAML 配置示例</span></div>
+
+  <!-- Charts Row 2 -->
+  <div class="grid-2">
+    <div class="bm-card">
+      <div class="bm-card-header">
+        <span class="bm-card-title"><span class="icon">🏆</span>任务得分对比</span>
+      </div>
+      <div class="bm-chart-container" style="height:250px">
+        <canvas id="bmHorizontalBar"></canvas>
+      </div>
+    </div>
+    <div class="bm-card">
+      <div class="bm-card-header">
+        <span class="bm-card-title"><span class="icon">📊</span>执行状态分布</span>
+      </div>
+      <div class="bm-chart-container" style="height:250px">
+        <canvas id="bmDoughnutChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Multi-Model Comparison -->
+  <div class="bm-card">
+    <div class="bm-card-header">
+      <span class="bm-card-title"><span class="icon">🤖</span>多模型对比</span>
+      <div class="bm-filter-tabs">
+        <button class="bm-filter-tab active" onclick="bmFilterModel(this, 'all')">全部</button>
+        <button class="bm-filter-tab" onclick="bmFilterModel(this, 'MiniMax')">MiniMax</button>
+        <button class="bm-filter-tab" onclick="bmFilterModel(this, 'Qwen')">Qwen</button>
+        <button class="bm-filter-tab" onclick="bmFilterModel(this, 'GPT')">GPT</button>
+      </div>
+    </div>
+    <div class="bm-chart-container" style="height:280px">
+      <canvas id="bmComparisonChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Timeline & Errors Row -->
+  <div class="grid-2">
+    <div class="bm-card">
+      <div class="bm-card-header">
+        <span class="bm-card-title"><span class="icon">⏱️</span>执行时间线</span>
+      </div>
+      <div class="bm-chart-container" style="height:250px">
+        <canvas id="bmTimelineChart"></canvas>
+      </div>
+    </div>
+    <div class="bm-card">
+      <div class="bm-card-header">
+        <span class="bm-card-title"><span class="icon">⚠️</span>错误分析</span>
+        <span style="font-size:12px;color:var(--text-muted)">共 <span id="bmErrorTotal">0</span> 个错误</span>
+      </div>
+      <div class="bm-chart-container" style="height:200px">
+        <canvas id="bmErrorChart"></canvas>
+      </div>
+      <div id="bmErrorList" style="max-height:150px;overflow-y:auto;margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- Task Details -->
+  <div class="bm-card">
+    <div class="bm-card-header">
+      <span class="bm-card-title"><span class="icon">📋</span>任务详情</span>
+      <div class="bm-filter-tabs">
+        <button class="bm-filter-tab active" onclick="bmFilterTask(this, 'all')">全部</button>
+        <button class="bm-filter-tab" onclick="bmFilterTask(this, 'completed')">✓ 完成</button>
+        <button class="bm-filter-tab" onclick="bmFilterTask(this, 'failed')">✗ 失败</button>
+        <button class="bm-filter-tab" onclick="bmFilterTask(this, 'running')">⟳ 进行中</button>
+      </div>
+    </div>
+    <div class="bm-task-list" id="bmTaskList">
+      <div class="bm-empty-state">
+        <div class="icon">📋</div>
+        <div class="msg">暂无任务数据</div>
+        <div class="hint">点击"加载示例数据"查看演示</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- History Table -->
+  <div class="bm-card">
+    <div class="bm-card-header">
+      <span class="bm-card-title"><span class="icon">📜</span>历史记录</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--text-muted);text-transform:uppercase;border-bottom:1px solid var(--border)">日期</th>
+            <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--text-muted);text-transform:uppercase;border-bottom:1px solid var(--border)">综合评分</th>
+            <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--text-muted);text-transform:uppercase;border-bottom:1px solid var(--border)">任务数</th>
+            <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--text-muted);text-transform:uppercase;border-bottom:1px solid var(--border)">成功</th>
+            <th style="text-align:left;padding:10px 12px;font-size:12px;color:var(--text-muted);text-transform:uppercase;border-bottom:1px solid var(--border)">成功率</th>
+          </tr>
+        </thead>
+        <tbody id="bmHistoryTable">
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- YAML Config Example -->
+  <div class="bm-card">
+    <div class="bm-card-header"><span class="bm-card-title">📝 Benchmark YAML 配置示例</span></div>
     <pre style="background:var(--bg-primary);padding:16px;border-radius:8px;overflow-x:auto;font-size:12px;color:var(--text-secondary);line-height:1.6"><code>tasks:
   - task_id: "astro_001"
     name: "Star Catalog Query"
@@ -3551,6 +3706,186 @@ function handleWorkflowWSEvent(msg) {
   }
 }
 
+// ========== Benchmark Dashboard Functions ==========
+var bmCurrentData = null;
+var bmFilteredTasks = [];
+var bmCurrentModelFilter = 'all';
+var bmCurrentTaskFilter = 'all';
+
+function bmLoadDemo() {
+  bmCurrentData = bmGenerateMockData();
+  bmUpdateDashboard(bmCurrentData);
+  showToast('示例数据已加载', 'success');
+}
+
+function bmUpdateDashboard(data) {
+  if (!data) return;
+  
+  // Update stats
+  $('#bmTotalTasks').textContent = data.summary.totalTasks;
+  $('#bmCompleted').textContent = data.summary.completed;
+  $('#bmFailed').textContent = data.summary.failed;
+  $('#bmOverallScore').textContent = data.summary.overallScore + '%';
+  $('#bmAvgDuration').textContent = data.summary.avgDuration + 's';
+  $('#bmSuccessRate').textContent = data.summary.successRate + '%';
+  $('#bmErrorTotal').textContent = data.summary.failed;
+  
+  // Update charts
+  if (typeof bmUpdateCharts === 'function') {
+    bmUpdateCharts({
+      radar: data.radar,
+      line: data.line,
+      horizontalBar: data.horizontalBar,
+      doughnut: data.doughnut,
+      comparison: data.comparison,
+      errors: data.errors,
+      timeline: data.timeline
+    });
+  }
+  
+  // Update task list
+  bmFilteredTasks = data.tasks || [];
+  bmRenderTaskList(bmFilteredTasks);
+  
+  // Update history table
+  bmRenderHistoryTable(data.history || []);
+  
+  // Update error list
+  bmRenderErrorList(data.errors || {});
+}
+
+function bmRenderTaskList(tasks) {
+  var container = $('#bmTaskList');
+  if (!container || tasks.length === 0) {
+    container.innerHTML = '<div class="bm-empty-state"><div class="icon">📋</div><div class="msg">暂无任务数据</div></div>';
+    return;
+  }
+  
+  var html = '';
+  tasks.forEach(function(t) {
+    var statusClass = t.status || 'pending';
+    var scoreClass = 'poor';
+    if (t.score !== null) {
+      if (t.score >= 90) scoreClass = 'good';
+      else if (t.score >= 70) scoreClass = 'medium';
+    }
+    
+    html += '<div class="bm-task-item">';
+    html += '<span class="task-status ' + statusClass + '"></span>';
+    html += '<div class="task-info">';
+    html += '<div class="task-name">' + t.name + '</div>';
+    html += '<div class="task-detail">难度: ' + (t.difficulty || '--') + ' · 状态: ' + (t.status || '--') + '</div>';
+    html += '</div>';
+    html += '<span class="task-score ' + scoreClass + '">' + (t.score !== null ? t.score : '--') + '</span>';
+    html += '</div>';
+  });
+  
+  container.innerHTML = html;
+}
+
+function bmRenderHistoryTable(history) {
+  var tbody = $('#bmHistoryTable');
+  if (!tbody || history.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-muted)">暂无历史记录</td></tr>';
+    return;
+  }
+  
+  var html = '';
+  history.forEach(function(h) {
+    var rate = ((h.success / h.tasks) * 100).toFixed(1);
+    html += '<tr>';
+    html += '<td style="padding:10px 12px;border-bottom:1px solid var(--border)">' + h.date + '</td>';
+    html += '<td style="padding:10px 12px;border-bottom:1px solid var(--border)"><span style="color:var(--accent);font-weight:600">' + h.score + '</span></td>';
+    html += '<td style="padding:10px 12px;border-bottom:1px solid var(--border)">' + h.tasks + '</td>';
+    html += '<td style="padding:10px 12px;border-bottom:1px solid var(--border)">' + h.success + '</td>';
+    html += '<td style="padding:10px 12px;border-bottom:1px solid var(--border)"><span style="color:var(--success)">' + rate + '%</span></td>';
+    html += '</tr>';
+  });
+  
+  tbody.innerHTML = html;
+}
+
+function bmRenderErrorList(errorData) {
+  var container = $('#bmErrorList');
+  if (!container) return;
+  
+  var errors = [
+    { type: '超时', count: errorData.values ? errorData.values[0] : 0 },
+    { type: 'API错误', count: errorData.values ? errorData.values[1] : 0 },
+    { type: '数据缺失', count: errorData.values ? errorData.values[2] : 0 },
+    { type: '格式错误', count: errorData.values ? errorData.values[3] : 0 },
+    { type: '其他', count: errorData.values ? errorData.values[4] : 0 }
+  ];
+  
+  var filtered = errors.filter(function(e) { return e.count > 0; });
+  
+  if (filtered.length === 0) {
+    container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted)">暂无错误记录</div>';
+    return;
+  }
+  
+  var html = '';
+  filtered.forEach(function(e) {
+    html += '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(239,68,68,0.15);font-size:12px">';
+    html += '<span style="color:var(--danger)">' + e.type + '</span>';
+    html += '<span style="color:var(--text-secondary)">×' + e.count + '</span>';
+    html += '</div>';
+  });
+  
+  container.innerHTML = html;
+}
+
+function bmFilterModel(btn, filter) {
+  bmCurrentModelFilter = filter;
+  $$('.bm-filter-tab').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  
+  if (!bmCurrentData || !bmCurrentData.comparison) return;
+  
+  var models = bmCurrentData.comparison.models;
+  if (filter !== 'all') {
+    models = models.filter(function(m) { return m.name.indexOf(filter) !== -1; });
+  }
+  
+  var filteredData = {
+    models: models,
+    metrics: bmCurrentData.comparison.metrics
+  };
+  
+  if (typeof bmRenderModelComparison === 'function') {
+    bmRenderModelComparison('bmComparisonChart', filteredData);
+  }
+}
+
+function bmFilterTask(btn, filter) {
+  bmCurrentTaskFilter = filter;
+  $$('.bm-filter-tab').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  
+  if (!bmCurrentData || !bmCurrentData.tasks) return;
+  
+  if (filter === 'all') {
+    bmFilteredTasks = bmCurrentData.tasks;
+  } else {
+    bmFilteredTasks = bmCurrentData.tasks.filter(function(t) { return t.status === filter; });
+  }
+  
+  bmRenderTaskList(bmFilteredTasks);
+}
+
+// Wait for Chart.js to load, then init charts
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof Chart !== 'undefined') {
+    bmInitCharts();
+  } else {
+    window.addEventListener('load', function() {
+      if (typeof Chart !== 'undefined') bmInitCharts();
+    });
+  }
+});
+
+// ========== End Benchmark Dashboard Functions ==========
+
 // 初始化
 setTimeout(function() {
   initWorkflowEditor();
@@ -3558,5 +3893,6 @@ setTimeout(function() {
 }, 1500);
 </script>
 <script src="https://aladin.u-strasbg.fr/AladinLite/api/v3/latest/aladin.js" onload="initAladin()" defer></script>
+<script src="/js/benchmark-charts.js" defer></script>
 </body>
 </html>

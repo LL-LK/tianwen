@@ -17,6 +17,7 @@ class AgentType(Enum):
     """Agent类型枚举"""
     COORDINATOR = "coordinator"          # 协调Agent
     RESEARCHER = "researcher"            # 研究Agent
+    EXECUTOR = "executor"              # 执行Agent
     DATA_ANALYST = "data_analyst"      # 数据分析Agent
     HYPOTHESIS_GENERATOR = "hypothesis_generator"  # 假说生成Agent
     TELESCOPE_CONTROLLER = "telescope_controller"  # 望远镜控制Agent
