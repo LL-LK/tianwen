@@ -652,6 +652,10 @@ tianwen-agi/
 ├── web/                        # 前端静态文件
 │   └── index.html              # 单页应用 (SPA)
 ├── tests/                      # 测试文件
+│   ├── test_harness/          # Harness核心测试 (148 tests)
+│   ├── test_integration/      # API集成测试 (134 tests)
+│   ├── test_frontend/         # Playwright前端测试 (101 tests)
+│   └── test_visual/           # 视觉回归测试 (24 tests)
 ├── Dockerfile                  # Docker 镜像构建
 ├── docker-compose.yml          # Docker Compose 编排
 ├── railway.json                # Railway 部署配置
@@ -699,6 +703,56 @@ docker pull ghcr.io/ll-lk/tianwen-agi:latest
 docker pull ghcr.io/ll-lk/tianwen-agi:main
 docker pull ghcr.io/ll-lk/tianwen-agi:v2.3.0
 ```
+
+---
+
+## 🧪 测试
+
+### 测试套件概览
+
+| 测试目录 | 测试数量 | 说明 | 运行方式 |
+|----------|----------|------|----------|
+| `tests/test_harness/` | 148 | Harness核心单元测试 | `pytest tests/test_harness/` |
+| `tests/test_integration/` | 134 | API端点、WebSocket、MCP工具集成测试 | `pytest tests/test_integration/` |
+| `tests/test_frontend/` | 101 | Playwright前端UI测试 | `pytest tests/test_frontend/` |
+| `tests/test_visual/` | 24 | 视觉回归测试 | `pytest tests/test_visual/` |
+
+**总计: 407 tests**
+
+### 运行测试
+
+```bash
+# 安装测试依赖
+pip install pytest pytest-playwright pytest-asyncio
+
+# 核心测试 (无需浏览器)
+pytest tests/test_integration/ tests/test_harness/ -v
+
+# 前端测试 (需要安装浏览器)
+playwright install chromium
+pytest tests/test_frontend/ -v
+
+# 视觉测试
+pytest tests/test_visual/ -v
+
+# 所有测试
+pytest tests/ -v
+```
+
+### Benchmark 可视化仪表盘
+
+前端 **Benchmark Tab** 包含交互式图表 (Chart.js):
+
+| 图表类型 | 功能 |
+|----------|------|
+| 雷达图 | 多维度能力对比 |
+| 折线图 | 性能趋势 |
+| 水平条形图 | 模型对比 |
+| 环形图 | 任务分布 |
+| 时间线 | 执行追踪 |
+| 误差分析 | 错误分类 |
+
+导出功能: `bmExportJSON()` / `bmExportCSV()`
 
 ---
 
@@ -866,6 +920,15 @@ print(f"Accuracy: {result.metrics['accuracy']}")
 - [x] Dockerfile 优化 (curl 健康检查、runtime 目录)
 - [x] CI/CD 流程完善 (flake8 修复、Railway 部署优化)
 - [x] 前后端 CORS 连通性配置
+- [x] **Harness 测试框架 (407 tests)**
+  - Harness核心测试 (148 tests)
+  - API集成测试 (134 tests)
+  - Playwright前端测试 (101 tests)
+  - 视觉回归测试 (24 tests)
+- [x] **Benchmark 可视化仪表盘** (Chart.js)
+  - 雷达图/折线图/条形图/环形图
+  - 执行时间线/误差分析
+  - JSON/CSV导出功能
 
 ### v2.5 (计划中)
 
