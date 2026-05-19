@@ -7,12 +7,6 @@ import asyncio
 from pathlib import Path
 
 
-# Test configuration
-FRONTEND_URL = "https://tianwen-agi-production.up.railway.app"
-LOCAL_FRONTEND_URL = "http://localhost:3000"
-FALLBACK_URL = FRONTEND_URL
-
-
 def pytest_configure(config):
     """Configure pytest with custom markers."""
     config.addinivalue_line(
@@ -24,6 +18,29 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "slow: mark test as slow running"
     )
+
+
+def pytest_collection_modifyitems(items):
+    """Skip playwright tests if browser is not available."""
+    import os
+    skip_browser = pytest.mark.skip(reason="Browser not available (run 'playwright install chromium' to enable)")
+    
+    for item in items:
+        # Check if playwright browser is likely available
+        if "playwright" in item.keywords or "ui" in item.keywords:
+            # Add browser check
+            browser_paths = [
+                "/home/l2140/.cache/ms-playwright/chromium_headless_shell-1208",
+                "/home/l2140/.cache/ms-playwright/chromium-1208",
+            ]
+            if not any(os.path.exists(p) for p in browser_paths):
+                item.add_marker(skip_browser)
+
+
+# Test configuration
+FRONTEND_URL = "https://tianwen-agi-production.up.railway.app"
+LOCAL_FRONTEND_URL = "http://localhost:3000"
+FALLBACK_URL = FRONTEND_URL
 
 
 @pytest.fixture(scope="session")
